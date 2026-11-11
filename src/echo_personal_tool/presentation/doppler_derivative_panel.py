@@ -24,22 +24,23 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
-from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
+from echo_personal_tool.domain.calculators.models import CalculationsSnapshot, OutputValue
 from echo_personal_tool.presentation.theme.palettes import OVERLAY_LABEL
 
 
-def _fmt(value: float | None, unit: str, decimals: int = 1) -> str:
-    if value is None:
+def _fmt_output(output: OutputValue | None) -> str:
+    if output is None or output.value is None:
         return "—"
-    return f"{value:.{decimals}f} {unit}"
+    num = output.formatted()
+    return f"{num} {output.unit}" if output.unit else num
 
 
 class _DerivativeRow(QWidget):
     """One chain step: label + value + unit."""
 
-    def __init__(self, label_key: str, unit: str, decimals: int = 1, parent: QWidget | None = None) -> None:
+    def __init__(self, label_key: str, unit: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._decimals = decimals
+        self._unit = unit
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -52,9 +53,9 @@ class _DerivativeRow(QWidget):
         layout.addWidget(self._label)
         layout.addWidget(self._value)
 
-    def set_value(self, value: float | None, unit: str, decimals: int | None = None) -> None:
-        self._value.setText(_fmt(value, unit, self._decimals if decimals is None else decimals))
-        self._value.setToolTip(unit)
+    def set_output(self, output: OutputValue | None) -> None:
+        self._value.setText(_fmt_output(output))
+        self._value.setToolTip(output.unit if output is not None else self._unit)
 
 
 class DopplerDerivativePanel(QWidget):
@@ -73,11 +74,11 @@ class DopplerDerivativePanel(QWidget):
         layout.setSpacing(4)
 
         # ── Stroke volume chain ──────────────────────────────────────
-        self._lvot_area = _DerivativeRow("calc.output.lvot_area", "cm²", 2)
-        self._sv = _DerivativeRow("calc.output.sv", "mL", 1)
-        self._svi = _DerivativeRow("calc.output.svi", "mL/m²", 1)
-        self._co = _DerivativeRow("calc.output.co", "L/min", 2)
-        self._ci = _DerivativeRow("calc.output.ci", "L/min/m²", 2)
+        self._lvot_area = _DerivativeRow("calc.output.lvot_area", "cm²")
+        self._sv = _DerivativeRow("calc.output.sv", "mL")
+        self._svi = _DerivativeRow("calc.output.svi", "mL/m²")
+        self._co = _DerivativeRow("calc.output.co", "L/min")
+        self._ci = _DerivativeRow("calc.output.ci", "L/min/m²")
 
         sv_group = QFrame()
         sv_group.setObjectName("dopplerDerivativeSvGroup")
@@ -94,9 +95,9 @@ class DopplerDerivativePanel(QWidget):
         layout.addWidget(sv_group)
 
         # ── Aortic valve chain ───────────────────────────────────────
-        self._ava = _DerivativeRow("calc.output.ava_vti", "cm²", 2)
-        self._avai = _DerivativeRow("calc.output.avai", "cm²/m²", 2)
-        self._dvi = _DerivativeRow("calc.output.dvi_vti", "", 2)
+        self._ava = _DerivativeRow("calc.output.ava_vti", "cm²")
+        self._avai = _DerivativeRow("calc.output.avai", "cm²/m²")
+        self._dvi = _DerivativeRow("calc.output.dvi_vti", "")
 
         ava_group = QFrame()
         ava_group.setObjectName("dopplerDerivativeAvaGroup")
@@ -111,8 +112,8 @@ class DopplerDerivativePanel(QWidget):
         layout.addWidget(ava_group)
 
         # ── Mitral regurgitation chain ───────────────────────────────
-        self._rvol_mr = _DerivativeRow("calc.output.rvol_mr", "mL", 1)
-        self._rf_mr = _DerivativeRow("calc.output.rf_mr", "%", 0)
+        self._rvol_mr = _DerivativeRow("calc.output.rvol_mr", "mL")
+        self._rf_mr = _DerivativeRow("calc.output.rf_mr", "%")
 
         mr_group = QFrame()
         mr_group.setObjectName("dopplerDerivativeMrGroup")
@@ -153,26 +154,26 @@ class DopplerDerivativePanel(QWidget):
         sv_result = results.get("stroke_volume")
         sv_outputs = {o.id: o for o in sv_result.outputs} if sv_result else {}
 
-        self._set_row(self._lvot_area, sv_outputs.get("lvot_area"), 2)
-        self._set_row(self._sv, sv_outputs.get("sv"), 1)
-        self._set_row(self._svi, sv_outputs.get("svi"), 1)
-        self._set_row(self._co, sv_outputs.get("co"), 2)
-        self._set_row(self._ci, sv_outputs.get("ci"), 2)
+        self._set_row(self._lvot_area, sv_outputs.get("lvot_area"))
+        self._set_row(self._sv, sv_outputs.get("sv"))
+        self._set_row(self._svi, sv_outputs.get("svi"))
+        self._set_row(self._co, sv_outputs.get("co"))
+        self._set_row(self._ci, sv_outputs.get("ci"))
 
         # ── Aortic valve chain ───────────────────────────────────────
         ava_result = results.get("aortic_valve_area")
         ava_outputs = {o.id: o for o in ava_result.outputs} if ava_result else {}
 
-        self._set_row(self._ava, ava_outputs.get("ava_vti"), 2)
-        self._set_row(self._avai, ava_outputs.get("avai"), 2)
-        self._set_row(self._dvi, ava_outputs.get("dvi_vti"), 2)
+        self._set_row(self._ava, ava_outputs.get("ava_vti"))
+        self._set_row(self._avai, ava_outputs.get("avai"))
+        self._set_row(self._dvi, ava_outputs.get("dvi_vti"))
 
-        # ── Mitral regurgitation chain ───────────────────────────────
+        # ── Mitral regurgitation chain ────────────────────────────────
         pisa_result = results.get("pisa_mr")
         pisa_outputs = {o.id: o for o in pisa_result.outputs} if pisa_result else {}
 
-        self._set_row(self._rvol_mr, pisa_outputs.get("rvol_mr"), 1)
-        self._set_row(self._rf_mr, pisa_outputs.get("rf_mr"), 0)
+        self._set_row(self._rvol_mr, pisa_outputs.get("rvol_mr"))
+        self._set_row(self._rf_mr, pisa_outputs.get("rf_mr"))
 
         # Show panel only if at least one chain has a computed value
         has_any = any(
@@ -186,9 +187,9 @@ class DopplerDerivativePanel(QWidget):
         )
         self._set_visible(has_any)
 
-    def _set_row(self, row: _DerivativeRow, output, decimals: int) -> None:
+    def _set_row(self, row: _DerivativeRow, output: OutputValue | None) -> None:
         if output is not None and output.value is not None:
-            row.set_value(output.value, output.unit, decimals)
+            row.set_output(output)
             row.setVisible(True)
         else:
             row.setVisible(False)

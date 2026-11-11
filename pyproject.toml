@@ -200,6 +200,8 @@ files = [
     "src/echo_personal_tool/presentation/dicom_export.py",
     "src/echo_personal_tool/presentation/dicom_export_dialog.py",
     "src/echo_personal_tool/presentation/dicom_tag_inspector_widget.py",
+    "src/echo_personal_tool/presentation/display_formats.py",
+    "src/echo_personal_tool/presentation/doppler_derivative_panel.py",
     "src/echo_personal_tool/presentation/ecg_strip_loader.py",
     "src/echo_personal_tool/presentation/focus_mode.py",
     "src/echo_personal_tool/presentation/frame_range_export_dialog.py",

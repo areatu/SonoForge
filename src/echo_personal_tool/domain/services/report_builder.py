@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
+from echo_personal_tool.domain.measurement_catalog import (
+    format_measurement,
+    measurement_for_caliper,
+)
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.models.value_origin import (
@@ -51,8 +55,12 @@ from echo_personal_tool.domain.services.measurement_results_formatter import _fl
 from echo_personal_tool.domain.services.nomenclature import caliper_label as _cal
 from echo_personal_tool.domain.services.nomenclature import catalog_label as _label_catalog
 from echo_personal_tool.domain.services.nomenclature import flow_label as _flow
+from echo_personal_tool.domain.services.nomenclature import (
+    flow_measurement_id,
+    strain_measurement_id,
+    view_measurement_id,
+)
 from echo_personal_tool.domain.services.nomenclature import indexed_label as _label_index
-from echo_personal_tool.domain.services.nomenclature import length_decimals as _ld
 from echo_personal_tool.domain.services.nomenclature import overlay_label as _label
 from echo_personal_tool.domain.services.nomenclature import strain_label as _strain
 from echo_personal_tool.domain.services.organ_volumes import (
@@ -594,11 +602,11 @@ def group_for_label(label: str) -> str:
 
 def _value(
     label: str,
+    measurement_id: str,
     value: float | None,
     unit: str,
     *,
     sex: str = "",
-    decimals: int = 1,
     group: str | None = None,
     default_group: str | None = None,
     norm_label: str | None = None,
@@ -606,7 +614,7 @@ def _value(
     sample_count: int | None = None,
     origin: ValueOrigin | None = None,
 ) -> ReportValue | None:
-    """One report row; ``norm_label`` names the reference parameter to compare with.
+    """One report row formatted via :func:`format_measurement` (issue 482).
 
     Row labels are translated (``ФВ ЛЖ`` / ``LVEF``), so the norm lookup cannot
     use them — the caller names the reference parameter instead.
@@ -625,7 +633,7 @@ def _value(
         resolved = default_group
     return ReportValue(
         label=label,
-        value=f"{value:.{decimals}f}",
+        value=format_measurement(measurement_id, value, unit),
         unit=unit,
         norm=norm_text,
         pathological=pathological,
@@ -815,10 +823,10 @@ def _append_left_ventricle_report_values(
             view_origin = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase=length_phase)
             item = _value(
                 tr("domain.report.lv_length", view=view_label),
+                f"lv.length_{view_key}",
                 scaled(length),
                 length_unit,
                 sex=sex,
-                decimals=_ld(length_unit),
                 group=GROUP_LEFT_VENTRICLE,
                 origin=view_origin,
             )
@@ -826,12 +834,13 @@ def _append_left_ventricle_report_values(
                 values.append(item)
             ed_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="ed")
             es_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="es")
-            for label_key, volume, origin in (
-                ("domain.report.kdo_lv", metrics.edv_ml, ed_here),
-                ("domain.report.kso_lv", metrics.esv_ml, es_here),
+            for label_key, kind, volume, origin in (
+                ("domain.report.kdo_lv", "kdo", metrics.edv_ml, ed_here),
+                ("domain.report.kso_lv", "kso", metrics.esv_ml, es_here),
             ):
                 item = _value(
                     tr(label_key, view=view_label),
+                    view_measurement_id(kind, view_label),
                     volume,
                     volume_unit,
                     sex=sex,
@@ -840,12 +849,13 @@ def _append_left_ventricle_report_values(
                 )
                 if item:
                     values.append(item)
-        for label_key, volume, origin in (
-            ("domain.report.kdo_lv", lvef.edv_bi_ml, ed_origin),
-            ("domain.report.kso_lv", lvef.esv_bi_ml, es_origin),
+        for label_key, measurement_id, volume, origin in (
+            ("domain.report.kdo_lv", "lv.edv_bp", lvef.edv_bi_ml, ed_origin),
+            ("domain.report.kso_lv", "lv.esv_bp", lvef.esv_bi_ml, es_origin),
         ):
             item = _value(
                 tr(label_key, view="BP"),
+                measurement_id,
                 volume,
                 volume_unit,
                 sex=sex,
@@ -856,6 +866,7 @@ def _append_left_ventricle_report_values(
                 values.append(item)
         item = _value(
             tr("domain.report.lvef"),
+            "lv.ef_bp",
             lvef.lvef_percent,
             "%",
             sex=sex,
@@ -867,6 +878,7 @@ def _append_left_ventricle_report_values(
             values.append(item)
         item = _value(
             tr("domain.report.sv"),
+            "lv.sv",
             lvef.sv_ml,
             volume_unit,
             sex=sex,
@@ -881,24 +893,19 @@ def _append_left_ventricle_report_values(
 
     teichholz = snapshot.teichholz
     if teichholz is not None:
-        # A Teichholz volume is a *derived* value: its inputs are the M-mode
-        # calipers, and the card must say which clip and frame they came from.
-        # Each volume names its own caliper — EDV comes from the end-diastolic
-        # diameter, ESV from the end-systolic one; citing the first caliper of
-        # the study for both would point the systolic volume at the diastolic
-        # clip.
         teich_ed_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES, METHOD_TEICHHOLZ)
         teich_es_origin = _linear_caliper_origin(snapshot, _LVESD_ALIASES, METHOD_TEICHHOLZ)
         teich_both_origin = _caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
-        rows: tuple[tuple[str, float | None, str, str | None, ValueOrigin | None], ...] = (
-            (_label_catalog("lv.edv_teich"), teichholz.edv_ml, "mL", None, teich_ed_origin),
-            (_label_catalog("lv.esv_teich"), teichholz.esv_ml, "mL", None, teich_es_origin),
-            (_label_catalog("lv.ef_teich"), teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
-            (tr("domain.report.sv"), teichholz.sv_ml, "mL", None, teich_both_origin),
+        rows: tuple[tuple[str, str, float | None, str, str | None, ValueOrigin | None], ...] = (
+            (_label_catalog("lv.edv_teich"), "lv.edv_teich", teichholz.edv_ml, "mL", None, teich_ed_origin),
+            (_label_catalog("lv.esv_teich"), "lv.esv_teich", teichholz.esv_ml, "mL", None, teich_es_origin),
+            (_label_catalog("lv.ef_teich"), "lv.ef_teich", teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
+            (tr("domain.report.sv"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
         )
-        for label, value, unit, norm_label, row_origin in rows:
+        for label, measurement_id, value, unit, norm_label, row_origin in rows:
             item = _value(
                 label,
+                measurement_id,
                 value,
                 unit,
                 sex=sex,
@@ -915,6 +922,7 @@ def _append_left_ventricle_report_values(
     linear_derived_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES | _LVESD_ALIASES, METHOD_LINEAR_DERIVED)
     item = _value(
         _label("panel.lv_mass"),
+        "lv.mass",
         snapshot.lvm_g,
         "g",
         sex=sex,
@@ -926,10 +934,10 @@ def _append_left_ventricle_report_values(
         values.append(item)
     item = _value(
         _label("result.rwt"),
+        "lv.rwt",
         snapshot.rwt,
         "",
         sex=sex,
-        decimals=2,
         group=GROUP_LEFT_VENTRICLE,
         norm_label="RWT",
         origin=linear_derived_origin,
@@ -951,18 +959,26 @@ def _append_chamber_report_values(
             es_volume_from_view,
         )
 
-        for label, volume in (
-            (_label_catalog("la.lav_a4c"), es_volume_from_view(la.a4c)),
-            (_label_catalog("la.lav_bp"), biplane_es_volume_ml(la.a4c, la.a2c)),
+        for measurement_id, volume in (
+            ("la.lav_a4c", es_volume_from_view(la.a4c)),
+            ("la.lav_bp", biplane_es_volume_ml(la.a4c, la.a2c)),
         ):
-            item = _value(label, volume, volume_unit, sex=sex, group=GROUP_LEFT_ATRIUM, norm_label="LAV")
+            item = _value(
+                _label_catalog(measurement_id),
+                measurement_id,
+                volume,
+                volume_unit,
+                sex=sex,
+                group=GROUP_LEFT_ATRIUM,
+                norm_label="LAV",
+            )
             if item:
                 values.append(item)
-        item = _value(_label_catalog("la.area"), la.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_LEFT_ATRIUM)
+        item = _value(_label_catalog("la.area"), "la.area", la.area_cm2, area_unit, sex=sex, group=GROUP_LEFT_ATRIUM)
         if item:
             values.append(item)
     elif snapshot.la_volume is not None and snapshot.la_volume.volume_ml is not None:
-        item = _value("LAV", snapshot.la_volume.volume_ml, volume_unit, sex=sex, group=GROUP_LEFT_ATRIUM)
+        item = _value("LAV", "la.lav_al", snapshot.la_volume.volume_ml, volume_unit, sex=sex, group=GROUP_LEFT_ATRIUM)
         if item:
             values.append(item)
 
@@ -970,17 +986,25 @@ def _append_chamber_report_values(
     if ra is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
 
-        item = _value(_label_catalog("ra.area"), ra.area_cm2, area_unit, sex=sex, decimals=2, group=GROUP_RIGHT_ATRIUM)
+        item = _value(_label_catalog("ra.area"), "ra.area", ra.area_cm2, area_unit, sex=sex, group=GROUP_RIGHT_ATRIUM)
         if item:
             values.append(item)
         rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
-        item = _value(_label("result.rav_4c"), rav, volume_unit, sex=sex, group=GROUP_RIGHT_ATRIUM, norm_label="RAV")
+        item = _value(
+            _label("result.rav_4c"), "ra.vol", rav, volume_unit, sex=sex, group=GROUP_RIGHT_ATRIUM, norm_label="RAV"
+        )
         if item:
             values.append(item)
 
     if snapshot.rv_fac_percent is not None:
         item = _value(
-            _label("result.fac"), snapshot.rv_fac_percent, "%", sex=sex, group=GROUP_RIGHT_VENTRICLE, norm_label="FAC"
+            _label("result.fac"),
+            "rv.fac",
+            snapshot.rv_fac_percent,
+            "%",
+            sex=sex,
+            group=GROUP_RIGHT_VENTRICLE,
+            norm_label="FAC",
         )
         if item:
             values.append(item)
@@ -988,6 +1012,7 @@ def _append_chamber_report_values(
     if rv is not None and rv.max_volume_ml is not None:
         item = _value(
             tr("domain.report.rv_volume"),
+            "rv.edv_a4c",
             rv.max_volume_ml,
             "mL",
             sex=sex,
@@ -1002,29 +1027,31 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
     doppler = snapshot.doppler
     if doppler is not None:
         heart_rate = _value(
-            _label("result.doppler_heart_rate"), doppler.heart_rate_bpm, tr("unit.bpm"), decimals=0, group=GROUP_OTHER
+            _label("result.doppler_heart_rate"),
+            "hr",
+            doppler.heart_rate_bpm,
+            tr("unit.bpm"),
+            group=GROUP_OTHER,
         )
         if heart_rate is not None:
             values.append(heart_rate)
-        # Acquisition mode per flow-velocity row (Э2); velocities read in
-        # m/s under CW and in cm/s under PW/TDI.
         flow_mode_by_label: dict[str, str] = {}
         flow_sample_count_by_label: dict[str, int] = {}
-        doppler_values = [
-            (_label("result.mv_e"), doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
-            (_label("result.mv_a"), doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
-            (_label("result.mv_ea_ratio"), doppler.e_a_ratio, "", GROUP_MITRAL_VALVE),
-            (_label("result.mv_dt"), doppler.dt_ms, "ms", GROUP_MITRAL_VALVE),
-            (_label("result.ivrt"), doppler.ivrt_ms, "ms", GROUP_MITRAL_VALVE),
-            ("AT", doppler.at_ms, "ms", GROUP_AORTIC_VALVE),
-            ("ET", doppler.et_ms, "ms", GROUP_AORTIC_VALVE),
-            (_label("result.e_prime_sept"), doppler.e_prime_sept_cm_s, "cm/s", GROUP_MITRAL_VALVE),
-            (_label("result.e_prime_lat"), doppler.e_prime_lat_cm_s, "cm/s", GROUP_MITRAL_VALVE),
-            (_label("result.e_prime_avg"), doppler.e_prime_avg_cm_s, "cm/s", GROUP_MITRAL_VALVE),
-            (_label("result.e_over_e_prime"), doppler.e_over_e_prime, "", GROUP_MITRAL_VALVE),
-            ("E/e' sept", doppler.e_over_e_prime_sept, "", GROUP_MITRAL_VALVE),
-            ("E/e' lat", doppler.e_over_e_prime_lat, "", GROUP_MITRAL_VALVE),
-            ("e'/a'", doppler.e_prime_over_a_prime, "", GROUP_MITRAL_VALVE),
+        doppler_values: list[tuple[str, str, float | None, str, str]] = [
+            (_label("result.mv_e"), "mv.e", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
+            (_label("result.mv_a"), "mv.a", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
+            (_label("result.mv_ea_ratio"), "mv.ea", doppler.e_a_ratio, "", GROUP_MITRAL_VALVE),
+            (_label("result.mv_dt"), "mv.dt", doppler.dt_ms, "ms", GROUP_MITRAL_VALVE),
+            (_label("result.ivrt"), "lv.ivrt", doppler.ivrt_ms, "ms", GROUP_MITRAL_VALVE),
+            ("AT", "mv.at", doppler.at_ms, "ms", GROUP_AORTIC_VALVE),
+            ("ET", "doppler.et", doppler.et_ms, "ms", GROUP_AORTIC_VALVE),
+            (_label("result.e_prime_sept"), "tdi.e_sept", doppler.e_prime_sept_cm_s, "cm/s", GROUP_MITRAL_VALVE),
+            (_label("result.e_prime_lat"), "tdi.e_lat", doppler.e_prime_lat_cm_s, "cm/s", GROUP_MITRAL_VALVE),
+            (_label("result.e_prime_avg"), "tdi.e_avg", doppler.e_prime_avg_cm_s, "cm/s", GROUP_MITRAL_VALVE),
+            (_label("result.e_over_e_prime"), "mv.e_e_avg", doppler.e_over_e_prime, "", GROUP_MITRAL_VALVE),
+            ("E/e' sept", "tdi.e_e_sept", doppler.e_over_e_prime_sept, "", GROUP_MITRAL_VALVE),
+            ("E/e' lat", "tdi.e_e_lat", doppler.e_over_e_prime_lat, "", GROUP_MITRAL_VALVE),
+            ("e'/a'", "tdi.e_a_prime", doppler.e_prime_over_a_prime, "", GROUP_MITRAL_VALVE),
         ]
         flow_groups = {
             "MV": GROUP_MITRAL_VALVE,
@@ -1042,11 +1069,29 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             group = flow_groups.get(flow.site, GROUP_OTHER)
             doppler_values.extend(
                 (
-                    (_flow(flow.site, "Vmax"), flow.vmax_cm_s, "cm/s", group),
-                    (_flow(flow.site, "PGmax"), flow.pgmax_mmhg, "mmHg", group),
-                    (_flow(flow.site, "Vmean"), flow.vmean_cm_s, "cm/s", group),
-                    (_flow(flow.site, "PGmean"), flow.pgmean_mmhg, "mmHg", group),
-                    (_flow(flow.site, "VTI"), flow.vti_cm, "cm", group),
+                    (_flow(flow.site, "Vmax"), flow_measurement_id(flow.site, "Vmax"), flow.vmax_cm_s, "cm/s", group),
+                    (
+                        _flow(flow.site, "PGmax"),
+                        flow_measurement_id(flow.site, "PGmax"),
+                        flow.pgmax_mmhg,
+                        "mmHg",
+                        group,
+                    ),
+                    (
+                        _flow(flow.site, "Vmean"),
+                        flow_measurement_id(flow.site, "Vmean"),
+                        flow.vmean_cm_s,
+                        "cm/s",
+                        group,
+                    ),
+                    (
+                        _flow(flow.site, "PGmean"),
+                        flow_measurement_id(flow.site, "PGmean"),
+                        flow.pgmean_mmhg,
+                        "mmHg",
+                        group,
+                    ),
+                    (_flow(flow.site, "VTI"), flow_measurement_id(flow.site, "VTI"), flow.vti_cm, "cm", group),
                 )
             )
             flow_mode_by_label[_flow(flow.site, "Vmax")] = flow.mode
@@ -1056,32 +1101,34 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             flow_sample_count_by_label[_flow(flow.site, "VTI")] = report_sample_count(flow.vti_repeats)
         doppler_values.extend(
             (
-                (_label_catalog("mv.pht"), doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
-                (_label_catalog("tv.pht"), doppler.tv_pht_ms, "ms", GROUP_TRICUSPID_VALVE),
-                (_label_catalog("ar.pht"), doppler.ar_pht_ms, "ms", GROUP_AORTIC_VALVE),
-                (_label_catalog("pr.pht"), doppler.pr_pht_ms, "ms", GROUP_RIGHT_VENTRICLE),
-                (_label_catalog("av.at"), doppler.av_at_ms, "ms", GROUP_AORTIC_VALVE),
-                (_label_catalog("av.et"), doppler.av_et_ms, "ms", GROUP_AORTIC_VALVE),
-                (_label_catalog("rvot.at"), doppler.rvot_at_ms, "ms", GROUP_RIGHT_VENTRICLE),
+                (_label_catalog("mv.pht"), "mv.pht", doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
+                (_label_catalog("tv.pht"), "tv.pht", doppler.tv_pht_ms, "ms", GROUP_TRICUSPID_VALVE),
+                (_label_catalog("ar.pht"), "ar.pht", doppler.ar_pht_ms, "ms", GROUP_AORTIC_VALVE),
+                (_label_catalog("pr.pht"), "pr.pht", doppler.pr_pht_ms, "ms", GROUP_RIGHT_VENTRICLE),
+                (_label_catalog("av.at"), "av.at", doppler.av_at_ms, "ms", GROUP_AORTIC_VALVE),
+                (_label_catalog("av.et"), "av.et", doppler.av_et_ms, "ms", GROUP_AORTIC_VALVE),
+                (_label_catalog("rvot.at"), "rvot.at", doppler.rvot_at_ms, "ms", GROUP_RIGHT_VENTRICLE),
             )
         )
-        for label, doppler_val, unit, group in doppler_values:
-            decimals = 2 if unit == "" else 1
+        for label, measurement_id, doppler_val, unit, group in doppler_values:
             scale: float | None = None
             if label in flow_mode_by_label and doppler_val is not None:
-                doppler_val, unit, decimals = scale_velocity_for_display(doppler_val, flow_mode_by_label[label])
+                doppler_val, unit, _ = scale_velocity_for_display(
+                    doppler_val,
+                    flow_mode_by_label[label],
+                    measurement_id=measurement_id,
+                )
                 if unit == "m/s":
-                    # Already in reference units (TR norm is stored in m/s).
                     scale = 1.0
             sample_count = flow_sample_count_by_label.get(label)
             if sample_count is not None and sample_count <= 1:
                 sample_count = None
             item = _value(
                 label,
+                measurement_id,
                 doppler_val,
                 unit,
                 sex=sex,
-                decimals=decimals,
                 group=group,
                 scale=scale,
                 sample_count=sample_count,
@@ -1098,9 +1145,6 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
         from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
         from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
-        # Collect provenance warnings via unified helper (same wording as panel/text)
-        # Filter to those that belong to indexed context + add others later
-        # For PDF we collect all at once after snapshot is ready.
         provenance_notes_list = list(all_provenance_notes(snapshot))
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
@@ -1108,68 +1152,60 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
             group=GROUP_OTHER,
         )
         indexed_values = (
-            ("BSA", indexed.bsa_m2, "m²", 2, GROUP_OTHER, None),
-            ("LVMI", indexed.lvmi_g_m2, "g/m²", 1, GROUP_LEFT_VENTRICLE, "LVMI"),
-            (_label_catalog("lv.edvi"), indexed.simpson_edvi_ml_m2, "mL/m²", 1, GROUP_LEFT_VENTRICLE, "LVEDVi"),
-            (_label_catalog("lv.esvi"), indexed.simpson_esvi_ml_m2, "mL/m²", 1, GROUP_LEFT_VENTRICLE, "LVESVi"),
+            ("BSA", "patient.bsa", indexed.bsa_m2, "m²", GROUP_OTHER, None),
+            ("LVMI", "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
+            (_label_catalog("lv.edvi"), "lv.edvi", indexed.simpson_edvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVEDVi"),
+            (_label_catalog("lv.esvi"), "lv.esvi", indexed.simpson_esvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVESVi"),
             (
                 _label_index("edvi", "4C"),
+                "lv.edvi_a4c",
                 indexed.simpson_a4c_edvi_ml_m2,
                 "mL/m²",
-                1,
                 GROUP_LEFT_VENTRICLE,
                 "LVEDVi",
             ),
             (
                 _label_index("esvi", "4C"),
+                "lv.esvi_a4c",
                 indexed.simpson_a4c_esvi_ml_m2,
                 "mL/m²",
-                1,
                 GROUP_LEFT_VENTRICLE,
                 "LVESVi",
             ),
             (
                 _label_index("edvi", "2C"),
+                "lv.edvi_a2c",
                 indexed.simpson_a2c_edvi_ml_m2,
                 "mL/m²",
-                1,
                 GROUP_LEFT_VENTRICLE,
                 "LVEDVi",
             ),
             (
                 _label_index("esvi", "2C"),
+                "lv.esvi_a2c",
                 indexed.simpson_a2c_esvi_ml_m2,
                 "mL/m²",
-                1,
                 GROUP_LEFT_VENTRICLE,
                 "LVESVi",
             ),
-            (_label_index("lavi", "4C"), indexed.lav_4c_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
-            (_label_index("lavi", "BP"), indexed.lav_bi_index_ml_m2, "mL/m²", 1, GROUP_LEFT_ATRIUM, "LAVi"),
-            (
-                _label_index("ravi"),
-                indexed.rav_index_ml_m2,
-                "mL/m²",
-                1,
-                GROUP_RIGHT_ATRIUM,
-                "RAV",
-            ),
+            (_label_index("lavi", "4C"), "la.lavi_a4c", indexed.lav_4c_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
+            (_label_index("lavi", "BP"), "la.lavi_bp", indexed.lav_bi_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
+            (_label_index("ravi"), "ra.ravi", indexed.rav_index_ml_m2, "mL/m²", GROUP_RIGHT_ATRIUM, "RAV"),
         )
-        for label, indexed_val, unit, decimals, group, norm_label in indexed_values:
+        for label, measurement_id, indexed_val, unit, group, norm_label in indexed_values:
             if indexed_val is None:
                 continue
             item = _value(
                 label,
+                measurement_id,
                 indexed_val,
                 unit,
                 sex=sex,
-                decimals=decimals,
                 group=group,
                 norm_label=norm_label,
             )
             if item:
                 values.append(item)
-        # Which BSA normalised the numbers is part of the numbers (QH-1b.2).
         values.append(source_row)
     return provenance_notes_list
 
@@ -1181,6 +1217,7 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
         for view, value in strain.gls_by_view:
             item = _value(
                 _strain(view),
+                strain_measurement_id(view),
                 value,
                 "%",
                 sex=sex,
@@ -1191,6 +1228,7 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
                 values.append(item)
         item = _value(
             tr("domain.report.strain_gls_av", n=str(len(strain.views_valid))),
+            "lv.gls",
             strain.gls_average,
             "%",
             sex=sex,
@@ -1204,16 +1242,14 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
 def _append_planimeter_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> None:
     """Append traced planimetry values with their measurement lineage."""
     for planimeter_item in snapshot.planimeter:
-        decimals = 2 if planimeter_item.kind == "area" else 1
+        measurement_id = "planimeter.area" if planimeter_item.kind == "area" else "planimeter.length"
         entry = _value(
             planimeter_item.label,
+            measurement_id,
             planimeter_item.value,
             planimeter_item.unit,
             sex=sex,
-            decimals=decimals,
             default_group=GROUP_PLANIMETRY,
-            # The contour that was traced is the primary source, and it
-            # recorded its identity, clip and frame — pass them on.
             origin=_planimeter_origin(planimeter_item),
         )
         if entry:
@@ -1240,30 +1276,37 @@ def _append_linear_report_values(
             frame_index=measurement.frame_index,
         )
         if raw_label in PERCENT_LABELS:
-            # Stenosis/comparison calipers keep a percentage in millimeter_length;
-            # it is neither a length nor affected by the length unit or scaling.
             entry = _value(
                 label,
+                "caliper.stenosis_pct",
                 measurement.millimeter_length,
                 "%",
                 sex=sex,
-                decimals=1,
+                origin=origin,
+            )
+            if entry:
+                values.append(entry)
+            continue
+        if raw_label in ("S1", "S2") and measurement.millimeter_length is not None:
+            entry = _value(
+                label,
+                "caliper.area",
+                measurement.millimeter_length,
+                "cm²",
+                sex=sex,
                 origin=origin,
             )
             if entry:
                 values.append(entry)
             continue
         if measurement.doppler:
-            # Doppler-zone caliper: report Δt (ms) and the velocity amplitude
-            # in mode units (Э2) with its peak gradient, instead of a B-mode
-            # length (which does not exist here).
             if measurement.time_ms is not None:
                 entry = _value(
                     f"{label} Δt",
+                    "doppler.time",
                     measurement.time_ms,
                     "ms",
                     sex=sex,
-                    decimals=1,
                     group=GROUP_OTHER,
                     origin=origin,
                 )
@@ -1271,13 +1314,17 @@ def _append_linear_report_values(
                     values.append(entry)
             if measurement.velocity_cm_s is not None:
                 magnitude = abs(measurement.velocity_cm_s)
-                scaled_vel, unit, decimals = scale_velocity_for_display(magnitude, measurement.doppler_mode)
+                scaled_vel, unit, _ = scale_velocity_for_display(
+                    magnitude,
+                    measurement.doppler_mode,
+                    measurement_id="doppler.vmax",
+                )
                 entry = _value(
                     f"{label} ΔV",
+                    "doppler.vmax",
                     scaled_vel,
                     unit,
                     sex=sex,
-                    decimals=decimals,
                     group=GROUP_OTHER,
                     origin=origin,
                 )
@@ -1285,10 +1332,10 @@ def _append_linear_report_values(
                     values.append(entry)
                 pg_entry = _value(
                     f"{label} PGmax",
+                    "doppler.pg_peak",
                     pressure_gradient_mmhg(magnitude),
                     "mmHg",
                     sex=sex,
-                    decimals=0,
                     group=GROUP_OTHER,
                     origin=origin,
                 )
@@ -1298,16 +1345,20 @@ def _append_linear_report_values(
         if calibrated:
             caliper_val = measurement.millimeter_length
             unit = length_unit
-            decimals = _ld(length_unit) + int(measurement.submillimeter)
+            caliper_id = (
+                "caliper.length_submm"
+                if measurement.submillimeter
+                else (measurement_for_caliper(raw_label) or "caliper.length")
+            )
             if unit == "cm" and caliper_val is not None:
                 caliper_val = caliper_val / 10.0
         else:
             caliper_val = measurement.pixel_length
             unit = "px"
-            decimals = 0
+            caliper_id = measurement_for_caliper(raw_label) or "caliper.length"
         if caliper_val is None:
             continue
-        entry = _value(label, caliper_val, unit, sex=sex, decimals=decimals, origin=origin)
+        entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin)
         if entry:
             values.append(entry)
 
@@ -1341,9 +1392,9 @@ def _volume_row(
         return
     entry = _value(
         _label_catalog(measurement_id),
+        measurement_id,
         volume_ml,
         "mL",
-        decimals=1,
         group=group,
         origin=_volume_origin(measurements),
     )
@@ -1470,19 +1521,19 @@ def _append_vessel_report_values(values: list[ReportValue], snapshot: Measuremen
     for vessel in snapshot.vessel_measurements:
         site = _cal(vessel.label) if vessel.label else ""
         vessel_values = (
-            ("PSV", vessel.psv_cm_s, "cm/s"),
-            ("EDV", vessel.edv_cm_s, "cm/s"),
-            ("RI", vessel.ri, ""),
-            ("S/D", vessel.sd, ""),
+            ("PSV", "vessel.psv", vessel.psv_cm_s, "cm/s"),
+            ("EDV", "vessel.edv", vessel.edv_cm_s, "cm/s"),
+            ("RI", "vessel.ri", vessel.ri, ""),
+            ("S/D", "vessel.sd", vessel.sd, ""),
         )
-        for label, vessel_val, unit in vessel_values:
+        for label, measurement_id, vessel_val, unit in vessel_values:
             if vessel_val is None:
                 continue
             row_label = f"{site} {label}" if site else label
             values.append(
                 ReportValue(
                     label=row_label,
-                    value=f"{vessel_val:.2f}" if unit == "" else f"{vessel_val:.1f}",
+                    value=format_measurement(measurement_id, vessel_val, unit),
                     unit=unit,
                     group=group_for_label(row_label) if site else GROUP_VESSELS,
                     origin=measurement_origin(

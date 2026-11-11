@@ -54,7 +54,7 @@ def test_overlay_includes_la_simpson_lav() -> None:
         ),
     )
     text = format_results_overlay(snapshot)
-    assert "ОЛП · 4-кам.: 42.5 mL" in text
+    assert "ОЛП · 4-кам.: 42 mL" in text
     assert "Площадь ЛП: 18.20 cm²" in text
 
 
@@ -68,7 +68,7 @@ def test_overlay_includes_ra_simpson_rav() -> None:
         ),
     )
     text = format_results_overlay(snapshot)
-    assert "ОПП: 35.0 mL" in text
+    assert "ОПП: 35 mL" in text
     assert "Площадь ПП: 15.00 cm²" in text
 
 
@@ -101,8 +101,7 @@ def test_overlay_inter_file_computation_uses_study_wide_ratios() -> None:
     assert "E: " not in text
     assert "E: 90" not in text
     # Computed ratios from study-wide doppler:
-    assert "E/e′" in text
-    assert "7.5" in text
+    assert "E/e′ ср.: 8" in text
 
 
 def test_overlay_falls_back_to_study_wide_when_display_doppler_none() -> None:
@@ -117,10 +116,10 @@ def test_overlay_falls_back_to_study_wide_when_display_doppler_none() -> None:
         display_doppler=None,
     )
     text = format_results_overlay(snapshot)
-    assert "E: 90.0" in text
+    assert "E: 90 cm/s" in text
     assert "e′ септ.: 10.0" in text
     assert "7.5" not in text  # wrong value
-    assert "9.0" in text
+    assert "E/e′ ср.: 9" in text
 
 
 def test_overlay_uses_flow_specific_vmax_and_pgmax_labels() -> None:
@@ -135,11 +134,12 @@ def test_overlay_uses_flow_specific_vmax_and_pgmax_labels() -> None:
 
     text = format_results_overlay(snapshot, time_calibrated=True)
 
-    # Unknown mode: a 420 cm/s jet reads in m/s, a 95 cm/s flow in cm/s (Э2).
-    assert "AR Vmax: 4.20 m/s" in text
-    assert "AR PGmax: 70.6 mmHg" in text
-    assert "LVOT Vmax: 95.0 cm/s" in text
-    assert "LVOT VTI: 21.0 cm" in text
+    # Unknown mode: a 420 cm/s jet reads in m/s, a 95 cm/s flow in cm/s (Э2);
+    # precision comes from MEASUREMENTS (ASE 2025 Table 6, issue 482).
+    assert "AR Vmax: 4.2 m/s" in text
+    assert "AR PGmax: 71 mmHg" in text
+    assert "LVOT Vmax: 95 cm/s" in text
+    assert "LVOT VTI: 21 cm" in text
     assert "Vpeak" not in text
     assert "PGpeak" not in text
 
@@ -156,16 +156,16 @@ def test_overlay_includes_biplane_volumes() -> None:
     )
     snapshot = MeasurementSnapshot(lvef=lvef, spacing_calibrated=True)
     text = format_results_overlay(snapshot)
-    assert "КДО ЛЖ Биплан: 37.8 mL" in text
-    assert "КСО ЛЖ Биплан: 20.2 mL" in text
+    assert "КДО ЛЖ Биплан: 38 mL" in text
+    assert "КСО ЛЖ Биплан: 20 mL" in text
 
     set_language("en")
     try:
         html = format_results_overlay_html(snapshot)
         assert "LVEDV (biplane)" in html
         assert "LVESV (biplane)" in html
-        assert "37.8" in html
-        assert "20.2" in html
+        assert ">38<" in html
+        assert ">20<" in html
     finally:
         set_language("ru")
 

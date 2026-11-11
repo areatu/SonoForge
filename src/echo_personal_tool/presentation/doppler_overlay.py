@@ -26,7 +26,7 @@ from echo_personal_tool.domain.doppler_catalog import (
     canonical_peak_label,
     canonical_trace_label,
     flow_site_from_peak_label,
-    scale_velocity_for_display,
+    format_velocity_measurement,
 )
 from echo_personal_tool.domain.doppler_catalog import (
     INTERVAL_LABELS as _INTERVAL_LABELS,
@@ -37,6 +37,7 @@ from echo_personal_tool.domain.doppler_catalog import (
 from echo_personal_tool.domain.doppler_catalog import (
     TRACE_LABELS as _TRACE_LABELS,
 )
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
@@ -59,6 +60,7 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
+from echo_personal_tool.domain.services.nomenclature import flow_measurement_id
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (
@@ -74,18 +76,36 @@ _TRACE_MIN_SAMPLE_PX = 4.0
 _DELETE_HIT_TOLERANCE_PX = 12.0
 
 
-def peak_marker_caption(marker: DopplerPeakMarker) -> str:
-    """On-spectrum caption of one peak marker (Э2).
+_PEAK_LABEL_MEASUREMENT_IDS: dict[str, str] = {
+    "e": "mv.e",
+    "a": "mv.a",
+    "e_sept": "tdi.e_sept",
+    "e_lat": "tdi.e_lat",
+    "s_sept": "tdi.s_prime_sept",
+    "s_lat": "tdi.s_prime_lat",
+    "s_rv": "rv.s_prime",
+}
 
-    ``TR Vmax 3.12 m/s · PGmax 39 mmHg``: the velocity reads in the units of
-    the mode captured at measurement time, and flow sites (never E/A/e'/s',
-    D-22) append the peak gradient. Magnitudes everywhere, like the protocol.
-    """
+
+def _peak_measurement_id(label: str) -> str:
+    direct = _PEAK_LABEL_MEASUREMENT_IDS.get(label.strip().lower())
+    if direct is not None:
+        return direct
+    site = flow_site_from_peak_label(label)
+    if site is not None:
+        return flow_measurement_id(site, "Vmax")
+    return "doppler.vmax"
+
+
+def peak_marker_caption(marker: DopplerPeakMarker) -> str:
+    """On-spectrum caption of one peak marker (Э2, issue 482)."""
     magnitude = abs(marker.velocity_cm_s)
-    scaled, unit, decimals = scale_velocity_for_display(magnitude, marker.mode)
-    text = f"{marker.label} {scaled:.{decimals}f} {unit}"
+    measurement_id = _peak_measurement_id(marker.label)
+    vel_text, unit = format_velocity_measurement(measurement_id, magnitude, marker.mode)
+    text = f"{marker.label} {vel_text} {unit}"
     if flow_site_from_peak_label(marker.label) is not None:
-        text += f" · PGmax {pressure_gradient_mmhg(magnitude):.0f} mmHg"
+        pg_text = format_measurement("doppler.pg_peak", pressure_gradient_mmhg(magnitude), "mmHg")
+        text += f" · PGmax {pg_text} mmHg"
     return text
 
 
@@ -1515,10 +1535,9 @@ class DopplerOverlayTools(QWidget):
             duration_ms = abs(marker.end_time_ms - marker.start_time_ms)
             bpm = heart_rate_from_interval_ms(duration_ms)
             if bpm is not None:
+                text = f"{tr('mmode.label_hr')} {format_measurement('hr', bpm, 'bpm')} {tr('unit.bpm')} · Δt {format_measurement('doppler.pht', duration_ms, 'ms')} ms"
                 caption = pg.TextItem(
-                    f"{tr('mmode.label_hr')} {bpm:.0f} {tr('unit.bpm')} · Δt {duration_ms:.0f} ms",
-                    color=dark_theme.get_theme_tokens()["overlay.doppler.interval.text"],
-                    anchor=(0.5, 1.0),
+                    text, color=dark_theme.get_theme_tokens()["overlay.doppler.interval.text"], anchor=(0.5, 1.0)
                 )
                 caption.setPos((x_start + x_end) / 2.0, y_base - 8.0)
                 caption.setZValue(20)
@@ -1862,11 +1881,13 @@ def derive_psv_edv_indices(
 
 def _build_vessel_text(psv_cm_s: float, edv_cm_s: float, metrics: VesselMetrics) -> pg.TextItem:
     lines = [
-        f"PSV: {psv_cm_s:.1f} cm/s",
-        f"EDV: {edv_cm_s:.1f} cm/s",
-        f"RI: {metrics.ri:.2f}" if metrics.ri is not None else "RI: —",
-        f"S/D: {metrics.sd:.2f}" if metrics.sd is not None else "S/D: —",
-        f"MV≈: {metrics.mv_approx:.1f} cm/s" if metrics.mv_approx is not None else "MV≈: —",
+        f"PSV: {format_measurement('vessel.psv', psv_cm_s, 'cm/s')} cm/s",
+        f"EDV: {format_measurement('vessel.edv', edv_cm_s, 'cm/s')} cm/s",
+        f"RI: {format_measurement('vessel.ri', metrics.ri, '')}" if metrics.ri is not None else "RI: —",
+        f"S/D: {format_measurement('vessel.sd', metrics.sd, '')}" if metrics.sd is not None else "S/D: —",
+        f"MV≈: {format_measurement('vessel.mv', metrics.mv_approx, 'cm/s')} cm/s"
+        if metrics.mv_approx is not None
+        else "MV≈: —",
     ]
     if not metrics.valid:
         lines.append(tr("doppler.check_points"))

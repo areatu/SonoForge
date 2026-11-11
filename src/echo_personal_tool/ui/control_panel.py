@@ -94,7 +94,7 @@ class ControlPanel(QWidget):
         layout.addWidget(group_metric)
 
         # View toggles
-        group_views = QGroupBox("Views")
+        group_views = QGroupBox(tr("strain.views"))
         group_views.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         views_layout = QVBoxLayout()
 
@@ -110,7 +110,7 @@ class ControlPanel(QWidget):
         self._cb_a2c.toggled.connect(lambda c: self.view_toggled.emit("A2C", c))
         views_layout.addWidget(self._cb_a2c)
 
-        self._cb_dao = QCheckBox("DAO (A3C)")
+        self._cb_dao = QCheckBox(tr("strain.view_dao"))
         self._cb_dao.setChecked(True)
         self._cb_dao.setStyleSheet("color: #e0e0e0;")
         self._cb_dao.toggled.connect(lambda c: self.view_toggled.emit("DAO", c))
@@ -161,7 +161,7 @@ class ControlPanel(QWidget):
         layout.addWidget(group_position)
 
         # Quality info
-        group_quality = QGroupBox("Quality Gate")
+        group_quality = QGroupBox(tr("strain.quality_gate"))
         group_quality.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         quality_layout = QVBoxLayout()
 
@@ -178,7 +178,7 @@ class ControlPanel(QWidget):
         layout.addWidget(group_quality)
 
         # Quality Control (per-segment checkboxes)
-        self._qc_group = QGroupBox("Quality Control")
+        self._qc_group = QGroupBox(tr("strain.quality_control"))
         self._qc_group.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         self._qc_layout = QVBoxLayout()
         self._qc_layout.setSpacing(2)
@@ -256,7 +256,7 @@ class ControlPanel(QWidget):
             self._quality_label.setText("-- / --")
 
         if rejected > 0:
-            self._rejected_label.setText(f"{rejected} kernels rejected")
+            self._rejected_label.setText(tr("strain.kernels_rejected", count=rejected))
         else:
             self._rejected_label.setText("")
 

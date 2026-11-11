@@ -119,6 +119,8 @@ class Quantity(str, Enum):
     AREA = "area"  # cm²
     VOLUME = "volume"  # mL
     MASS = "mass"  # g
+    BSA = "bsa"  # m²
+    INDEXED_LENGTH = "indexed_length"  # mm/m²
     INDEXED_VOLUME = "indexed_volume"  # mL/m²
     INDEXED_MASS = "indexed_mass"  # g/m²
     INDEXED_AREA = "indexed_area"  # cm²/m²
@@ -148,6 +150,8 @@ _FIXED_UNITS: Mapping[Quantity, str] = MappingProxyType(
         Quantity.AREA: "cm²",
         Quantity.VOLUME: "mL",
         Quantity.MASS: "g",
+        Quantity.BSA: "m²",
+        Quantity.INDEXED_LENGTH: "mm/m²",
         Quantity.INDEXED_VOLUME: "mL/m²",
         Quantity.INDEXED_MASS: "g/m²",
         Quantity.INDEXED_AREA: "cm²/m²",
@@ -247,13 +251,22 @@ class MeasurementSpec:
         return display_unit(self.quantity, linear_unit=linear_unit, doppler_mode=doppler_mode or self.doppler_mode)
 
     def decimals_for(self, unit: str) -> int:
-        """Rounding for the shown unit (linear: mm → 0, cm → 1; m/s → as in ASE)."""
+        """Rounding for the shown unit (linear: mm → base, cm → base+1; m/s → as in ASE)."""
         if self.quantity is Quantity.LENGTH:
-            return 0 if unit == LINEAR_UNIT_MM else 1
-        if self.quantity is Quantity.VELOCITY and unit == "m/s":
-            row = ase_table6_row(self.ase_row)
-            if row is not None and row.unit == "m/s":
-                return row.decimals
+            return self.decimals if unit in ("", LINEAR_UNIT_MM, "px") else self.decimals + 1
+        if self.quantity is Quantity.ORIFICE:
+            return max(0, self.decimals - 1) if unit in (LINEAR_UNIT_MM, "px") else self.decimals
+        if self.quantity is Quantity.VELOCITY:
+            native = velocity_unit_for_mode(self.doppler_mode)
+            if unit in ("", native):
+                return self.decimals
+            if native == "cm/s" and unit == "m/s":
+                row = ase_table6_row(self.ase_row)
+                if row is not None and row.unit == "m/s":
+                    return row.decimals + self.decimals
+                return 2 if self.decimals <= 1 else self.decimals + 1
+            if native == "m/s" and unit == "cm/s":
+                return max(0, self.decimals - 1)
         return self.decimals
 
 
@@ -425,9 +438,11 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     _m("lv.esv_teich", ("КСО ЛЖ (Тейхольц)", "Конечно-систолический объём ЛЖ по Тейхольцу"),
        ("LV ESV (Teichholz)", "LV end-systolic volume (Teichholz)"), Quantity.VOLUME, 0, synonyms=("КСО ЛЖ (T)", "LV ESV (T)")),
     _m("lv.gls_a4c", ("GLS ЛЖ · 4-кам.", "Глобальная продольная деформация ЛЖ, 4-камерная позиция"),
-       ("LV GLS A4C", "LV global longitudinal strain, apical 4-chamber"), Quantity.PERCENT, 0, synonyms=("GLS A4C", "ГлобПродДеф 4C")),
+       ("LV GLS A4C", "LV global longitudinal strain, apical 4-chamber"), Quantity.PERCENT, 1, synonyms=("GLS A4C", "ГлобПродДеф 4C")),
     _m("lv.gls_a2c", ("GLS ЛЖ · 2-кам.", "Глобальная продольная деформация ЛЖ, 2-камерная позиция"),
-       ("LV GLS A2C", "LV global longitudinal strain, apical 2-chamber"), Quantity.PERCENT, 0, synonyms=("GLS A2C", "ГлобПродДеф 2C")),
+       ("LV GLS A2C", "LV global longitudinal strain, apical 2-chamber"), Quantity.PERCENT, 1, synonyms=("GLS A2C", "ГлобПродДеф 2C")),
+    _m("lv.gls_a3c", ("GLS ЛЖ · 3-кам.", "Глобальная продольная деформация ЛЖ, 3-камерная позиция"),
+       ("LV GLS A3C", "LV global longitudinal strain, apical 3-chamber"), Quantity.PERCENT, 1, synonyms=("GLS A3C", "ГлобПродДеф 3C")),
     # ── Simpson (protocol «Симпсон Биплан») ──
     _m("lv.edv_a4c", ("КДО · 4-кам.", "Конечно-диастолический объём ЛЖ, 4-камерная позиция"),
        ("LVEDV A4C", "LV end-diastolic volume, apical 4-chamber"), Quantity.VOLUME, 0, ase=_T6, ase_row='lv.lvedv', verified=True, synonyms=("Simpson 4C EDV", "Simpson 4C КДО", "edv 4c", "кдо 4")),
@@ -712,6 +727,98 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        ("L CCA IMT", "Left common carotid intima-media thickness"), _LEN, 1, synonyms=("КИМ", "IMT")),
     # ── General ──
     _m("hr", ("ЧСС", "Частота сердечных сокращений"), ("HR", "Heart rate"), Quantity.RATE, 0, ase=_T6, ase_row='hr', verified=True),
+    _m("patient.bsa", ("ППТ", "Площадь поверхности тела"), ("BSA", "Body surface area"), Quantity.BSA, 2),
+    # ── Additional cataloged results (issue 482: single precision source) ──
+    _m("lv.ef_a4c", ("ФВ ЛЖ · 4-кам.", "Фракция выброса ЛЖ, 4-камерная"),
+       ("LV EF · A4C", "LV ejection fraction, A4C"), Quantity.PERCENT, 0),
+    _m("lv.ef_a2c", ("ФВ ЛЖ · 2-кам.", "Фракция выброса ЛЖ, 2-камерная"),
+       ("LV EF · A2C", "LV ejection fraction, A2C"), Quantity.PERCENT, 0),
+    _m("lv.length_a4c", ("Длина ЛЖ · 4-кам.", "Длина полости ЛЖ, 4-камерная"),
+       ("LV length · A4C", "LV cavity length, A4C"), _LEN, 0),
+    _m("lv.length_a2c", ("Длина ЛЖ · 2-кам.", "Длина полости ЛЖ, 2-камерная"),
+       ("LV length · A2C", "LV cavity length, A2C"), _LEN, 0),
+    _m("lv.edvi_teich", ("иКДО ЛЖ (Тейх.)", "Индекс КДО ЛЖ по Тейхгольцу"),
+       ("LVEDVi (Teich.)", "LV end-diastolic volume index, Teichholz"),
+       Quantity.INDEXED_VOLUME, 0, indexed=True),
+    _m("lv.esvi_teich", ("иКСО ЛЖ (Тейх.)", "Индекс КСО ЛЖ по Тейхгольцу"),
+       ("LVESVi (Teich.)", "LV end-systolic volume index, Teichholz"),
+       Quantity.INDEXED_VOLUME, 0, indexed=True),
+    _m("la.lav_al", ("ОЛП (пл.-дл.)", "Объём левого предсердия, площадь-длина"),
+       ("LAV (area-length)", "Left atrial volume, area-length"),
+       Quantity.VOLUME, 0),
+    _m("la.lavi_al", ("иОЛП (пл.-дл.)", "Индекс объёма ЛП, площадь-длина"),
+       ("LAVi (area-length)", "Left atrial volume index, area-length"),
+       Quantity.INDEXED_VOLUME, 0, indexed=True),
+    _m("la.length", ("Длина ЛП", "Продольный размер левого предсердия"),
+       ("LA length", "Left atrial length"), _LEN, 0),
+    _m("rv.edv_a4c", ("КДО ПЖ · 4-кам.", "Конечно-диастолический объём ПЖ, 4-камерная"),
+       ("RVEDV · A4C", "RV end-diastolic volume, A4C"),
+       Quantity.VOLUME, 0),
+    _m("rv.esv_a4c", ("КСО ПЖ · 4-кам.", "Конечно-систолический объём ПЖ, 4-камерная"),
+       ("RVESV · A4C", "RV end-systolic volume, A4C"),
+       Quantity.VOLUME, 0),
+    _m("indexed.linear", ("иЛин. размер", "Индексированный линейный размер"),
+       ("Indexed linear", "Indexed linear dimension"), Quantity.INDEXED_LENGTH, 2, indexed=True),
+    _m("vessel.ri", ("ИР сосуда", "Индекс резистентности сосуда"),
+       ("Vessel RI", "Vessel resistance index"), Quantity.RATIO, 2),
+    _m("vessel.sd", ("С/Д сосуда", "Систоло-диастолическое отношение сосуда"),
+       ("Vessel S/D", "Vessel systolic-diastolic ratio"), Quantity.RATIO, 2),
+    _m("vessel.mv", ("Ср. скор. сосуда", "Средняя скорость кровотока в сосуде"),
+       ("Vessel Vmean", "Vessel mean flow velocity"), _VEL, 1, mode=CTX_PW),
+    _m("mv.vmean", ("Ср. скор. МК", "Средняя скорость трансмитрального потока"),
+       ("MV Vmean", "Mitral mean flow velocity"), _VEL, 0, mode=CTX_PW),
+    _m("mr.vmean", ("Ср. скор. МР", "Средняя скорость струи МР"),
+       ("MR Vmean", "MR mean jet velocity"), _VEL, 1, mode=CTX_CW),
+    _m("av.vmean", ("Ср. скор. АК", "Средняя скорость потока через АК"),
+       ("AV Vmean", "AoV mean flow velocity"), _VEL, 1, mode=CTX_CW),
+    _m("lvot.vmean", ("Ср. скор. ВТЛЖ", "Средняя скорость потока в ВТЛЖ"),
+       ("LVOT Vmean", "LVOT mean flow velocity"), _VEL, 0, mode=CTX_PW),
+    _m("ar.vmean", ("Ср. скор. АР", "Средняя скорость струи АР"),
+       ("AR Vmean", "AR mean jet velocity"), _VEL, 1, mode=CTX_CW),
+    _m("tv.vmean", ("Ср. скор. ТК", "Средняя скорость транстрикуспидального потока"),
+       ("TV Vmean", "Tricuspid mean flow velocity"), _VEL, 1, mode=CTX_CW),
+    _m("tr.vmean", ("Ср. скор. ТР", "Средняя скорость струи ТР"),
+       ("TR Vmean", "TR mean jet velocity"), _VEL, 1, mode=CTX_CW),
+    _m("pv.vmean", ("Ср. скор. ЛК", "Средняя скорость потока через ЛК"),
+       ("PV Vmean", "Pulmonic valve mean velocity"), _VEL, 1, mode=CTX_CW),
+    _m("rvot.vmean", ("Ср. скор. ВТПЖ", "Средняя скорость потока в ВТПЖ"),
+       ("RVOT Vmean", "RVOT mean flow velocity"), _VEL, 0, mode=CTX_PW),
+    _m("pr.vmean", ("Ср. скор. ЛР", "Средняя скорость струи регургитации на ЛК"),
+       ("PR Vmean", "PR mean jet velocity"), _VEL, 1, mode=CTX_CW),
+    _m("doppler.vmax", ("Пик. скор. потока", "Максимальная допплеровская скорость"),
+       ("Doppler Vmax", "Peak Doppler velocity"), _VEL, 1, mode=CTX_PW),
+    _m("doppler.vmean", ("Ср. скор. потока", "Средняя допплеровская скорость"),
+       ("Doppler Vmean", "Mean Doppler velocity"), _VEL, 1, mode=CTX_PW),
+    _m("doppler.pg_peak", ("Пик. ГД потока", "Максимальный градиент давления потока"),
+       ("Doppler peak PG", "Peak Doppler pressure gradient"), Quantity.PRESSURE, 0),
+    _m("doppler.pg_mean", ("Ср. ГД потока", "Средний градиент давления потока"),
+       ("Doppler mean PG", "Mean Doppler pressure gradient"), Quantity.PRESSURE, 0),
+    _m("doppler.vti", ("Интеграл скор. потока", "Интеграл линейной скорости потока"),
+       ("Doppler VTI", "Doppler velocity time integral"), _VTI, 0, mode=CTX_PW),
+    _m("doppler.pht", ("ВПД потока", "Время полуспада градиента давления"),
+       ("Doppler PHT", "Doppler pressure half-time"), _TIM, 0),
+    _m("doppler.at", ("Время уск. потока", "Время ускорения допплеровского потока"),
+       ("Doppler AT", "Doppler acceleration time"), _TIM, 0),
+    _m("doppler.et", ("Время изгн. потока", "Время изгнания допплеровского потока"),
+       ("Doppler ET", "Doppler ejection time"), _TIM, 0),
+    _m("doppler.time", ("Интервал времени", "Временной интервал калипера"),
+       ("Time interval", "Caliper time interval"), _TIM, 1),
+    _m("planimeter.area", ("Площадь контура", "Планиметрическая площадь контура"),
+       ("Planimeter area", "Planimetric contour area"), Quantity.AREA, 2),
+    _m("planimeter.volume", ("Объём контура", "Планиметрический объём контура"),
+       ("Planimeter volume", "Planimetric contour volume"), Quantity.VOLUME, 0),
+    _m("planimeter.length", ("Длина контура", "Планиметрическая длина контура"),
+       ("Planimeter length", "Planimetric contour length"), _LEN, 0),
+    _m("caliper.length", ("Дистанция калипера", "Линейный размер калипера"),
+       ("Caliper distance", "Linear caliper distance"), _LEN, 0),
+    _m("caliper.length_submm", ("Точный размер сосуда", "Субмиллиметровый размер сосуда"),
+       ("Vessel caliper", "Submillimeter vessel caliper"), _LEN, 1),
+    _m("caliper.pixel", ("Размер в пикселях", "Некалиброванный размер в пикселях"),
+       ("Pixel distance", "Uncalibrated pixel distance"), _LEN, 1),
+    _m("caliper.stenosis_pct", ("Доля стеноза", "Относительная доля или степень стеноза"),
+       ("Stenosis ratio", "Relative ratio or stenosis percentage"), Quantity.PERCENT, 1),
+    _m("caliper.area", ("Площадь сечения", "Площадь поперечного сечения калипера"),
+       ("Cross-section area", "Caliper cross-sectional area"), Quantity.AREA, 2),
 )  # fmt: skip
 
 MEASUREMENTS: Mapping[str, MeasurementSpec] = MappingProxyType({m.id: m for m in _MEASUREMENT_LIST})
@@ -1223,6 +1330,21 @@ CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
 def measurement_for_caliper(label: str) -> str | None:
     """Measurement id of a caliper label; ``None`` when the label is unknown."""
     return CALIPER_TO_MEASUREMENT.get(label)
+
+
+def format_measurement(measurement_id: str, value: float, unit: str = "") -> str:
+    """Format *value* (already expressed in *unit*) with catalog precision alone.
+
+    Single formatting entry point for tool status rows, the viewer results
+    overlay, presentation HUD strings, and the report/PDF model (issue 482).
+    """
+    spec = MEASUREMENTS[measurement_id]
+    resolved_unit = unit if unit != "" or spec.quantity is Quantity.RATIO else spec.unit()
+    decimals = spec.decimals_for(resolved_unit)
+    text = f"{float(value):.{decimals}f}"
+    if text.startswith("-0") and float(text) == 0.0:
+        return text[1:]
+    return text
 
 
 def tools_for_context(context: str) -> tuple[ToolSpec, ...]:

@@ -233,17 +233,29 @@ class ToolRow(TokenRestyleMixin, QFrame):
         self._drag_handle.setCursor(Qt.CursorShape.OpenHandCursor)
         self._drag_handle.setToolTip("")
         self._drag_handle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        from echo_personal_tool.application.localization import tr_for_language
+
         self._favorite_button = QPushButton("☆")
         self._favorite_button.setObjectName("toolRowFavorite")
         self._favorite_button.setFlat(True)
         self._favorite_button.setFixedWidth(24)
         self._favorite_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._favorite_button.setAccessibleName(tr_for_language("panel.row_favorite_a11y", language, tool=label.full))
+        self._favorite_button.setAccessibleDescription(
+            tr_for_language("panel.row_favorite_desc", language, tool=label.full)
+        )
         self._favorite_button.clicked.connect(lambda: self.edit_favorite_requested.emit(self.tool.id))
         self._visibility_button = QPushButton("👁")
         self._visibility_button.setObjectName("toolRowVisibility")
         self._visibility_button.setFlat(True)
         self._visibility_button.setFixedWidth(24)
         self._visibility_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._visibility_button.setAccessibleName(
+            tr_for_language("panel.row_visibility_a11y", language, tool=label.full)
+        )
+        self._visibility_button.setAccessibleDescription(
+            tr_for_language("panel.row_visibility_desc", language, tool=label.full)
+        )
         self._visibility_button.clicked.connect(lambda: self.edit_visibility_requested.emit(self.tool.id))
         for control in (self._drag_handle, self._favorite_button, self._visibility_button):
             control.hide()

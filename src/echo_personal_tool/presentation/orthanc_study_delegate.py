@@ -18,6 +18,7 @@ and VS Code themes keep working without new assets.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 from PySide6.QtCore import QModelIndex, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import (
@@ -29,7 +30,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -476,3 +477,32 @@ class OrthancRowDelegate(QStyledItemDelegate):
         painter.drawRoundedRect(rect, BADGE_RADIUS, BADGE_RADIUS)
         painter.setPen(fg)
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, badge.text)
+
+
+def configure_pacs_tab_order(dlg: Any) -> None:
+    """Wire reading-order keyboard Tab chain across PACS study browser controls (issue 484)."""
+    chain: tuple[QWidget, ...] = (
+        dlg._search_edit,
+        dlg._find_btn,
+        dlg._source_combo,
+        dlg._sort_combo,
+        dlg._thumbs_check,
+        *dlg._period_buttons.values(),
+        dlg._select_all_btn,
+        dlg._clear_selection_btn,
+        *dlg._mode_buttons.values(),
+        dlg._stress_chip,
+        dlg._ste_chip,
+        dlg._device_combo,
+        dlg._modality_combo,
+        dlg._studies_list,
+        dlg._series_all_btn,
+        dlg._series_none_btn,
+        dlg._series_list,
+        dlg._load_btn,
+        dlg._save_disk_btn,
+        dlg._cancel_btn,
+        dlg._close_btn,
+    )
+    for first, second in zip(chain, chain[1:]):
+        dlg.setTabOrder(first, second)

@@ -820,7 +820,7 @@ class TestOnTeichholzEdComplete:
 
         show_status.assert_called_once()
         message = show_status.call_args.args[0]
-        assert f"{expected.edv_ml:.1f}" in message
+        assert f"{expected.edv_ml:.0f}" in message
         assert f"{expected.rwt:.2f}" in message
 
 

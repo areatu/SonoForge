@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `feat(a11y,i18n)`: доступные имена/описания иконочных кнопок (потолок `0`), явный `setTabOrder` и AST-гейт локализации `tr()`, закрытие эпика `#485` ([полностью](changelog.d/017-feat-a11y-i18n-484-485.md))
+- `refactor(formatting)`: унифицировано форматирование клинических измерений через `MEASUREMENTS` и единую модель строк оверлея/отчёта/PDF ([полностью](changelog.d/016-refactor-formatting-482.md))
 - `fix(layout)`: вертикальная галерея Mirrored вместо компактной горизонтальной ленты, с регрессионными проверками переключения раскладок ([полностью](changelog.d/015-fix-layout-500.md))
 - `test(ci)`: подключены наборы `exploratory`/`compat`/`system`/`integration` в CI, покрыты `dcm_export_worker`/`roi_validator`/`orthanc_enrichment_worker` и введён ratchet непокрытых модулей ([полностью](changelog.d/014-test-ci-coverage-483.md))
 - `refactor(viewer)`: удалены четыре неподключённых QH-3 владельца (`ToolInteractionController`, `ContourEditingController`, `CalibrationController`, `WorkerBridge`) и их тесты ([полностью](changelog.d/013-refactor-viewer-qh3-466.md))

@@ -1072,7 +1072,7 @@ class TestDopplerOperations:
         )
         assert w.finish_doppler_trace() is True
         assert "MV VTI" in w.contract.measurement_label.text()
-        assert "10.0 cm" in w.contract.measurement_label.text()
+        assert "10 cm" in w.contract.measurement_label.text()
         assert "—" not in w.contract.measurement_label.text()
 
     def test_start_doppler_calibration(self, qtbot) -> None:

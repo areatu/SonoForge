@@ -61,7 +61,9 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_area_label,
     next_volume_label,
 )
-from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
+from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL, format_velocity_measurement
+from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
+from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.doppler_roi import (
@@ -149,6 +151,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
+from echo_personal_tool.presentation.display_formats import format_dpr, format_fps, format_scale_factor
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
@@ -1200,9 +1203,6 @@ class ViewerWidget(QWidget):
         # Burned-in PHI (name/ID/date) is masked before anything else sees the
         # frame, so calibration, M-mode and export all work on masked pixels.
         self._phi_filter = AnonymizationFilter(enabled=True)
-        # Results overlay position/cleared/suppressed state lives on
-        # _results_overlay_controller alone (issue 420 follow-up, slice 3) —
-        # it is constructed a few lines below, before any of this state is read.
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
 
@@ -1212,6 +1212,8 @@ class ViewerWidget(QWidget):
         self._overlay_label.hide()
 
         self._results_overlay_label = ResultsOverlayLabel(self)
+        self._results_overlay_label.setAccessibleName(tr("a11y.results_overlay"))
+        self._results_overlay_label.setAccessibleDescription(tr("a11y.results_overlay_desc"))
         self._results_overlay_label.setStyleSheet(_results_overlay_style(20, 0.70))
         self._results_overlay_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._results_overlay_label.position_changed.connect(self.results_overlay_position_changed.emit)
@@ -1293,7 +1295,7 @@ class ViewerWidget(QWidget):
         self._step_forward_button.clicked.connect(self._step_forward)
 
         self._fps_label = self._make_fps_label()
-        self._source_label = QLabel("Frame: —")
+        self._source_label = QLabel(tr("viewer.frame_none"))
         self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
@@ -1997,16 +1999,17 @@ class ViewerWidget(QWidget):
         self._position_overlay_labels()
 
     def reload_text(self) -> None:
-        from echo_personal_tool.application.localization import tr
-
-        for button, key in (
-            (self._step_back_button, "viewer.step_back"),
-            (self._step_forward_button, "viewer.step_forward"),
-            (self._first_frame_button, "viewer.first_frame"),
-            (self._last_frame_button, "viewer.last_frame"),
+        for button, key, desc_key in (
+            (self._step_back_button, "viewer.step_back", "a11y.viewer_prev_desc"),
+            (self._step_forward_button, "viewer.step_forward", "a11y.viewer_next_desc"),
+            (self._first_frame_button, "viewer.first_frame", "a11y.viewer_first_desc"),
+            (self._last_frame_button, "viewer.last_frame", "a11y.viewer_last_desc"),
         ):
             button.setToolTip(tr(key))
             button.setAccessibleName(tr(key))
+            button.setAccessibleDescription(tr(desc_key))
+        self._results_overlay_label.setAccessibleName(tr("a11y.results_overlay"))
+        self._results_overlay_label.setAccessibleDescription(tr("a11y.results_overlay_desc"))
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if (loop := self.findChild(LoopControls)) is not None:
             loop.reload_text()
@@ -2044,28 +2047,28 @@ class ViewerWidget(QWidget):
         self._last_frame_button = QPushButton()
         self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
         self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
-        for button, icon, title in (
-            (self._first_frame_button, "cine_first", tr("viewer.first_frame")),
-            (self._step_back_button, "cine_previous", tr("viewer.step_back")),
-            (self._step_forward_button, "cine_next", tr("viewer.step_forward")),
-            (self._last_frame_button, "cine_last", tr("viewer.last_frame")),
+        for button, icon, title_key, desc_key in (
+            (self._first_frame_button, "cine_first", "viewer.first_frame", "a11y.viewer_first_desc"),
+            (self._step_back_button, "cine_previous", "viewer.step_back", "a11y.viewer_prev_desc"),
+            (self._step_forward_button, "cine_next", "viewer.step_forward", "a11y.viewer_next_desc"),
+            (self._last_frame_button, "cine_last", "viewer.last_frame", "a11y.viewer_last_desc"),
         ):
             button.setText("")
             button.setIcon(load_svg_icon(icon))
             button.setFixedSize(32, 32)
             button.setFlat(True)
-            button.setAccessibleName(title)
-            button.setToolTip(title)
+            button.setAccessibleName(tr(title_key))
+            button.setAccessibleDescription(tr(desc_key))
+            button.setToolTip(tr(title_key))
         loop = self.findChild(LoopControls)
-        loop_buttons = loop.buttons() if loop is not None else ()
-        for button in (
+        transport_btns = (
             self._first_frame_button,
             self._step_back_button,
             self._play_button,
             self._step_forward_button,
             self._last_frame_button,
-            *loop_buttons,
-        ):
+        )
+        for button in (*transport_btns, *(loop.buttons() if loop is not None else ())):
             timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._phase_strip = CinePhaseStrip(translate=tr)
         self._phase_strip.hide()
@@ -2120,6 +2123,7 @@ class ViewerWidget(QWidget):
         caption = tr("viewer.pause") if playing else tr("viewer.play")
         self._play_button.setText("")
         self._play_button.setAccessibleName(caption)
+        self._play_button.setAccessibleDescription(tr("a11y.viewer_play_desc"))
         self._play_button.setToolTip(caption)
         if self._play_button.property("cinePlaying") != playing or self._play_button.icon().isNull():
             self._play_button.setProperty("cinePlaying", playing)
@@ -2317,9 +2321,9 @@ class ViewerWidget(QWidget):
             h, w = self._current_frame.shape[:2]
             if w > 0 and h > 0:
                 scale = max(vw / w, vh / h)
-                lines.append(f"Scale: {scale:.2f}x")
+                lines.append(f"Scale: {format_scale_factor(scale)}x")
         dpr = self._graphics.devicePixelRatioF()
-        lines.append(f"DPR: {dpr:.1f}")
+        lines.append(f"DPR: {format_dpr(dpr)}")
         if self._current_state and self._current_state.instance:
             inst = self._current_state.instance
             lines.append(f"Format: {inst.media_format}")
@@ -2994,7 +2998,7 @@ class ViewerWidget(QWidget):
                 self._timeline_slider.setValue(target)
                 self._timeline_slider.blockSignals(False)
             self._sync_play_button(is_playing)
-            fps_text = f"FPS: {1000.0 / frame_time_ms:.1f}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
+            fps_text = f"FPS: {format_fps(1000.0 / frame_time_ms)}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
             self._set_frame_counter_label(current=target + 1, total=total)
@@ -3124,7 +3128,7 @@ class ViewerWidget(QWidget):
             if self._timeline_slider.value() != target_frame:
                 self._timeline_slider.setValue(target_frame)
             self._sync_play_button(viewer_state.is_playing)
-            fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
+            fps_text = f"FPS: {format_fps(viewer_state.fps)}" if viewer_state.fps > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
             current = viewer_state.current_frame_index + 1 if viewer_state.total_frames > 0 else 0
@@ -3294,9 +3298,9 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(
             tr(
                 "viewer.acmp_result",
-                area1=f"{state.contour1_area_cm2:.2f}",
-                area2=f"{area_cm2:.2f}",
-                percent_s=f"{pct_s:.1f}",
+                area1=_fmt("planimeter.area", state.contour1_area_cm2 or 0.0, "cm²"),
+                area2=_fmt("planimeter.area", area_cm2, "cm²"),
+                percent_s=_fmt("vessel.stenosis_area", pct_s, "%"),
             )
         )
 
@@ -3319,9 +3323,9 @@ class ViewerWidget(QWidget):
         pct_s = self._compute_percent_s()
         return tr(
             "viewer.acmp_result",
-            area1=f"{a1:.2f}",
-            area2=f"{a2:.2f}",
-            percent_s=f"{pct_s:.1f}",
+            area1=_fmt("planimeter.area", a1, "cm²"),
+            area2=_fmt("planimeter.area", a2, "cm²"),
+            percent_s=_fmt("vessel.stenosis_area", pct_s, "%"),
         )
 
     # ── Vessel stenosis tools ───────────────────────────────────────
@@ -3396,7 +3400,7 @@ class ViewerWidget(QWidget):
             "viewer.stenosis_d_result",
             length1=inline_caliper_text(m1, length_unit=unit),
             length2=inline_caliper_text(m2, length_unit=unit),
-            percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+            percent=f"{_fmt('vessel.stenosis_d', stenosis, '%')}%" if stenosis is not None else "—",
         )
 
     def _build_stenosis_area_overlay(self) -> str:
@@ -3410,9 +3414,9 @@ class ViewerWidget(QWidget):
         stenosis = self._compute_stenosis_area(s_total, s_lumen)
         return tr(
             "viewer.stenosis_a_result",
-            area_total=f"{s_total:.2f}",
-            area_lumen=f"{s_lumen:.2f}",
-            percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+            area_total=_fmt("planimeter.area", s_total, "cm²"),
+            area_lumen=_fmt("planimeter.area", s_lumen, "cm²"),
+            percent=f"{_fmt('vessel.stenosis_area', stenosis, '%')}%" if stenosis is not None else "—",
         )
 
     def _handle_stenosis_area_contour(self, contour: Contour) -> None:
@@ -3494,9 +3498,9 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(
             tr(
                 "viewer.stenosis_a_result",
-                area_total=f"{state.contour1_area_cm2:.2f}",
-                area_lumen=f"{area_cm2:.2f}",
-                percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+                area_total=_fmt("planimeter.area", state.contour1_area_cm2 or 0.0, "cm²"),
+                area_lumen=_fmt("planimeter.area", area_cm2, "cm²"),
+                percent=f"{_fmt('vessel.stenosis_area', stenosis, '%')}%" if stenosis is not None else "—",
             )
         )
 
@@ -4513,33 +4517,27 @@ class ViewerWidget(QWidget):
     @staticmethod
     def _doppler_trace_summary(metrics, trace_label: str) -> str:
         """Format the transient result overlay with a specific flow label."""
-
-        from echo_personal_tool.domain.doppler_catalog import (
-            flow_site_from_trace_label,
-            normalize_label,
-            scale_velocity_for_display,
-        )
+        from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label, normalize_label
+        from echo_personal_tool.domain.services.nomenclature import flow_measurement_id
 
         site = flow_site_from_trace_label(trace_label) or "AV"
-        # A bare «VTI» (the Tool Buttons trace with no valve named) is stored as
-        # the aortic site for the calculators, but the overlay must not claim an
-        # aortic valve the sonographer did not choose: show the neutral «xV».
-        # An explicit «AV VTI» from the catalogue keeps its site label.
         display_site = "xV" if normalize_label(trace_label) in {"vti", "vti_trace"} else site
         flow = metrics.flow(site)
         if flow is None:
             return trace_label
         parts: list[str] = []
         if flow.vti_cm is not None:
-            parts.append(f"{display_site} VTI: {flow.vti_cm:.1f} cm")
+            vti_id = "doppler.vti" if display_site == "xV" else flow_measurement_id(site, "VTI")
+            parts.append(f"{display_site} VTI: {_fmt(vti_id, flow.vti_cm, 'cm')} cm")
         for name, velocity_cm_s in (("Vmax", flow.vmax_cm_s), ("Vmean", flow.vmean_cm_s)):
             if velocity_cm_s is not None:
-                scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, flow.mode)
-                parts.append(f"{display_site} {name}: {scaled:.{decimals}f} {unit}")
+                vel_id = "doppler.vmax" if display_site == "xV" else flow_measurement_id(site, name)
+                vel_str, unit = format_velocity_measurement(vel_id, velocity_cm_s, flow.mode)
+                parts.append(f"{display_site} {name}: {vel_str} {unit}")
         if flow.pgmax_mmhg is not None:
-            parts.append(f"{display_site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
+            parts.append(f"{display_site} PGmax: {_fmt('doppler.pg_peak', flow.pgmax_mmhg, 'mmHg')} mmHg")
         if flow.pgmean_mmhg is not None:
-            parts.append(f"{display_site} PGmean: {flow.pgmean_mmhg:.0f} mmHg")
+            parts.append(f"{display_site} PGmean: {_fmt('doppler.pg_mean', flow.pgmean_mmhg, 'mmHg')} mmHg")
         return " | ".join(parts) or trace_label
 
     def _last_committed_doppler_metrics(self):
@@ -7783,7 +7781,7 @@ class ViewerWidget(QWidget):
             length1=inline_caliper_text(m1, length_unit=unit),
             label2="D2",
             length2=inline_caliper_text(m2, length_unit=unit),
-            percent_d=f"{pct:.1f}%",
+            percent_d=f"{_fmt('vessel.stenosis_d', pct, '%')}%",
         )
 
     def _refresh_lv_frame_overlay(self, *, extra_lines: tuple[str, ...] = ()) -> None:
@@ -8087,10 +8085,16 @@ class ViewerWidget(QWidget):
         )
         if chamber == GENERIC_VOLUME_CHAMBER:
             value = closed_polygon_volume_ml(probe, spacing)
-            text = tr("viewer.volume_progress", value=f"{value:.1f}") if value is not None else None
+            text = (
+                tr("viewer.volume_progress", value=_fmt("planimeter.volume", value, "mL"))
+                if value is not None
+                else None
+            )
         else:
             value = closed_polygon_area_cm2(probe, spacing)
-            text = tr("viewer.area_progress", value=f"{value:.2f}") if value is not None else None
+            text = (
+                tr("viewer.area_progress", value=_fmt("planimeter.area", value, "cm²")) if value is not None else None
+            )
         if text is None:
             return
         if not calibrated:
@@ -9203,28 +9207,23 @@ class ViewerWidget(QWidget):
             return QPoint(int(point[0]), int(point[1]))
 
     def _format_caliper_value_for_picker(self, measurement: LinearMeasurement) -> str:
+        mid = measurement_for_caliper(measurement.label)
         if measurement.doppler:
             if measurement.velocity_cm_s is not None:
-                from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
-
-                scaled, unit, decimals = scale_velocity_for_display(
-                    abs(measurement.velocity_cm_s),
-                    measurement.doppler_mode,
+                vel_str, unit = format_velocity_measurement(
+                    mid or "doppler.vmax", abs(measurement.velocity_cm_s), measurement.doppler_mode
                 )
-                return f"{scaled:.{decimals}f} {unit}"
+                return f"{vel_str} {unit}"
             if measurement.time_ms is not None:
-                return f"{measurement.time_ms:.0f} {tr('unit.ms')}"
+                return f"{_fmt(mid or 'doppler.pht', measurement.time_ms, 'ms')} {tr('unit.ms')}"
             return ""
         if measurement.millimeter_length is not None:
             mm = float(measurement.millimeter_length)
             if self._length_display_unit == "cm":
-                return f"{mm / 10.0:.2f} {tr('unit.cm')}"
-            if measurement.submillimeter:
-                return f"{mm:.1f} {tr('unit.mm')}"
-            rounded = round(mm)
-            num_text = f"{rounded}" if abs(mm - rounded) < 0.05 else f"{mm:.1f}"
-            return f"{num_text} {tr('unit.mm')}"
-        return f"{measurement.pixel_length:.0f} px"
+                return f"{_fmt(mid or 'caliper.length', mm / 10.0, 'cm')} {tr('unit.cm')}"
+            fallback_id = "caliper.length_submm" if measurement.submillimeter else "caliper.length"
+            return f"{_fmt(mid or fallback_id, mm, 'mm')} {tr('unit.mm')}"
+        return f"{_fmt(mid or 'caliper.length', measurement.pixel_length, 'px')} px"
 
     def _open_label_picker_for_contour(self, contour: Contour) -> None:
         """Offer to name a just-traced planimeter polygon (item 10).
@@ -9247,11 +9246,11 @@ class ViewerWidget(QWidget):
             if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER:
                 volume = closed_polygon_volume_ml(contour, spacing)
                 if volume is not None:
-                    value_text = f"{volume:.1f} {tr('unit.ml')}"
+                    value_text = f"{_fmt('planimeter.volume', volume, 'mL')} {tr('unit.ml')}"
             else:
                 area = closed_polygon_area_cm2(contour, spacing)
                 if area is not None:
-                    value_text = f"{area:.2f} {tr('unit.cm2')}"
+                    value_text = f"{_fmt('planimeter.area', area, 'cm²')} {tr('unit.cm2')}"
         anchor_point = points[-1] if points else (self.width() / 2.0, self.height() / 2.0)
         from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
 
@@ -9334,7 +9333,7 @@ class ViewerWidget(QWidget):
         self._label_picker_target = ("trace", measurement_id)
         metrics = self._last_committed_doppler_metrics()
         vti_cm = getattr(metrics, "vti_cm", None) if metrics is not None else None
-        value_text = f"{vti_cm:.1f} {tr('unit.cm')}" if vti_cm is not None else ""
+        value_text = f"{_fmt('doppler.vti', vti_cm, 'cm')} {tr('unit.cm')}" if vti_cm is not None else ""
         points = getattr(trace, "points", ()) or ()
         if points:
             mapping = self._doppler.axis_mapping()

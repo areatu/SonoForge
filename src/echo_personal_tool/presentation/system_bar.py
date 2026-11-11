@@ -236,9 +236,9 @@ class SystemBar(CaptionDragMixin, QWidget):
         btn_calibration.clicked.connect(self.calibration_requested.emit)
         self._btn_calibration = btn_calibration
 
-        btn_doppler_calibration = QPushButton("Calibration Doppler")
+        btn_doppler_calibration = QPushButton(tr("system_bar.calibration_doppler"))
         btn_doppler_calibration.setIcon(_load_icon("show_chart"))
-        btn_doppler_calibration.setToolTip("Doppler spectrogram: ROI → baseline → velocity scale")
+        btn_doppler_calibration.setToolTip(tr("system_bar.calibration_doppler_tip"))
         btn_doppler_calibration.clicked.connect(self.doppler_calibration_requested.emit)
         self._btn_doppler_calibration = btn_doppler_calibration
 
@@ -644,11 +644,27 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def _capture_action_captions(self) -> None:
         """Remember translated labels and the expanded action width."""
+        from echo_personal_tool.application.localization import tr
+
         buttons = [button for group in self._action_groups for button in group]
         self._action_captions = {button: button.text() for button in buttons}
         for button, caption in self._action_captions.items():
             if button is not self._btn_multiview:
                 button.setAccessibleName(caption)
+        self._btn_open.setAccessibleDescription(tr("a11y.open_folder_desc"))
+        self._btn_pacs.setAccessibleDescription(tr("system_bar.pacs_tooltip"))
+        self._btn_calibration.setAccessibleName(self._btn_calibration.text())
+        self._btn_calibration.setAccessibleDescription(tr("a11y.calibration_bmode_desc"))
+        self._btn_doppler_calibration.setAccessibleName(self._btn_doppler_calibration.text())
+        self._btn_doppler_calibration.setAccessibleDescription(tr("system_bar.calibration_doppler_tip"))
+        self._btn_references.setAccessibleDescription(tr("system_bar.references_tooltip"))
+        self._btn_multiview.setAccessibleDescription(tr("multiview.button_tooltip"))
+        self._btn_mode_images.setAccessibleName(self._btn_mode_images.text())
+        self._btn_mode_images.setAccessibleDescription(tr("a11y.mode_images_desc"))
+        self._btn_mode_report.setAccessibleName(self._btn_mode_report.text())
+        self._btn_mode_report.setAccessibleDescription(tr("a11y.mode_report_desc"))
+        self._btn_view_2d.setAccessibleName(self._btn_view_2d.text())
+        self._btn_view_doppler.setAccessibleName(self._btn_view_doppler.text())
         self._actions_widget.layout().invalidate()
         self._full_actions_width = self._actions_widget.sizeHint().width()
         self._actions_compact = None

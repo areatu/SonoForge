@@ -2,8 +2,8 @@
   "comment": "Ratcheted ceiling of mypy --strict errors in presentation modules not yet in [tool.mypy].files (#476). Counts may only decrease; modules reaching 0 errors (with clean presentation imports) graduate to [tool.mypy].files via --fix.",
   "origin_issue": 476,
   "python_version": "3.11",
-  "total_files": 70,
-  "total_errors": 870,
+  "total_files": 69,
+  "total_errors": 869,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -25,9 +25,6 @@
     },
     "src/echo_personal_tool/presentation/doppler_calibration_hint.py": {
       "no-untyped-def": 2
-    },
-    "src/echo_personal_tool/presentation/doppler_derivative_panel.py": {
-      "no-untyped-def": 1
     },
     "src/echo_personal_tool/presentation/doppler_overlay.py": {
       "assignment": 1,

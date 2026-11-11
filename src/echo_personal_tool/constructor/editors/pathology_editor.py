@@ -52,7 +52,7 @@ class PathologyEditor(BaseEditor):
         layout.addWidget(header)
 
         # Multi-select checkbox
-        self._multi_check = QCheckBox("Multi-select")
+        self._multi_check = QCheckBox(tr("constructor.pathology.multi_select"))
         self._multi_check.setStyleSheet(f"color: {p['text']}; padding: 4px 12px;")
         self._multi_check.toggled.connect(self._on_multi_toggled)
         layout.addWidget(self._multi_check)

@@ -584,7 +584,7 @@ class TestSummaryTable:
     def test_update_values_ml(self):
         table = self._make_table()
         table.update_values(edv=120.3)
-        assert "120.3 мл" in table._rows["edv"][1].text()
+        assert "120 мл" in table._rows["edv"][1].text()
 
     def test_update_values_ms(self):
         table = self._make_table()
@@ -657,10 +657,12 @@ class TestControlPanel:
         assert panel._metric_deformation.isChecked()
 
     def test_update_quality(self):
+        from echo_personal_tool.infrastructure.i18n import tr
+
         panel = self._make_panel()
         panel.update_quality(80, 100, 20)
         assert "80 / 100 (80%)" in panel._quality_label.text()
-        assert "20 kernels rejected" in panel._rejected_label.text()
+        assert tr("strain.kernels_rejected", count=20) in panel._rejected_label.text()
 
     def test_update_quality_zero_total(self):
         panel = self._make_panel()
@@ -695,8 +697,10 @@ class TestStrainWindow:
         return StrainWindow()
 
     def test_construction(self):
+        from echo_personal_tool.infrastructure.i18n import tr
+
         w = self._make_window()
-        assert w.windowTitle() == "Strain Analysis"
+        assert w.windowTitle() == tr("strain.window_title")
         assert w._qc_accepted_segments == set(range(1, 18))
         assert w._undo_stack == []
 

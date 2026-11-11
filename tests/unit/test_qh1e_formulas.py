@@ -214,17 +214,16 @@ def test_disk_restore_structured_document_and_real_pdf_rounding(tmp_path, langua
     pgmax_label = flow_label("TR", "PGmax")
     document = build_report_document(snapshots[1])
     rows = [(v.label, v.value) for group in document.groups for v in group.values]
-    assert (pgmax_label, "31.4") in rows
+    assert (pgmax_label, "31") in rows
     assert ("TR PGmax", "31") in rows
-    assert (vmax_label, "2.80") in rows
+    assert (vmax_label, "2.8") in rows
     path = export_report_document_pdf(document, tmp_path / "report.pdf")
     with pymupdf.open(path) as pdf:
         pdf_text = "\n".join(page.get_text() for page in pdf)
-    assert f"{vmax_label}\n2.80 m/s" in pdf_text
-    assert f"{pgmax_label}\n31.4 mmHg" in pdf_text
+    assert f"{vmax_label}\n2.8 m/s" in pdf_text
+    assert f"{pgmax_label}\n31 mmHg" in pdf_text
     assert "TR PGmax\n31 mmHg" in pdf_text
-    # Existing views intentionally use different precision (text 1 decimal,
-    # structured report/panel integer); they must agree at their own precision.
+    # #482: every clinical surface formats from MEASUREMENTS (tr.vmax=1 dec, tr.pg=0 dec).
 
 
 # At least one independent numeric oracle per registered calculator. The

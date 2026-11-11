@@ -89,7 +89,7 @@ def test_default_freehand_ed_shows_panel_and_overlay(qtbot, synthetic_dicom_path
 def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(synthetic_dicom_path, pixel_spacing=(0.5, 0.5)),
+        _sample_instance(synthetic_dicom_path, pixel_spacing=(1.0, 1.0)),
         total_frames=10,
         frame_time_ms=33.3,
     )

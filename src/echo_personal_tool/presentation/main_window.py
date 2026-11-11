@@ -75,6 +75,7 @@ from echo_personal_tool.application.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
+from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
@@ -110,6 +111,7 @@ from echo_personal_tool.presentation.coordinators.report_coordinator import (
     instance_label as _loaded_file_label,
 )
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+from echo_personal_tool.presentation.display_formats import format_confidence_pct, format_fps, format_whole_pct
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from echo_personal_tool.presentation.focus_mode import (
     FocusHeaderInfo,
@@ -3359,9 +3361,6 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
-        # Recompute captions immediately when frame anonymisation is toggled;
-        # tab titles must not retain a previously visible patient name.
-        self._tab_coordinator.refresh_strip()
         configure_shortcuts(preferences.shortcut_overrides_json)
         self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
@@ -3388,6 +3387,9 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.application.localization import set_language
 
         set_language(preferences.language)
+        # Recompute captions after set_language so both frame anonymisation and
+        # live language changes update tab titles and close-button tooltips.
+        self._tab_coordinator.refresh_strip()
         self._reload_ui_language()
         app = QApplication.instance()
         if app is not None:
@@ -3698,9 +3700,11 @@ class MainWindow(QMainWindow):
             weight_kg=weight_kg,
         )
         self._show_status(
-            f"{tr('mmode.teich_ed_labels.0')}={ivsd:.1f} {tr('mmode.teich_ed_labels.1')}={lvidd:.1f} {tr('mmode.teich_ed_labels.2')}={lvpwd:.1f} "
-            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('strain.unit_ml')}  "
-            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
+            f"{tr('mmode.teich_ed_labels.0')}={_fmt('lv.ivsd', ivsd, 'mm')} "
+            f"{tr('mmode.teich_ed_labels.1')}={_fmt('lv.lvedd', lvidd, 'mm')} "
+            f"{tr('mmode.teich_ed_labels.2')}={_fmt('lv.lvpwd', lvpwd, 'mm')} "
+            f"{tr('domain.report.kdo')}={_fmt('lv.edv_teich', result.edv_ml, 'mL')} {tr('strain.unit_ml')}  "
+            f"{tr('domain.report.rwt')}={_fmt('lv.rwt', result.rwt or 0.0, '')}  {tr('domain.report.lvm')}={_fmt('lv.mass', result.lvm_g or 0.0, 'g')} g"
         )
 
     def _on_teichholz_es_complete(self, measurement) -> None:
@@ -3742,14 +3746,17 @@ class MainWindow(QMainWindow):
         # report is what the study session treats as authoritative.
         self._viewer.add_linear_measurements(linear)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
-        lvmi_str = f"  {tr('domain.report.lvmi')}={result.lvmi_g_m2:.1f} g/m²" if result.lvmi_g_m2 else ""
+        lvmi_str = (
+            f"  {tr('domain.report.lvmi')}={_fmt('lv.mass_i', result.lvmi_g_m2, 'g/m²')} g/m²"
+            if result.lvmi_g_m2
+            else ""
+        )
         self._show_status(
-            f"{tr('mmode.teichholz')}: {tr('mmode.teich_ed_labels.0')}={result.ivsd_mm:.1f} {tr('mmode.teich_ed_labels.2')}={result.lvpwd_mm:.1f} "
-            f"{tr('mmode.teich_ed_labels.1')}={result.lvidd_mm:.1f} {tr('mmode.label_es')}={lvesd:.1f} "
-            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('domain.report.kso')}={result.esv_ml:.1f} "
-            f"{tr('domain.report.fv')}={result.lvef_percent:.1f}%  "
-            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
-            f"{lvmi_str}"
+            f"{tr('mmode.teichholz')}: {tr('mmode.teich_ed_labels.0')}={_fmt('lv.ivsd', result.ivsd_mm, 'mm')} {tr('mmode.teich_ed_labels.2')}={_fmt('lv.lvpwd', result.lvpwd_mm, 'mm')} "
+            f"{tr('mmode.teich_ed_labels.1')}={_fmt('lv.lvedd', result.lvidd_mm, 'mm')} {tr('mmode.label_es')}={_fmt('lv.lvesd', lvesd, 'mm')} "
+            f"{tr('domain.report.kdo')}={_fmt('lv.edv_teich', result.edv_ml, 'mL')} {tr('domain.report.kso')}={_fmt('lv.esv_teich', result.esv_ml or 0.0, 'mL')} "
+            f"{tr('domain.report.fv')}={_fmt('lv.ef_teich', result.lvef_percent or 0.0, '%')}%  "
+            f"{tr('domain.report.rwt')}={_fmt('lv.rwt', result.rwt or 0.0, '')}  {tr('domain.report.lvm')}={_fmt('lv.mass', result.lvm_g or 0.0, 'g')} g{lvmi_str}"
         )
 
     def _wire_wl_persistence(self) -> None:
@@ -6014,12 +6021,13 @@ class MainWindow(QMainWindow):
             "ecg": "ECG",
             "burned_ecg": "Burned ECG",
         }.get(method, method)
-        msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
+        hr_str = _fmt("hr", bpm, "bpm")
+        msg = f"HR: {hr_str} BPM ({method_label}, conf {format_confidence_pct(confidence)})"
         self._show_status(msg)
         # Calculator source for cardiac output when the clip has no DICOM HR (Э11).
         self._controller.record_heart_rate_estimate(bpm, method)
         overlay = self._viewer.results_overlay_text()
-        hr_line = f"HR: {bpm:.0f} BPM"
+        hr_line = f"HR: {hr_str} BPM"
         # One HR line ever: a repeated press updates it instead of stacking
         # another «HR: …» under the previous ones (eight rows in one box).
         lines = [line for line in overlay.split("\n") if line and not line.startswith("HR: ")]
@@ -6058,7 +6066,7 @@ class MainWindow(QMainWindow):
             return
         fps = float(value)
         self._controller.set_frame_time_override(1000.0 / fps if fps > 0 else None)
-        self._show_status(tr("viewer.fps_override_applied", fps=f"{fps:.1f}"))
+        self._show_status(tr("viewer.fps_override_applied", fps=format_fps(fps)))
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot
@@ -6210,7 +6218,7 @@ class MainWindow(QMainWindow):
         rejected = result.kernels_rejected_count
         if total > 0:
             accepted_pct = (accepted / total) * 100.0
-            quality_info = f"Kernels: {accepted}/{total} ({accepted_pct:.0f}%)"
+            quality_info = f"Kernels: {accepted}/{total} ({format_whole_pct(accepted_pct)}%)"
             if rejected > 0:
                 quality_info += f" [{rejected} rejected]"
         else:
@@ -6219,14 +6227,14 @@ class MainWindow(QMainWindow):
         # Honest QC: NCC alone can read >90% while the deformation is
         # implausible; the combined QC score and physiology check are shown
         # alongside it so users are not misled (issue #3).
-        qc_info = f"QC: {qc_pct:.0f}%"
+        qc_info = f"QC: {format_whole_pct(qc_pct)}%"
         if not result.qc_physiology_ok and result.qc_physiology_reasons:
             qc_info += f" [⚠ {result.qc_physiology_reasons[0]}]"
 
         status_parts = [
-            f"GLS: {gls:.1f}%",
+            f"GLS: {_fmt('lv.gls', gls, '%')}%",
             qc_info,
-            f"NCC: {ncc_pct:.0f}%",
+            f"NCC: {format_whole_pct(ncc_pct)}%",
             quality_info,
             f"ED/ES: {result.ed_es_source}",
             f"Drift: {drift}",
@@ -6634,29 +6642,17 @@ class MainWindow(QMainWindow):
                 volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
                 lav_4c = es_volume_from_view(snapshot.la_simpson.a4c)
                 if lav_4c is not None and contour.view.upper() == "A4C":
-                    extra_lines = (
-                        *extra_lines,
-                        f"LAV 4C: {lav_4c:.1f} {volume_unit}",
-                    )
-                lav_bi = biplane_es_volume_ml(
-                    snapshot.la_simpson.a4c,
-                    snapshot.la_simpson.a2c,
-                )
+                    extra_lines = (*extra_lines, f"LAV 4C: {_fmt('la.lav_a4c', lav_4c, volume_unit)} {volume_unit}")
+                lav_bi = biplane_es_volume_ml(snapshot.la_simpson.a4c, snapshot.la_simpson.a2c)
                 if lav_bi is not None:
-                    extra_lines = (
-                        *extra_lines,
-                        f"LAV Bi: {lav_bi:.1f} {volume_unit}",
-                    )
+                    extra_lines = (*extra_lines, f"LAV Bi: {_fmt('la.lav_bp', lav_bi, volume_unit)} {volume_unit}")
         elif chamber == "RA" and contour.phase.upper() == "ES":
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
             from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
             from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
-                contour,
-                spacing,
-                spacing_calibrated=spacing_calibrated,
-                finish_key=shortcut_label("finish_tool"),
+                contour, spacing, spacing_calibrated=spacing_calibrated, finish_key=shortcut_label("finish_tool")
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
@@ -6664,19 +6660,12 @@ class MainWindow(QMainWindow):
                 volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
                 rav = es_volume_from_view(snapshot.ra_simpson.a4c) or snapshot.ra_simpson.max_volume_ml
                 if rav is not None:
-                    extra_lines = (
-                        *extra_lines,
-                        f"RAV 4C: {rav:.1f} {volume_unit}",
-                    )
+                    extra_lines = (*extra_lines, f"RAV 4C: {_fmt('ra.vol', rav, volume_unit)} {volume_unit}")
         elif chamber == "RV":
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
             from echo_personal_tool.domain.calculations.rv_fac import format_rv_area_overlay_line
 
-            line = format_rv_area_overlay_line(
-                contour,
-                spacing,
-                spacing_calibrated=spacing_calibrated,
-            )
+            line = format_rv_area_overlay_line(contour, spacing, spacing_calibrated=spacing_calibrated)
             self._show_status(line)
             phase = contour.phase.upper()
             if phase == "ED":
@@ -6686,14 +6675,9 @@ class MainWindow(QMainWindow):
             elif phase == "ES":
                 self._rv_fac_awaiting_es = False
                 self._tool_panel.measure.clear_action_highlight()
-                overlay_snap = self._controller.compute_overlay_snapshot(
-                    self._controller.state_manager.snapshot,
-                )
+                overlay_snap = self._controller.compute_overlay_snapshot(self._controller.state_manager.snapshot)
                 if overlay_snap is not None and overlay_snap.rv_fac_percent is not None:
-                    extra_lines = (
-                        *extra_lines,
-                        f"FAC: {overlay_snap.rv_fac_percent:.1f} %",
-                    )
+                    extra_lines = (*extra_lines, f"FAC: {_fmt('rv.fac', overlay_snap.rv_fac_percent, '%')} %")
 
         self._viewer._refresh_frame_overlays(extra_lines=extra_lines)
         self._sync_results_overlay(self._controller.state_manager.snapshot)

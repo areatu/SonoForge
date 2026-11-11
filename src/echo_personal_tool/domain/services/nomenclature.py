@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
+from echo_personal_tool.domain.measurement_catalog import LINEAR_UNIT_CM, LINEAR_UNIT_MM, MEASUREMENTS
 from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY
 from echo_personal_tool.domain.translation import get_language, tr
 
@@ -59,8 +59,7 @@ _VIEW_BY_KEY = MappingProxyType({"kdo": "edv", "kso": "esv"})
 #: ``4C``/``2C`` — apical views; ``BP`` — biplane (report rows use it).
 _VIEW_SUFFIX = MappingProxyType({"4C": "a4c", "2C": "a2c", "BP": "bp"})
 
-#: Spectral-Doppler row labels ``"<site> <kind>"`` → catalog id.  Sites the
-#: catalog measures not (PHT of regurgitant jets, PG of every jet) fall back.
+#: Spectral-Doppler row labels ``"<site> <kind>"`` → catalog id.
 _FLOW_TO_CATALOG = MappingProxyType(
     {
         "MV Vmax": "mv.vmax",
@@ -86,6 +85,32 @@ _FLOW_TO_CATALOG = MappingProxyType(
         "AV PGmax": "av.pg_peak",
         "TR PGmax": "tr.pg",
         "AV PGmean": "av.pg_mean",
+    }
+)
+
+_FLOW_MEASUREMENT_FALLBACK = MappingProxyType(
+    {
+        "Vmax": "doppler.vmax",
+        "Vmean": "doppler.vmean",
+        "PGmax": "doppler.pg_peak",
+        "PGmean": "doppler.pg_mean",
+        "VTI": "doppler.vti",
+        "PHT": "doppler.pht",
+        "AT": "doppler.at",
+        "ET": "doppler.et",
+    }
+)
+
+_FLOW_SITE_KIND_SUFFIX = MappingProxyType(
+    {
+        "Vmax": "vmax",
+        "Vmean": "vmean",
+        "PGmax": "pg_peak",
+        "PGmean": "pg_mean",
+        "VTI": "vti",
+        "PHT": "pht",
+        "AT": "at",
+        "ET": "et",
     }
 )
 
@@ -117,10 +142,52 @@ def catalog_label(measurement_id: str, language: str | None = None) -> str:
 def length_decimals(unit: str) -> int:
     """Decimals of linear sizes (D-12): ``mm`` — 0, ``cm`` (ASE) — 1.
 
-    Areas, volumes, ratios and pixel readings are not linear sizes and keep
-    their own numbers of decimals.
+    Delegates to ``MEASUREMENTS["caliper.length"].decimals_for(unit)``.
     """
-    return 1 if unit == "cm" else 0
+    target = LINEAR_UNIT_CM if unit == "cm" else LINEAR_UNIT_MM
+    return MEASUREMENTS["caliper.length"].decimals_for(target)
+
+
+def view_measurement_id(kind: str, view: str) -> str:
+    """Catalog measurement id for LV Simpson EDV/ESV per view (``4C``/``2C``/``BP``)."""
+    quantity = _VIEW_BY_KEY.get(kind, "edv")
+    suffix = _VIEW_SUFFIX.get(view, "bp")
+    candidate = f"lv.{quantity}_{suffix}"
+    return candidate if candidate in MEASUREMENTS else "lv.edv_bp"
+
+
+def flow_measurement_id(site: str, kind: str) -> str:
+    """Catalog measurement id for spectral Doppler row ``"<site> <kind>"``."""
+    mapped = _FLOW_TO_CATALOG.get(f"{site} {kind}")
+    if mapped is not None:
+        return mapped
+    site_key = site.strip().lower()
+    suffix = _FLOW_SITE_KIND_SUFFIX.get(kind)
+    if site_key and suffix:
+        candidate = f"{site_key}.{suffix}"
+        if candidate in MEASUREMENTS:
+            return candidate
+    return _FLOW_MEASUREMENT_FALLBACK.get(kind, "doppler.vmax")
+
+
+def strain_measurement_id(view: str | None) -> str:
+    """Catalog measurement id for GLS of *view* (or global ``lv.gls``)."""
+    if view is not None:
+        upper = view.upper()
+        if upper in {"A3C", "ALAX"}:
+            return "lv.gls_a3c"
+        mapped = _STRAIN_TO_CATALOG.get(upper)
+        if mapped is not None:
+            return mapped
+    return "lv.gls"
+
+
+def indexed_measurement_id(quantity: str, view: str = "") -> str:
+    """Catalog measurement id for an indexed chamber volume."""
+    mapped = _VIEW_QUANTITY_TO_CATALOG.get((quantity, view))
+    if mapped is not None:
+        return mapped
+    return "lv.edvi_bp"
 
 
 def overlay_label(key: str) -> str:

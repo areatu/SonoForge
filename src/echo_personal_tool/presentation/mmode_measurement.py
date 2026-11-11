@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.presentation import dark_theme
 
 
@@ -141,12 +142,12 @@ class MModeMeasurementItem:
         if m.label:
             parts.append(m.label)
         if m.value_mm is not None:
-            parts.append(f"{m.value_mm:.1f} mm")
+            parts.append(f"{format_measurement('caliper.length_submm', m.value_mm, 'mm')} mm")
         if m.value_ms is not None:
-            parts.append(f"{m.value_ms:.1f} ms")
+            parts.append(f"{format_measurement('doppler.time', m.value_ms, 'ms')} ms")
             if m.value_ms > 0:
                 hr = 60000.0 / m.value_ms
-                parts.append(f"{tr('mmode.label_hr')} {hr:.0f}")
+                parts.append(f"{tr('mmode.label_hr')} {format_measurement('hr', hr, 'bpm')}")
         text = "  ".join(parts)
         mid_x = (sx + ex) / 2
         mid_y = (sy + ey) / 2

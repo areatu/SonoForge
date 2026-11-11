@@ -87,6 +87,8 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._app_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._app_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
+        self._app_button.setAccessibleName(tr("title_bar.app_menu_a11y"))
+        self._app_button.setAccessibleDescription(tr("title_bar.app_menu_tooltip"))
 
         self._command_edit = QLineEdit(self)
         self._command_edit.setObjectName("commandField")
@@ -144,6 +146,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         button = QPushButton(self)
         button.setObjectName(object_name)
         button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
         button.setFlat(True)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         return button
@@ -363,9 +366,13 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         from echo_personal_tool.application.localization import tr
 
         self._app_button.setToolTip(tr("title_bar.app_menu_tooltip"))
+        self._app_button.setAccessibleName(tr("title_bar.app_menu_a11y"))
+        self._app_button.setAccessibleDescription(tr("title_bar.app_menu_tooltip"))
         self._command_edit.setPlaceholderText(self._command_placeholder_text())
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
+        self._btn_minimize.setAccessibleName(tr("system_bar.minimize"))
         self._btn_close.setToolTip(tr("system_bar.close"))
+        self._btn_close.setAccessibleName(tr("system_bar.close"))
         self.update_maximize_button(bool(self._btn_maximize.property("windowMaximized")))
 
     def update_maximize_button(self, is_maximized: bool) -> None:
@@ -375,10 +382,12 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._btn_maximize.setProperty("windowMaximized", bool(is_maximized))
         if is_maximized:
             self._btn_maximize.setIcon(load_icon("restore"))
-            self._btn_maximize.setToolTip(tr("system_bar.restore"))
+            caption = tr("system_bar.restore")
         else:
             self._btn_maximize.setIcon(load_icon("maximize"))
-            self._btn_maximize.setToolTip(tr("system_bar.maximize"))
+            caption = tr("system_bar.maximize")
+        self._btn_maximize.setToolTip(caption)
+        self._btn_maximize.setAccessibleName(caption)
 
 
 __all__ = [

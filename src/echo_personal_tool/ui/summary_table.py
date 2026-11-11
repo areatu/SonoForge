@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.ui.ui_metrics import font_pixel_size, text_width
 
 
@@ -18,6 +19,22 @@ class SummaryTable(QWidget):
     #: per-view GLS.
     _ROW_VIEW: dict[str, str] = {"gls_a4c": "A4C", "gls_a2c": "A2C", "gls_dao": "A3C"}
     _STATUS_MARKS: dict[str, str] = {"valid": "●", "review": "⚠", "invalid": "■"}
+    _ROW_MEASUREMENT_IDS: dict[str, str] = {
+        "gls": "lv.gls",
+        "ess": "lv.gls",
+        "psi": "lv.gls",
+        "drift": "lv.gls",
+        "gls_a4c": "lv.gls_a4c",
+        "gls_a2c": "lv.gls_a2c",
+        "gls_dao": "lv.gls_a3c",
+        "gls_av": "lv.gls",
+        "ef": "lv.ef_bp",
+        "edv": "lv.edv_bp",
+        "esv": "lv.esv_bp",
+        "ttp": "doppler.pht",
+        "autozak": "doppler.pht",
+        "hr": "hr",
+    }
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -86,15 +103,19 @@ class SummaryTable(QWidget):
                 elif isinstance(val, str):
                     val_label.setText(val)
                 elif unit == "%":
-                    val_label.setText(f"{val:.1f}%")
+                    mid = self._ROW_MEASUREMENT_IDS.get(key, "lv.gls")
+                    val_label.setText(f"{format_measurement(mid, val, '%')}%")
                 elif unit == tr("strain.unit_ml"):
-                    val_label.setText(f"{val:.1f} {tr('strain.unit_ml')}")
+                    mid = self._ROW_MEASUREMENT_IDS.get(key, "lv.edv_bp")
+                    val_label.setText(f"{format_measurement(mid, val, 'mL')} {tr('strain.unit_ml')}")
                 elif unit == tr("strain.unit_ms"):
-                    val_label.setText(f"{val:.0f} {tr('strain.unit_ms')}")
+                    mid = self._ROW_MEASUREMENT_IDS.get(key, "doppler.pht")
+                    val_label.setText(f"{format_measurement(mid, val, 'ms')} {tr('strain.unit_ms')}")
                 elif unit == "bpm":
-                    val_label.setText(f"{val:.0f} bpm")
+                    val_label.setText(f"{format_measurement('hr', val, 'bpm')} bpm")
                 else:
-                    val_label.setText(f"{val:.1f}")
+                    mid = self._ROW_MEASUREMENT_IDS.get(key, "lv.gls")
+                    val_label.setText(format_measurement(mid, val, unit))
                 self._mark_view_status(key, val_label)
 
     def _mark_view_status(self, key: str, val_label: QLabel) -> None:

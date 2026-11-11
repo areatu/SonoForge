@@ -121,6 +121,20 @@ class ReportModePage(QWidget):
         layout.addWidget(left)
         layout.addWidget(self._preview, 1)
         layout.addWidget(right)
+        self._setup_tab_order()
+
+    def _setup_tab_order(self) -> None:
+        chain: tuple[QWidget, ...] = (
+            *self.patient_editor.tab_chain_widgets(),
+            *self._phrases.tab_chain_widgets(),
+            self._export.pdf_button,
+            self._export.csv_button,
+            self._export.json_button,
+            self._export.print_button,
+            self._export.finish_button,
+        )
+        for first, second in zip(chain, chain[1:]):
+            self.setTabOrder(first, second)
 
     @property
     def preview(self) -> ReportPreview:

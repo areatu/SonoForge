@@ -7,6 +7,7 @@ from collections.abc import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QLabel, QLineEdit
 
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.services.report_builder import PatientInfo
 
 FIELDS = (
@@ -64,7 +65,8 @@ class ReportPatientEditor(QGroupBox):
         if patient.weight_kg is not None:
             metrics.append(f"{self._translate('tools.weight')}: {patient.weight_kg:g} kg")
         if patient.bsa_m2 is not None:
-            metrics.append(f"{self._translate('panel.bsa')}: {patient.bsa_m2:.2f} m²")
+            bsa_text = format_measurement("patient.bsa", patient.bsa_m2, "m²")
+            metrics.append(f"{self._translate('panel.bsa')}: {bsa_text} m²")
         self._body_metrics.setText(" · ".join(metrics))
 
     def reload_text(self) -> None:
@@ -73,5 +75,9 @@ class ReportPatientEditor(QGroupBox):
             self._labels[name].setText(self._translate(key))
             self._fields[name].setAccessibleName(self._translate(key))
         self._sex_label.setText(self._translate("report.sex"))
+        self._sex.setAccessibleName(self._translate("report.sex"))
         for index, key in enumerate(("report.sex_unknown", "report.sex_male", "report.sex_female")):
             self._sex.setItemText(index, self._translate(key))
+
+    def tab_chain_widgets(self) -> tuple:
+        return (*self._fields.values(), self._sex)

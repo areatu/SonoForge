@@ -22,6 +22,8 @@ from ..domain.measurement_catalog import (
     CATALOG,
     DEFAULT_LINEAR_UNIT,
     MEASUREMENTS,
+    Quantity,
+    format_measurement,
 )
 from ..domain.protocols import LOCK_REQUIREMENT, StudyProjection
 
@@ -85,8 +87,7 @@ class ToolStatusProvider:
         if spec is None:
             return f"{value:g}", ""
         unit = spec.unit(linear_unit=self._linear_unit, doppler_mode=self._doppler_mode)
-        decimals = spec.decimals_for(unit)
-        return f"{value:.{decimals}f}", unit
+        return format_measurement(key, value, unit), unit
 
     def status(
         self,
@@ -100,6 +101,13 @@ class ToolStatusProvider:
         key = self.result_key(tool_id)
         item = projection.get(key)
         value = item.value if item is not None else None
+        spec = MEASUREMENTS.get(key)
+        if value is not None and spec is not None:
+            target_unit = spec.unit(linear_unit=self._linear_unit, doppler_mode=self._doppler_mode)
+            if spec.quantity in (Quantity.LENGTH, Quantity.ORIFICE) and target_unit == "cm":
+                value = value / 10.0
+            elif spec.quantity is Quantity.VELOCITY and target_unit == "m/s":
+                value = value / 100.0
         text, unit = self.format_value(key, value)
         origin = item.origin if item is not None else ""
         measurements = count if count is not None else (1 if item is not None else 0)

@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.presentation.calculators_panel import CalculatorsPanel
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
@@ -263,7 +265,8 @@ class MeasureTab(QWidget):
             self._bsa_label.setText(tr("panel.bsa_missing"))
             self._bsa_label.setVisible(True)
             return
-        self._bsa_label.setText(f"{tr('panel.bsa')}: {basis.value:.2f} m² ({bsa_source_label(basis)})")
+        bsa_text = format_measurement("patient.bsa", basis.value, "m²")
+        self._bsa_label.setText(f"{tr('panel.bsa')}: {bsa_text} m² ({bsa_source_label(basis)})")
         self._bsa_label.setVisible(True)
 
     def set_auto_play(self, enabled: bool) -> None:
@@ -387,12 +390,12 @@ class ToolPanel(QWidget):
         self._properties_panel = PropertiesPanel()
         self.calculators = CalculatorsPanel(lazy=True)
 
-        self._tabs.addTab(self._measure, "Measures")
+        self._tabs.addTab(self._measure, tr("tool_panel.measures"))
         if self._profile_capabilities.calculators:
-            self._tabs.addTab(self.calculators, "Calculators")
+            self._tabs.addTab(self.calculators, tr("tool_panel.calculators"))
             self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
-        self._tabs.addTab(self.controls, "Controls")
-        self._tabs.addTab(self._tag_inspector, "DICOM Tags")
+        self._tabs.addTab(self.controls, tr("tool_panel.controls"))
+        self._tabs.addTab(self._tag_inspector, tr("tool_panel.dicom_tags"))
 
         self._connect_measure()
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
