@@ -43,6 +43,7 @@ for the lightweight Windows ZIP build. Run from the repository root.
 | `typecheck_matrix.sh` | Reproduce one cell of the required mypy matrix (`3.11` / `3.12` / `3.13`): install the `uv.lock` pins, select NumPy with `--python-version`, check the interpreter and refuse a run that checked zero source files |
 | `check_typecheck_matrix.py` | Guard the gate itself: all three cells, `fail-fast: false`, the shared script, `typecheck` in the aggregate `test` gate — fails `lint` if the wiring is removed |
 | `check_layer_directions.py` | AST inventory of forbidden cross-layer import directions with file/line and `module` / `lazy` / `type-only` classification; compares against the exact reviewed baseline in `tests/architecture/layer_direction_allowlist.json` — `--list` prints the inventory |
+| `check_untranslated_ui_strings.py` | AST gate ensuring user-facing UI string literals with letters in Qt constructors/setters go through `tr()` (except the reviewed technical/URL allowlist) |
 
 ```bash
 bash scripts/typecheck_matrix.sh 3.12       # under a Python 3.12 interpreter

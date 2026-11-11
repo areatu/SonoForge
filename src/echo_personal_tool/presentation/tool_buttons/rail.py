@@ -175,7 +175,8 @@ class ToolButtonRail(ToolButtonsBase):
         self.update_geometry()
         self._panels.setText(tr("toolbtn.panels"))
         self._panels.setToolTip(tr("toolbtn.panels_tooltip"))
-        self._panels.setAccessibleName(tr("toolbtn.panels_tooltip"))
+        self._panels.setAccessibleName(tr("toolbtn.panels"))
+        self._panels.setAccessibleDescription(tr("toolbtn.panels_tooltip"))
         self._elide_panels_label(self._panels.fontMetrics())
 
     def captions_for_metrics(self) -> tuple[str, ...]:

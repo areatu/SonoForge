@@ -1212,6 +1212,8 @@ class ViewerWidget(QWidget):
         self._overlay_label.hide()
 
         self._results_overlay_label = ResultsOverlayLabel(self)
+        self._results_overlay_label.setAccessibleName(tr("a11y.results_overlay"))
+        self._results_overlay_label.setAccessibleDescription(tr("a11y.results_overlay_desc"))
         self._results_overlay_label.setStyleSheet(_results_overlay_style(20, 0.70))
         self._results_overlay_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._results_overlay_label.position_changed.connect(self.results_overlay_position_changed.emit)
@@ -1293,7 +1295,7 @@ class ViewerWidget(QWidget):
         self._step_forward_button.clicked.connect(self._step_forward)
 
         self._fps_label = self._make_fps_label()
-        self._source_label = QLabel("Frame: —")
+        self._source_label = QLabel(tr("viewer.frame_none"))
         self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
@@ -1997,16 +1999,17 @@ class ViewerWidget(QWidget):
         self._position_overlay_labels()
 
     def reload_text(self) -> None:
-        from echo_personal_tool.application.localization import tr
-
-        for button, key in (
-            (self._step_back_button, "viewer.step_back"),
-            (self._step_forward_button, "viewer.step_forward"),
-            (self._first_frame_button, "viewer.first_frame"),
-            (self._last_frame_button, "viewer.last_frame"),
+        for button, key, desc_key in (
+            (self._step_back_button, "viewer.step_back", "a11y.viewer_prev_desc"),
+            (self._step_forward_button, "viewer.step_forward", "a11y.viewer_next_desc"),
+            (self._first_frame_button, "viewer.first_frame", "a11y.viewer_first_desc"),
+            (self._last_frame_button, "viewer.last_frame", "a11y.viewer_last_desc"),
         ):
             button.setToolTip(tr(key))
             button.setAccessibleName(tr(key))
+            button.setAccessibleDescription(tr(desc_key))
+        self._results_overlay_label.setAccessibleName(tr("a11y.results_overlay"))
+        self._results_overlay_label.setAccessibleDescription(tr("a11y.results_overlay_desc"))
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if (loop := self.findChild(LoopControls)) is not None:
             loop.reload_text()
@@ -2044,28 +2047,28 @@ class ViewerWidget(QWidget):
         self._last_frame_button = QPushButton()
         self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
         self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
-        for button, icon, title in (
-            (self._first_frame_button, "cine_first", tr("viewer.first_frame")),
-            (self._step_back_button, "cine_previous", tr("viewer.step_back")),
-            (self._step_forward_button, "cine_next", tr("viewer.step_forward")),
-            (self._last_frame_button, "cine_last", tr("viewer.last_frame")),
+        for button, icon, title_key, desc_key in (
+            (self._first_frame_button, "cine_first", "viewer.first_frame", "a11y.viewer_first_desc"),
+            (self._step_back_button, "cine_previous", "viewer.step_back", "a11y.viewer_prev_desc"),
+            (self._step_forward_button, "cine_next", "viewer.step_forward", "a11y.viewer_next_desc"),
+            (self._last_frame_button, "cine_last", "viewer.last_frame", "a11y.viewer_last_desc"),
         ):
             button.setText("")
             button.setIcon(load_svg_icon(icon))
             button.setFixedSize(32, 32)
             button.setFlat(True)
-            button.setAccessibleName(title)
-            button.setToolTip(title)
+            button.setAccessibleName(tr(title_key))
+            button.setAccessibleDescription(tr(desc_key))
+            button.setToolTip(tr(title_key))
         loop = self.findChild(LoopControls)
-        loop_buttons = loop.buttons() if loop is not None else ()
-        for button in (
+        transport_btns = (
             self._first_frame_button,
             self._step_back_button,
             self._play_button,
             self._step_forward_button,
             self._last_frame_button,
-            *loop_buttons,
-        ):
+        )
+        for button in (*transport_btns, *(loop.buttons() if loop is not None else ())):
             timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._phase_strip = CinePhaseStrip(translate=tr)
         self._phase_strip.hide()
@@ -2120,6 +2123,7 @@ class ViewerWidget(QWidget):
         caption = tr("viewer.pause") if playing else tr("viewer.play")
         self._play_button.setText("")
         self._play_button.setAccessibleName(caption)
+        self._play_button.setAccessibleDescription(tr("a11y.viewer_play_desc"))
         self._play_button.setToolTip(caption)
         if self._play_button.property("cinePlaying") != playing or self._play_button.icon().isNull():
             self._play_button.setProperty("cinePlaying", playing)

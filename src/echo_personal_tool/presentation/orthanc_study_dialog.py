@@ -114,6 +114,7 @@ from echo_personal_tool.presentation.orthanc_study_delegate import (
     StudyRow,
     checkbox_rect,
     completed_checkbox_rect,
+    configure_pacs_tab_order,
 )
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
@@ -634,10 +635,12 @@ class OrthancStudyDialog(QDialog):
         btn_close = QPushButton()
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
+        btn_close.setToolTip(tr("system_bar.close"))
+        btn_close.setAccessibleName(tr("system_bar.close"))
         btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
-        # Global button padding shifts an icon-only button away from center.
         btn_close.setStyleSheet("padding: 0px;")
         btn_close.clicked.connect(self.reject)
+        self._close_btn = btn_close
         tb_layout.addWidget(btn_close)
 
         # Search / controls row
@@ -832,28 +835,22 @@ class OrthancStudyDialog(QDialog):
         self._load_btn.setEnabled(False)
         self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
         self._load_btn.clicked.connect(self._on_load)
-
         self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
         self._save_disk_btn.setEnabled(False)
         self._save_disk_btn.clicked.connect(self._on_save_to_disk)
-
         self._background_btn = QPushButton(tr("orthanc.continue_work"))
         self._background_btn.setToolTip(tr("orthanc.continue_work_hint"))
         self._background_btn.hide()
         self._background_btn.clicked.connect(self._continue_in_background)
-
         self._cancel_btn = QPushButton(tr("orthanc.cancel"))
         self._cancel_btn.clicked.connect(self._on_cancel)
-
         actions_row = QHBoxLayout()
         actions_row.setContentsMargins(10, 0, 10, 10)
         actions_row.setSpacing(8)
         actions_row.addWidget(self._summary_label, stretch=1)
-        actions_row.addWidget(self._background_btn)
-        actions_row.addWidget(self._cancel_btn)
-        actions_row.addWidget(self._save_disk_btn)
-        actions_row.addWidget(self._load_btn)
-
+        for btn in (self._background_btn, self._cancel_btn, self._save_disk_btn, self._load_btn):
+            actions_row.addWidget(btn)
+        configure_pacs_tab_order(self)
         return actions_row
 
     def _build_period_row(self) -> QHBoxLayout:
@@ -907,20 +904,20 @@ class OrthancStudyDialog(QDialog):
             self._mode_group.addButton(button)
             self._mode_buttons[mode] = button
             filter_row.addWidget(button)
-        self._stress_chip = QPushButton(tr("orthanc.filter_stress"))
-        self._stress_chip.setCheckable(True)
-        self._stress_chip.setObjectName("periodChip")
-        self._stress_chip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._stress_chip.toggled.connect(self._on_enrichment_filter_changed)
-        self._stress_chip.setToolTip(tr("orthanc.filter_stress_tooltip"))
-        filter_row.addWidget(self._stress_chip)
-        self._ste_chip = QPushButton(tr("orthanc.filter_ste"))
-        self._ste_chip.setCheckable(True)
-        self._ste_chip.setObjectName("periodChip")
-        self._ste_chip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._ste_chip.toggled.connect(self._on_enrichment_filter_changed)
-        self._ste_chip.setToolTip(tr("orthanc.filter_ste_tooltip"))
-        filter_row.addWidget(self._ste_chip)
+        self._stress_chip, self._ste_chip = (
+            QPushButton(tr("orthanc.filter_stress")),
+            QPushButton(tr("orthanc.filter_ste")),
+        )
+        for chip, tip in (
+            (self._stress_chip, "orthanc.filter_stress_tooltip"),
+            (self._ste_chip, "orthanc.filter_ste_tooltip"),
+        ):
+            chip.setCheckable(True)
+            chip.setObjectName("periodChip")
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            chip.toggled.connect(self._on_enrichment_filter_changed)
+            chip.setToolTip(tr(tip))
+            filter_row.addWidget(chip)
         filter_row.addSpacing(10)
         filter_row.addWidget(QLabel(tr("orthanc.filter_device_label")))
         self._device_combo = QComboBox()

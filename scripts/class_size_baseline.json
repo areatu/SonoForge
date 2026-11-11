@@ -9,15 +9,15 @@
       "methods": 167
     },
     "presentation/doppler_overlay.py::DopplerOverlayTools": {
-      "lines": 1672,
+      "lines": 1671,
       "methods": 126
     },
     "presentation/main_window.py::MainWindow": {
-      "lines": 6735,
+      "lines": 6717,
       "methods": 447
     },
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog": {
-      "lines": 2613,
+      "lines": 2601,
       "methods": 153
     },
     "presentation/tool_panel_v2/panel.py::ToolPanelV2": {
@@ -25,16 +25,16 @@
       "methods": 117
     },
     "presentation/viewer_widget.py::ViewerWidget": {
-      "lines": 9271,
+      "lines": 9267,
       "methods": 490
     }
   },
   "modules": {
     "application/app_controller.py": 4525,
-    "presentation/main_window.py": 6981,
-    "presentation/orthanc_study_dialog.py": 3076,
+    "presentation/main_window.py": 6965,
+    "presentation/orthanc_study_dialog.py": 3063,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 10186
+    "presentation/viewer_widget.py": 10185
   },
   "fields": {
     "application/app_controller.py::AppController": 88,

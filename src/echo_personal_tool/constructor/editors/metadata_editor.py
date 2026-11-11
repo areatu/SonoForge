@@ -94,7 +94,7 @@ class MetadataEditor(BaseEditor):
         row1.addWidget(source_label)
 
         self._source_edit = QLineEdit()
-        self._source_edit.setPlaceholderText("ASE 2017, Guidelines...")
+        self._source_edit.setPlaceholderText(tr("constructor.meta.source_placeholder"))
         self._source_edit.setStyleSheet(
             f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"  # noqa: E501
         )

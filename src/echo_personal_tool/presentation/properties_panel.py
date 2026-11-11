@@ -12,9 +12,23 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.models.properties_snapshot import (
     PropertiesSnapshot,
     RegionSummary,
+)
+from echo_personal_tool.presentation.display_formats import (
+    format_bmi,
+    format_fps,
+    format_frame_time_ms,
+    format_frequency_mhz,
+    format_mm_per_px,
+    format_ms_per_px,
+    format_patient_height_cm,
+    format_patient_weight_kg,
+    format_pixel_extent,
+    format_pixel_spacing_mm,
+    format_region_delta,
 )
 
 
@@ -134,11 +148,20 @@ class PropertiesPanel(QWidget):
 
         # Timing
         if snapshot.frame_time_ms is not None:
-            self._timing_form.addRow(tr("properties.frame_time"), QLabel(f"{snapshot.frame_time_ms:.1f} ms"))
+            self._timing_form.addRow(
+                tr("properties.frame_time"),
+                QLabel(f"{format_frame_time_ms(snapshot.frame_time_ms)} ms"),
+            )
         if snapshot.cine_rate_fps is not None:
-            self._timing_form.addRow(tr("properties.cine_rate"), QLabel(f"{snapshot.cine_rate_fps:.1f} fps"))
+            self._timing_form.addRow(
+                tr("properties.cine_rate"),
+                QLabel(f"{format_fps(snapshot.cine_rate_fps)} fps"),
+            )
         if snapshot.heart_rate_bpm is not None:
-            self._timing_form.addRow(tr("properties.heart_rate"), QLabel(f"{snapshot.heart_rate_bpm:.0f} bpm"))
+            self._timing_form.addRow(
+                tr("properties.heart_rate"),
+                QLabel(f"{format_measurement('hr', snapshot.heart_rate_bpm, 'bpm')} bpm"),
+            )
         ftv = tr("properties.yes") if snapshot.frame_time_vector_present else tr("properties.no")
         self._timing_form.addRow(tr("properties.frame_time_vector"), QLabel(ftv))
         if (
@@ -153,13 +176,16 @@ class PropertiesPanel(QWidget):
         # Spatial
         if snapshot.pixel_spacing_mm is not None:
             row, col = snapshot.pixel_spacing_mm
-            self._spatial_form.addRow(tr("properties.spacing"), QLabel(f"{row:.3f}×{col:.3f} mm"))
+            self._spatial_form.addRow(
+                tr("properties.spacing"),
+                QLabel(f"{format_pixel_spacing_mm(row)}×{format_pixel_spacing_mm(col)} mm"),
+            )
         if snapshot.pixel_spacing_source:
             self._spatial_form.addRow(tr("properties.source"), QLabel(snapshot.pixel_spacing_source))
         if snapshot.transducer_frequency_mhz is not None:
             self._spatial_form.addRow(
                 tr("properties.transducer_freq"),
-                QLabel(f"{snapshot.transducer_frequency_mhz:.1f} MHz"),
+                QLabel(f"{format_frequency_mhz(snapshot.transducer_frequency_mhz)} MHz"),
             )
         if snapshot.pixel_spacing_mm is not None or snapshot.transducer_frequency_mhz is not None:
             self._spatial_group.show()
@@ -182,9 +208,15 @@ class PropertiesPanel(QWidget):
 
         # Patient
         if snapshot.patient_height_m is not None and snapshot.patient_height_m > 0:
-            self._patient_form.addRow(tr("properties.height"), QLabel(f"{snapshot.patient_height_m * 100:.0f} cm"))
+            self._patient_form.addRow(
+                tr("properties.height"),
+                QLabel(f"{format_patient_height_cm(snapshot.patient_height_m * 100)} cm"),
+            )
         if snapshot.patient_weight_kg is not None and snapshot.patient_weight_kg > 0:
-            self._patient_form.addRow(tr("properties.weight"), QLabel(f"{snapshot.patient_weight_kg:.1f} kg"))
+            self._patient_form.addRow(
+                tr("properties.weight"),
+                QLabel(f"{format_patient_weight_kg(snapshot.patient_weight_kg)} kg"),
+            )
         if (
             snapshot.patient_height_m is not None
             and snapshot.patient_height_m > 0
@@ -192,9 +224,12 @@ class PropertiesPanel(QWidget):
             and snapshot.patient_weight_kg > 0
         ):
             bmi = snapshot.patient_weight_kg / (snapshot.patient_height_m**2)
-            self._patient_form.addRow(tr("properties.bmi"), QLabel(f"{bmi:.1f}"))
+            self._patient_form.addRow(tr("properties.bmi"), QLabel(format_bmi(bmi)))
         if snapshot.bsa_m2 is not None:
-            self._patient_form.addRow(tr("properties.bsa"), QLabel(f"{snapshot.bsa_m2:.2f} m²"))
+            self._patient_form.addRow(
+                tr("properties.bsa"),
+                QLabel(f"{format_measurement('patient.bsa', snapshot.bsa_m2, 'm²')} m²"),
+            )
         if (
             snapshot.patient_height_m is not None
             and snapshot.patient_height_m > 0
@@ -215,13 +250,13 @@ class PropertiesPanel(QWidget):
 
         parts: list[str] = []
         if region.delta_x is not None:
-            parts.append(f"Δx={region.delta_x:.4f}")
+            parts.append(f"Δx={format_region_delta(region.delta_x)}")
         else:
             parts.append("Δx=—")
         if region.units_x is not None:
             parts.append(f"unitsX={region.units_x}")
         if region.delta_y is not None:
-            parts.append(f"Δy={region.delta_y:.4f}")
+            parts.append(f"Δy={format_region_delta(region.delta_y)}")
         else:
             parts.append("Δy=—")
         if region.units_y is not None:
@@ -244,9 +279,9 @@ class PropertiesPanel(QWidget):
         if snapshot.mmode_calibrated:
             parts = []
             if snapshot.mmode_vertical_mm_per_pixel is not None:
-                parts.append(f"{snapshot.mmode_vertical_mm_per_pixel:.2f} mm/px")
+                parts.append(f"{format_mm_per_px(snapshot.mmode_vertical_mm_per_pixel)} mm/px")
             if snapshot.mmode_horizontal_ms_per_pixel is not None:
-                parts.append(f"{snapshot.mmode_horizontal_ms_per_pixel:.2f} ms/px")
+                parts.append(f"{format_ms_per_px(snapshot.mmode_horizontal_ms_per_pixel)} ms/px")
 
             source = ""
             if snapshot.mmode_has_depth_from_dicom and snapshot.mmode_has_time_from_dicom:
@@ -334,13 +369,16 @@ class PropertiesPanel(QWidget):
         if modality:
             self._instance_form.addRow(tr("properties.modality"), QLabel(modality))
         if media_format and media_format != "dicom":
-            self._instance_form.addRow("Format:", QLabel(media_format.upper()))
+            self._instance_form.addRow(tr("properties.format"), QLabel(media_format.upper()))
         if series_desc:
             self._instance_form.addRow(tr("properties.series"), QLabel(series_desc))
         if frame_rate and frame_rate > 0:
-            self._instance_form.addRow(tr("properties.cine_rate"), QLabel(f"{frame_rate:.1f} fps"))
+            self._instance_form.addRow(tr("properties.cine_rate"), QLabel(f"{format_fps(frame_rate)} fps"))
         if frame_time_ms and frame_time_ms > 0:
-            self._instance_form.addRow(tr("properties.frame_time"), QLabel(f"{frame_time_ms:.1f} ms"))
+            self._instance_form.addRow(
+                tr("properties.frame_time"),
+                QLabel(f"{format_frame_time_ms(frame_time_ms)} ms"),
+            )
         if number_of_frames > 1:
             self._instance_form.addRow(tr("properties.frames"), QLabel(str(number_of_frames)))
         if pixel_spacing:
@@ -355,12 +393,18 @@ class PropertiesPanel(QWidget):
 
         # Patient
         if patient_height_m is not None and patient_height_m > 0:
-            self._patient_form.addRow(tr("properties.height"), QLabel(f"{patient_height_m * 100:.0f} cm"))
+            self._patient_form.addRow(
+                tr("properties.height"),
+                QLabel(f"{format_patient_height_cm(patient_height_m * 100)} cm"),
+            )
         if patient_weight_kg is not None and patient_weight_kg > 0:
-            self._patient_form.addRow(tr("properties.weight"), QLabel(f"{patient_weight_kg:.1f} kg"))
+            self._patient_form.addRow(
+                tr("properties.weight"),
+                QLabel(f"{format_patient_weight_kg(patient_weight_kg)} kg"),
+            )
         if patient_height_m and patient_weight_kg and patient_height_m > 0 and patient_weight_kg > 0:
             bmi = patient_weight_kg / (patient_height_m**2)
-            self._patient_form.addRow(tr("properties.bmi"), QLabel(f"{bmi:.1f}"))
+            self._patient_form.addRow(tr("properties.bmi"), QLabel(format_bmi(bmi)))
         if (patient_height_m is not None and patient_height_m > 0) or (
             patient_weight_kg is not None and patient_weight_kg > 0
         ):
@@ -385,14 +429,19 @@ class PropertiesPanel(QWidget):
         if not label:
             self._measurement_group.hide()
             return
-        self._measurement_form.addRow("Label:", QLabel(label))
+        self._measurement_form.addRow(tr("properties.measurement.label"), QLabel(label))
         if value_mm is not None:
-            self._measurement_form.addRow("Value:", QLabel(f"{value_mm:.1f} mm"))
+            self._measurement_form.addRow(
+                tr("properties.measurement.value"),
+                QLabel(f"{format_measurement('caliper.length_submm', value_mm, 'mm')} mm"),
+            )
         if start and end:
             dx = end[0] - start[0]
             dy = end[1] - start[1]
             pixel_len = (dx**2 + dy**2) ** 0.5
-            self._measurement_form.addRow("Pixel length:", QLabel(f"{pixel_len:.1f} px"))
+            self._measurement_form.addRow(
+                tr("properties.measurement.pixel_length"), QLabel(f"{format_pixel_extent(pixel_len)} px")
+            )
         self._measurement_group.show()
 
     def update_contour_info(
@@ -413,13 +462,13 @@ class PropertiesPanel(QWidget):
             self._contour_group.hide()
             return
         if chamber:
-            self._contour_form.addRow("Chamber:", QLabel(chamber))
+            self._contour_form.addRow(tr("properties.contour.chamber"), QLabel(chamber))
         if phase:
-            self._contour_form.addRow("Phase:", QLabel(phase))
+            self._contour_form.addRow(tr("properties.contour.phase"), QLabel(phase))
         if point_count:
-            self._contour_form.addRow("Points:", QLabel(str(point_count)))
+            self._contour_form.addRow(tr("properties.contour.points"), QLabel(str(point_count)))
         if area_px is not None:
-            self._contour_form.addRow("Area:", QLabel(f"{area_px:.1f} px²"))
+            self._contour_form.addRow(tr("properties.contour.area"), QLabel(f"{format_pixel_extent(area_px)} px²"))
         self._contour_group.show()
 
     def clear_all(self) -> None:

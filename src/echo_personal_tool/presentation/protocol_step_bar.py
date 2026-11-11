@@ -127,6 +127,8 @@ class ProtocolStepBar(QFrame):
         return button
 
     def _make_rap_values(self) -> QWidget:
+        from echo_personal_tool.application.localization import tr
+
         box = QWidget()
         box.setObjectName("protocolStepRapValues")
         row = QHBoxLayout(box)
@@ -137,6 +139,9 @@ class ProtocolStepBar(QFrame):
             button = QPushButton(label)
             button.setObjectName("protocolStepRapChip")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
+            a11y = tr("a11y.rap_chip_other") if value is None else tr("a11y.rap_chip_value", value=value)
+            button.setAccessibleName(a11y)
+            button.setToolTip(a11y)
             if value is None:
                 button.clicked.connect(self.rap_other_requested.emit)
             else:

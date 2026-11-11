@@ -124,6 +124,10 @@ jobs:
       # tests/ are reported and ratcheted downward only.
       - name: Untested modules ratchet (count only goes down)
         run: python scripts/audit_untested_modules.py --github-summary
+      # #484: user-facing UI literals with letters in Qt constructors/setters
+      # must go through tr() except the reviewed technical/URL allowlist.
+      - name: Untranslated UI strings gate (no raw UI captions bypassing tr())
+        run: python scripts/check_untranslated_ui_strings.py --github-summary
       # UI-0 (spec 2026-10-16 §5.3): the colour ratchet and the token contrast
       # run in the mandatory "ui-colors" job — it is part of the aggregate
       # test gate, so a new colour literal or a low-contrast pair fails the

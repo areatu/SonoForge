@@ -507,8 +507,10 @@ def show_setup_dialog() -> bool:
             )
             self.finished.emit(self.result)
 
+    from echo_personal_tool.infrastructure.i18n import tr
+
     dialog = QDialog()
-    dialog.setWindowTitle("SonoForge — First Run Setup")
+    dialog.setWindowTitle(tr("runtime_setup.title"))
     dialog.setMinimumWidth(450)
     dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
@@ -526,19 +528,19 @@ def show_setup_dialog() -> bool:
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(logo_label)
 
-    title = QLabel("SonoForge is setting up for the first time.")
+    title = QLabel(tr("runtime_setup.heading"))
     title.setStyleSheet("font-size: 14px; font-weight: bold;")
     title.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(title)
 
-    status_label = QLabel("Preparing...")
+    status_label = QLabel(tr("runtime_setup.preparing"))
     layout.addWidget(status_label)
 
     progress_bar = QProgressBar()
     progress_bar.setRange(0, 100)
     layout.addWidget(progress_bar)
 
-    skip_btn = QPushButton("Skip (run without AI segmentation)")
+    skip_btn = QPushButton(tr("runtime_setup.skip"))
     skip_btn.clicked.connect(dialog.reject)
     layout.addWidget(skip_btn)
 

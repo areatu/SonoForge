@@ -166,7 +166,7 @@ class ServerSettingsForm(QWidget):
 
         form = QFormLayout(self)
         form.addRow(tr("server_settings.description"), self._description_edit)
-        form.addRow("DICOMweb URL:", self._url_edit)
+        form.addRow(tr("server_settings.dicomweb_url"), self._url_edit)
         form.addRow(tr("server_settings.auth"), self._auth_mode)
         form.addRow(tr("server_settings.username"), self._username_edit)
         form.addRow(tr("server_settings.password"), self._password_edit)
@@ -178,7 +178,7 @@ class ServerSettingsForm(QWidget):
         form.addRow("", self._tls_ca_hint)
 
         # DIMSE section
-        dimse_group = QGroupBox("DIMSE (Native DICOM)")
+        dimse_group = QGroupBox(tr("server_settings.dimse_section"))
         dimse_form = QFormLayout(dimse_group)
         self._dimse_enabled = QCheckBox(tr("server_settings.dimse_enabled"))
         self._dimse_enabled.toggled.connect(self._sync_dimse_fields)

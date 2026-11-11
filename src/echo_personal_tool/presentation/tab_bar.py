@@ -122,14 +122,21 @@ class TabStrip(QWidget):
 
     def _refresh_close_buttons(self) -> None:
         """Replace native close glyphs with theme-colored ones."""
+        from echo_personal_tool.application.localization import tr
+
         for index in range(self._bar.count()):
+            close_name = tr("tabs.close_tab_a11y", title=self._bar.tabText(index) or str(index + 1))
             old = self._bar.tabButton(index, QTabBar.ButtonPosition.RightSide)
             if isinstance(old, QToolButton) and old.property("themedClose"):
                 old.setIcon(_close_icon())
+                old.setAccessibleName(close_name)
+                old.setToolTip(close_name)
                 continue
             btn = QToolButton(self._bar)
             btn.setProperty("themedClose", True)
             btn.setIcon(_close_icon())
+            btn.setAccessibleName(close_name)
+            btn.setToolTip(close_name)
             btn.setAutoRaise(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(self._on_close_button_clicked)

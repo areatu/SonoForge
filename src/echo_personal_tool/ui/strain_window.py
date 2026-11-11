@@ -71,7 +71,7 @@ class StrainWindow(QMainWindow):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Strain Analysis")
+        self.setWindowTitle(tr("strain.window_title"))
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         try:

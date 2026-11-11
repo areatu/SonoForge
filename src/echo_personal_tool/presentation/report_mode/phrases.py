@@ -160,6 +160,8 @@ class PhraseEditorDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(self._hint)
         layout.addWidget(buttons)
+        self.setTabOrder(self._section, self._ru)
+        self.setTabOrder(self._ru, self._en)
 
         self._ru.textChanged.connect(self._validate)
         self._en.textChanged.connect(self._validate)
@@ -315,6 +317,8 @@ class ReportPhrasesPanel(QFrame):
         self._status_timer.setSingleShot(True)
         self._status_timer.setInterval(_STATUS_TIMEOUT_MS)
         self._status_timer.timeout.connect(lambda: self._set_status(""))
+        for a, b in zip(self.tab_chain_widgets(), self.tab_chain_widgets()[1:]):
+            self.setTabOrder(a, b)
 
         self._search.textChanged.connect(lambda _text: self._rebuild())
         self._add.clicked.connect(self._on_add_phrase)
@@ -336,6 +340,9 @@ class ReportPhrasesPanel(QFrame):
     @property
     def conclusion(self) -> str:
         return self._conclusion
+
+    def tab_chain_widgets(self) -> tuple[QWidget, ...]:
+        return (self._search, self._add, self._import, self._export, self._editor, self._autofill)
 
     @property
     def store(self) -> ReportPhraseStore:

@@ -251,6 +251,15 @@ class _SettingsRowCaption(QWidget):
         self._fit_height()
 
 
+def _ancestors(widget: QWidget, *, stop: QWidget) -> list[QWidget]:
+    out: list[QWidget] = []
+    cur = widget.parentWidget()
+    while cur is not None and cur is not stop:
+        out.append(cur)
+        cur = cur.parentWidget()
+    return out
+
+
 def _row_caption(title: str, hint: str) -> QWidget:
     return _SettingsRowCaption(title, hint)
 
@@ -282,6 +291,18 @@ def _dress_form(form: QFormLayout) -> None:
         title = label.text().strip()
         if not title:
             continue
+        clean_title = title.rstrip(":")
+        if not field.accessibleName().strip():
+            field.setAccessibleName(clean_title)
+        if field.toolTip().strip() and not field.accessibleDescription().strip():
+            field.setAccessibleDescription(field.toolTip().strip())
+        from PySide6.QtWidgets import QAbstractButton
+
+        for child_btn in field.findChildren(QAbstractButton):
+            if not child_btn.text().strip() and not child_btn.accessibleName().strip():
+                child_btn.setAccessibleName(clean_title)
+            if child_btn.toolTip().strip() and not child_btn.accessibleDescription().strip():
+                child_btn.setAccessibleDescription(child_btn.toolTip().strip())
         caption = _row_caption(title, field.toolTip())
         # Take the old label out of the cell first: ``setWidget`` on an occupied
         # cell is a no-op with a warning, and the caption would never appear.
@@ -514,7 +535,8 @@ class UserPreferencesDialog(QDialog):
         self._section_list.setObjectName("settingsSectionList")
         self._section_list.setFrameShape(QListWidget.Shape.NoFrame)
         self._section_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._section_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._section_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._section_list.setAccessibleName(tr("a11y.settings_sections"))
         from echo_personal_tool.presentation.icon_loader import load_svg_icon
 
         self._section_list.setIconSize(QSize(18, 18))
@@ -554,8 +576,25 @@ class UserPreferencesDialog(QDialog):
         else:
             self._on_section_changed(self._section_list.currentItem(), None)
 
-        # Keep complete captions at large fonts / narrow widths instead of
-        # squeezing every action into one cropped line.
+        root.addWidget(self._build_action_bar())
+        # Set the default only after parenting the complete action bar into
+        # QDialog. Otherwise the first auto-default child (the close ×) steals
+        # Return on show, so Enter silently rejects the settings.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
+        self._ok_button.setDefault(True)
+        self._rebuild_tab_order()
+
+        # Apply dialog-level stylesheet
+        self._apply_dialog_stylesheet()
+        from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
+
+        ensure_dialog_outline(self)
+        protect_spinboxes(self)
+
+    # ── construction helpers ─────────────────────────────────────────
+
+    def _build_action_bar(self) -> QWidget:
         action_bar = QWidget()
         action_bar.setObjectName("settingsActionBar")
         action_row = WrappingActionLayout(action_bar)
@@ -606,28 +645,17 @@ class UserPreferencesDialog(QDialog):
         ok_button.setText(tr("settings.ok"))
         ok_button.setDefault(True)
         ok_button.setMinimumWidth(120)
-        # The ✓ of the standard box is tinted with the *dim text* role, which
-        # is unreadable on the accent fill of the primary button: the mock's
-        # single «Готово» is a plain filled button with no glyph.
         ok_button.setIcon(QIcon())
         action_row.addWidget(ok_button)
-
-        root.addWidget(action_bar)
-        # Set the default only after parenting the complete action bar into
-        # QDialog. Otherwise the first auto-default child (the close ×) steals
-        # Return on show, so Enter silently rejects the settings.
-        for button in self.findChildren(QPushButton):
-            button.setAutoDefault(False)
-        ok_button.setDefault(True)
-
-        # Apply dialog-level stylesheet
-        self._apply_dialog_stylesheet()
-        from echo_personal_tool.presentation.theme.dialog_outline import ensure_dialog_outline
-
-        ensure_dialog_outline(self)
-        protect_spinboxes(self)
-
-    # ── construction helpers ─────────────────────────────────────────
+        self._footer_buttons: tuple[QPushButton, ...] = (
+            self._section_reset_btn,
+            feedback_btn,
+            diagnostics_btn,
+            reset_defaults_btn,
+            help_btn,
+            ok_button,
+        )
+        return action_bar
 
     def _build_title_bar(self) -> QWidget:
         title_bar = QWidget()
@@ -646,8 +674,11 @@ class UserPreferencesDialog(QDialog):
 
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
+        btn_close.setToolTip(tr("system_bar.close"))
+        btn_close.setAccessibleName(tr("system_bar.close"))
         btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
         btn_close.clicked.connect(self.reject)
+        self._close_btn = btn_close
         title_bar_layout.addWidget(btn_close)
         return title_bar
 
@@ -1370,6 +1401,27 @@ class UserPreferencesDialog(QDialog):
             return
         self._stack.setCurrentWidget(page)
         self._current_section = section
+        if hasattr(self, "_footer_buttons"):
+            self._rebuild_tab_order()
+
+    def _rebuild_tab_order(self) -> None:
+        page = self._stack.currentWidget()
+        page_controls: list[QWidget] = []
+        if page is not None:
+            for w in page.findChildren(QWidget):
+                if w.focusPolicy() != Qt.FocusPolicy.NoFocus and w.isEnabled() and not w.isHidden():
+                    if not any(p in page_controls for p in _ancestors(w, stop=page)):
+                        page_controls.append(w)
+        chain: list[QWidget] = [
+            self._search,
+            self._section_list,
+            *page_controls,
+            *getattr(self, "_footer_buttons", ()),
+        ]
+        if hasattr(self, "_close_btn"):
+            chain.append(self._close_btn)
+        for first, second in zip(chain, chain[1:]):
+            self.setTabOrder(first, second)
 
     def _on_search_changed(self, text: str) -> None:
         """Jump to the first section whose title or subtitle matches *text*.

@@ -504,6 +504,7 @@ class AseReferenceDialog(QDialog):
         self._btn_minimize.setObjectName("minimizeButton")
         self._btn_minimize.setIcon(QIcon(_load_icon("minimize")))
         self._btn_minimize.setToolTip(tr("ase_refs.minimize"))
+        self._btn_minimize.setAccessibleName(tr("ase_refs.minimize"))
         self._btn_minimize.clicked.connect(self.showMinimized)
         self._btn_minimize.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; padding: 0; }}"
@@ -514,6 +515,7 @@ class AseReferenceDialog(QDialog):
         self._btn_maximize.setObjectName("maximizeButton")
         self._btn_maximize.setIcon(QIcon(_load_icon("maximize")))
         self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
+        self._btn_maximize.setAccessibleName(tr("ase_refs.maximize"))
         self._btn_maximize.clicked.connect(self._toggle_maximize)
         self._btn_maximize.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; padding: 0; }}"
@@ -524,6 +526,7 @@ class AseReferenceDialog(QDialog):
         btn_close.setObjectName("closeButton")
         btn_close.setIcon(QIcon(_load_icon("close")))
         btn_close.setToolTip(tr("ase_refs.close"))
+        btn_close.setAccessibleName(tr("ase_refs.close"))
         btn_close.clicked.connect(self.reject)
         btn_close.setStyleSheet(
             "QPushButton { background: transparent; border: none; padding: 0; }"

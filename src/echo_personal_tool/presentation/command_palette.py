@@ -58,8 +58,10 @@ class CommandPalette(QDialog):
 
     def __init__(self, profile: str, parent=None, settings: QSettings | None = None) -> None:
         super().__init__(parent)
+        from echo_personal_tool.application.localization import tr
+
         self.setObjectName("commandPalette")
-        self.setWindowTitle("Команды" if _language() == "ru" else "Commands")
+        self.setWindowTitle(tr("command_palette.title"))
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setModal(True)
         self._profile = profile
@@ -72,7 +74,7 @@ class CommandPalette(QDialog):
         self._settings = settings if settings is not None else QSettings()
         self._query = QLineEdit(self)
         self._query.setObjectName("commandPaletteSearch")
-        self._query.setPlaceholderText("Найти команду…" if _language() == "ru" else "Search commands…")
+        self._query.setPlaceholderText(tr("command_palette.placeholder"))
         self._results = QListWidget(self)
         self._results.setObjectName("commandPaletteResults")
         self._results.setUniformItemSizes(True)
@@ -146,16 +148,17 @@ class CommandPalette(QDialog):
                 break
 
     def _header(self, group: str) -> None:
-        labels = {
-            "recent": ("Недавние", "Recent"),
-            "protocols": ("Протоколы", "Protocols"),
-            "measurements": ("Измерения", "Measurements"),
-            "calculations": ("Расчёты", "Calculations"),
-            "references": ("Справочник", "Reference"),
-            "actions": ("Действия", "Actions"),
+        from echo_personal_tool.application.localization import tr
+
+        keys = {
+            "recent": "command_palette.group.recent",
+            "protocols": "command_palette.group.protocols",
+            "measurements": "command_palette.group.measurements",
+            "calculations": "command_palette.group.calculations",
+            "references": "command_palette.group.references",
+            "actions": "command_palette.group.actions",
         }
-        label = labels.get(group, labels["actions"])[0 if _language() == "ru" else 1]
-        item = QListWidgetItem(label)
+        item = QListWidgetItem(tr(keys.get(group, "command_palette.group.actions")))
         item.setFlags(Qt.ItemFlag.NoItemFlags)
         self._results.addItem(item)
 
