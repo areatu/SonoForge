@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `fix(ui)`: автовход в «Фокус» выключен по умолчанию, сохранённые настройки остаются ([полностью](changelog.d/022-fix-focus-default-288.md))
+
 - `refactor(ui)`: частичная чистка UI-8 и перевод трёх компонентов на токены ([полностью](changelog.d/021-refactor-ui8-278.md))
 
 - `refactor(viewer)`: единый владелец DICOM tags overlay в TagsOverlayController ([полностью](changelog.d/020-refactor-tags-overlay-504.md))

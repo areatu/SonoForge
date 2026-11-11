@@ -326,3 +326,11 @@ def test_gallery_orientation_recomputed_across_preset_switches(physical_width):
             )
             == orientation
         )
+
+
+def test_focus_autostart_is_opt_in_and_explicit_choices_survive() -> None:
+    assert LayoutConfigV2().single_file_focus is False
+    assert resolve_document("", "").single_file_focus is False
+    for enabled in (True, False):
+        stored = LayoutConfigV2(single_file_focus=enabled).to_json()
+        assert resolve_document(stored, "").single_file_focus is enabled
