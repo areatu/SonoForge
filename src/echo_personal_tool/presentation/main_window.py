@@ -3361,9 +3361,6 @@ class MainWindow(QMainWindow):
             stored.tabs_enabled = preferences.tabs_enabled = True
             save_user_preferences(stored)
         self._user_preferences = preferences
-        # Recompute captions immediately when frame anonymisation is toggled;
-        # tab titles must not retain a previously visible patient name.
-        self._tab_coordinator.refresh_strip()
         configure_shortcuts(preferences.shortcut_overrides_json)
         self._apply_layout_preferences(preferences)
         self._title_bar.set_tabs_visible(
@@ -3390,6 +3387,9 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.application.localization import set_language
 
         set_language(preferences.language)
+        # Recompute captions after set_language so both frame anonymisation and
+        # live language changes update tab titles and close-button tooltips.
+        self._tab_coordinator.refresh_strip()
         self._reload_ui_language()
         app = QApplication.instance()
         if app is not None:
