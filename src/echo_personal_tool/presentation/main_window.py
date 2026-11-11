@@ -5438,6 +5438,18 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.DIAMETER_COMPARE:
             self._on_diameter_compare_requested()
             return
+        if action == MeasurementAction.AR_JET_DIAMETER_COMPARE:
+            if self._viewer.start_diameter_compare(kind="ar_jet_diameter"):
+                self._show_status(tr("viewer.ar_jet_dcmp_click_start"))
+            else:
+                self._show_status("Load a frame first")
+            return
+        if action == MeasurementAction.AR_JET_AREA_COMPARE:
+            if self._viewer.start_area_compare(kind="ar_jet_area"):
+                self._show_status(tr("viewer.ar_jet_acmp_click_start"))
+            else:
+                self._show_status(tr("viewer.acmp_need_calibration"))
+            return
         if action == MeasurementAction.DOPPLER_PEAK:
             self._on_doppler_peak_tool(extra or None)
             return
@@ -6298,7 +6310,7 @@ class MainWindow(QMainWindow):
             return
         extra_lines: tuple[str, ...] = ()
         if chamber in {"AREA", "VOL"}:
-            if self._viewer._comparison_state.kind == "area":
+            if self._viewer._comparison_state.kind in {"area", "ar_jet_area"}:
                 self._viewer._handle_area_compare_contour(contour)
                 self._sync_results_overlay(self._controller.state_manager.snapshot)
                 return

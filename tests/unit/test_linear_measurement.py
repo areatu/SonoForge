@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.domain.models.linear_measurement import (
+    AREA_LABELS,
     PERCENT_LABELS,
     LinearMeasurement,
     format_length_mm,
@@ -111,6 +112,29 @@ class TestPercentLabels:
     def test_length_label_still_renders_mm(self) -> None:
         m = LinearMeasurement(label="LVEDD", pixel_length=0.0, millimeter_length=55.0)
         assert "55 mm" in m.display_text()
+
+
+class TestRegurgitationComparisonLabels:
+    """The AR jet / LVOT comparison stores directed ratios and areas."""
+
+    @pytest.mark.parametrize(("label", "expected"), [("AR Jet %D", "42.0%"), ("AR Jet %S", "42.0%")])
+    def test_ar_ratios_are_percent_labels(self, label: str, expected: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=42.0)
+        assert expected in m.display_text()
+
+    @pytest.mark.parametrize("label", sorted(AREA_LABELS))
+    def test_area_labels_render_square_centimetres(self, label: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=4.2)
+        text = m.display_text()
+        assert "4.2" in text
+        assert "cm²" in text
+        assert "cm²" in inline_caliper_text(m)
+
+    def test_lvot_width_measured_with_the_jet_comparison_is_a_length(self) -> None:
+        m = LinearMeasurement(label="LVOTd", pixel_length=0.0, millimeter_length=20.0)
+        text = m.display_text()
+        assert "20 mm" in text
+        assert "%" not in text
 
 
 class TestDopplerCaliperMeasurement:

@@ -5,7 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+from echo_personal_tool.domain.models.frame_panels import FramePanelLayout, PanelKind, UltrasoundPanel
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from tests.unit.doppler_fakes import FakeDopplerViewer
 
@@ -29,6 +31,51 @@ def test_calibration_state_is_normalized_and_emitted_for_current_frame() -> None
     assert events == [actual]
     fake.uid = None
     assert not fake.controller.calibration_matches_instance()
+
+
+def _b_mode_only_layout() -> FramePanelLayout:
+    b_mode = UltrasoundPanel(
+        kind=PanelKind.B_MODE,
+        bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=80, height=60),
+    )
+    return FramePanelLayout((b_mode,))
+
+
+def _port_with_panels(fake: FakeDopplerViewer, panels: FramePanelLayout) -> None:
+    from dataclasses import replace
+
+    fake.controller._port = replace(fake.controller._port, resolve_panels=lambda: panels)
+
+
+def _hint_roi_mapping(fake: FakeDopplerViewer) -> None:
+    """Give the overlay a spectral ROI so the old code would have asked for a scale."""
+    fake.overlay.axis_mapping.return_value = DopplerAxisMapping(
+        time_span_ms=10.0,
+        plot_width=80.0,
+        plot_height=60.0,
+        roi=DopplerSpectrogramRoi(x0=0, y0=0, width=80, height=60),
+    )
+
+
+def test_b_mode_only_dicom_panel_does_not_request_doppler_calibration_hint() -> None:
+    fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
+    _hint_roi_mapping(fake)
+    _port_with_panels(fake, _b_mode_only_layout())
+
+    fake.controller.sync_manual_calibration_hint()
+
+    fake.overlay.set_manual_calibration_hint_visible.assert_called_once_with(False)
+    assert fake.hints == []
+
+
+def test_without_panel_metadata_the_hint_still_appears() -> None:
+    """The guard is a metadata veto, not removal of the untagged-frame fallback."""
+    fake = FakeDopplerViewer(np.zeros((60, 80), dtype=np.uint8))
+    _hint_roi_mapping(fake)
+
+    fake.controller.sync_manual_calibration_hint()
+
+    fake.overlay.set_manual_calibration_hint_visible.assert_called_once_with(True)
 
 
 def test_syncing_suppresses_calibration_and_frame_signals() -> None:

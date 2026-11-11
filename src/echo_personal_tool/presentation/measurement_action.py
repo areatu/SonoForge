@@ -64,6 +64,8 @@ class MeasurementAction(str, Enum):
     TEICHHOLZ_ES = "teichholz_es"
     DIAMETER_COMPARE = "diameter_compare"
     AREA_COMPARE = "area_compare"
+    AR_JET_DIAMETER_COMPARE = "ar_jet_diameter_compare"
+    AR_JET_AREA_COMPARE = "ar_jet_area_compare"
     VESSEL_PSV_EDV = "vessel_psv_edv"
     VESSEL_AUTO_TRACE_UP = "vessel_auto_trace_up"
     VESSEL_AUTO_TRACE_DOWN = "vessel_auto_trace_down"

@@ -511,8 +511,26 @@ class DopplerController(QObject):
         active = self.calibration_in_progress
         roi = self._hint_roi()
         clip_open = self._port.frame() is not None and roi is not None
+        panels = self._port.resolve_panels()
+        # A parsed DICOM panel layout is authoritative for modality.  Some
+        # Samsung B-mode frames carry ultrasound-region tags with spatial
+        # units that resemble Doppler calibration, but the panel parser
+        # correctly classifies them as B-mode.  Do not turn the generic
+        # full-frame axis mapping into a spectral-calibration prompt in that
+        # case; a missing Doppler panel means there is no spectral ROI to
+        # calibrate.  When no panel metadata exists, retain the image-based
+        # fallback behavior for untagged spectral cine frames.
+        b_mode_only = False
+        if panels is not None and panels.b_mode is not None and panels.doppler is None:
+            frame = self._port.frame()
+            # A few composite cines describe only their B-mode region in the
+            # tags while still showing an untagged spectrum. Let clear image
+            # evidence preserve the fallback prompt in those cases.
+            visual_spectrum = frame is not None and detect_spectrogram_roi(frame) is not None
+            b_mode_only = not visual_spectrum
         wanted = (
             clip_open
+            and not b_mode_only
             and not self._port.vessel_measurement_mode()
             and not self._hint_dismissed
             and not self._velocity_scale_is_set()

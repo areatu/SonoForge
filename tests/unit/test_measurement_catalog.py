@@ -93,7 +93,7 @@ def test_only_caliper_has_a_default_key() -> None:
 
 def test_every_menu_button_has_a_catalog_alias() -> None:
     buttons = _menu_buttons()
-    assert len(buttons) == len(CATALOG) == 153
+    assert len(buttons) == len(CATALOG) == 159
     missing = [button.tool_id for _, button in buttons if button.tool_id not in LEGACY_ALIASES]
     assert missing == []
     assert {LEGACY_ALIASES[button.tool_id] for _, button in buttons} == set(CATALOG)
@@ -133,6 +133,55 @@ def test_actions_exist_in_measurement_action_enum() -> None:
     for tool in CATALOG.values():
         if tool.payload.action is not None:
             assert tool.payload.action in values, tool.id
+
+
+# ── Regurgitation tools (VC calipers, AR jet / LVOT comparisons) ────
+
+
+@pytest.mark.parametrize(
+    ("valve", "caliper_label"),
+    [("mr", "MR VC"), ("ar", "AR VC"), ("pr", "PR VC"), ("tr", "TR VC")],
+)
+def test_vena_contracta_calipers_are_catalogued(valve: str, caliper_label: str) -> None:
+    tool = CATALOG[f"{valve}.vc"]
+    assert tool.payload.caliper_label == caliper_label
+    assert tool.result_keys == (f"{valve}.vc",)
+    assert cat.REQ_SPATIAL in tool.requires
+    # The caliper label the viewer stores must project back to this measurement.
+    from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
+
+    assert measurement_for_caliper(caliper_label) == f"{valve}.vc"
+
+
+def test_mitral_and_aortic_vc_follow_table6_units() -> None:
+    """VC is reported in cm with one decimal (ASE Table 6), like the LVOT diameter."""
+    for measurement_id in ("mr.vc", "ar.vc"):
+        spec = MEASUREMENTS[measurement_id]
+        assert spec.ase_row == measurement_id
+        assert spec.unit() == "cm"
+        assert spec.decimals_for("cm") == 1
+
+
+def test_ar_jet_comparisons_route_to_the_lvot_results() -> None:
+    """The second caliper of the AR comparison is the LVOT, not a second jet."""
+    from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+    diameter = CATALOG["ar.jet.diameter_compare"]
+    assert diameter.payload.action == str(MeasurementAction.AR_JET_DIAMETER_COMPARE)
+    assert diameter.result_keys == ("ar.jet_d1", "lvot.d", "ar.jet_d_ratio")
+
+    area = CATALOG["ar.jet.area_compare"]
+    assert area.payload.action == str(MeasurementAction.AR_JET_AREA_COMPARE)
+    assert area.result_keys == ("ar.jet_s1", "lvot.s", "ar.jet_s_ratio")
+
+    from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
+
+    assert measurement_for_caliper("AR Jet D1") == "ar.jet_d1"
+    assert measurement_for_caliper("LVOTd") == "lvot.d"
+    assert measurement_for_caliper("AR Jet S1") == "ar.jet_s1"
+    assert measurement_for_caliper("LVOT S") == "lvot.s"
+    assert measurement_for_caliper("AR Jet %D") == "ar.jet_d_ratio"
+    assert measurement_for_caliper("AR Jet %S") == "ar.jet_s_ratio"
 
 
 def test_profile_flags_mirror_menu_filters() -> None:

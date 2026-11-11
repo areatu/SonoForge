@@ -53,6 +53,10 @@ from echo_personal_tool.domain.calculations.pulmonary_hemodynamics import (
     pvr_abbas_wu,
     tr_gradient_mmhg,
 )
+from echo_personal_tool.domain.calculations.regurgitation_grade import (
+    ar_integrated_grade,
+    mr_integrated_grade,
+)
 from echo_personal_tool.domain.calculations.teichholz_formulas import (
     ejection_fraction_percent,
     fractional_shortening_percent,
@@ -171,10 +175,14 @@ INPUTS: tuple[InputSpec, ...] = (
     InputSpec("va_mr", "Va MR", "calc.input.va_mr", "cm/s", 0, (15.0, 70.0), (1.0, 150.0), SECTION_MR, True),
     InputSpec("mr_vmax", "MR Vmax", "calc.input.mr_vmax", "m/s", 2, (3.0, 7.0), (0.1, 10.0), SECTION_MR),
     InputSpec("mr_vti", "MR VTI", "calc.input.mr_vti", "cm", 1, (50.0, 250.0), (1.0, 500.0), SECTION_MR),
+    InputSpec("mr_vc_mm", "MR VC", "calc.input.mr_vc_mm", "mm", 1, (0.0, 15.0), (0.0, 30.0), SECTION_MR),
     InputSpec("pisa_r_ar", "PISA r AR", "calc.input.pisa_r_ar", "cm", 2, (0.2, 1.2), (0.05, 3.0), SECTION_AR),
     InputSpec("va_ar", "Va AR", "calc.input.va_ar", "cm/s", 0, (15.0, 70.0), (1.0, 150.0), SECTION_AR, True),
     InputSpec("ar_vmax", "AR Vmax", "calc.input.ar_vmax", "m/s", 2, (2.5, 6.5), (0.1, 10.0), SECTION_AR),
     InputSpec("ar_vti", "AR VTI", "calc.input.ar_vti", "cm", 1, (50.0, 300.0), (1.0, 600.0), SECTION_AR),
+    InputSpec("ar_vc_mm", "AR VC", "calc.input.ar_vc_mm", "mm", 1, (0.0, 15.0), (0.0, 30.0), SECTION_AR),
+    InputSpec("ar_jet_area_ratio_pct", "AR jet area / LVOT area", "calc.input.ar_jet_area_ratio_pct", "%", 0, (0.0, 100.0), (0.0, 300.0), SECTION_AR),
+    InputSpec("ar_jet_diameter_ratio_pct", "AR jet diameter / LVOT diameter", "calc.input.ar_jet_diameter_ratio_pct", "%", 0, (0.0, 100.0), (0.0, 300.0), SECTION_AR),
     # Mitral stenosis (Э11в): PHT interval, PISA radius ("PISA MS" caliper),
     # aliasing velocity and funnel angle typed by the user, CW peak velocity.
     InputSpec("mv_pht", "MV PHT", "calc.input.mv_pht", "ms", 0, (30.0, 500.0), (5.0, 1500.0), SECTION_MS),
@@ -482,6 +490,45 @@ def _pisa_calculator(valve: str) -> CalculatorSpec:
                 reference_ids=refs_rvol,
             ),
             OutputSpec(
+                f"vc_{key}",
+                f"{upper} VC",
+                f"calc.output.vc_{key}",
+                "mm",
+                1,
+                f"{upper} vena contracta width",
+                (f"{key}_vc_mm",),
+                lambda v: v.get(f"{key}_vc_mm"),
+                reference_ids=(("mr_vc_primary",) if key == "mr" else ("ar_vc",)),
+            ),
+            *(
+                (
+                    OutputSpec(
+                        "jet_area_ratio_ar",
+                        "AR jet area / LVOT area",
+                        "calc.output.jet_area_ratio_ar",
+                        "%",
+                        0,
+                        "Regurgitant jet area / LVOT area × 100",
+                        ("ar_jet_area_ratio_pct",),
+                        lambda v: v.get("ar_jet_area_ratio_pct"),
+                        reference_ids=("ar_jet_csa_lvot",),
+                    ),
+                    OutputSpec(
+                        "jet_diameter_ratio_ar",
+                        "AR jet diameter / LVOT diameter",
+                        "calc.output.jet_diameter_ratio_ar",
+                        "%",
+                        0,
+                        "AR jet diameter / LVOT diameter × 100",
+                        ("ar_jet_diameter_ratio_pct",),
+                        lambda v: v.get("ar_jet_diameter_ratio_pct"),
+                        reference_ids=("ar_jet_width_lvot",),
+                    ),
+                )
+                if key == "ar"
+                else ()
+            ),
+            OutputSpec(
                 rf_id,
                 f"{upper} RF",
                 f"calc.output.rf_{key}",
@@ -491,6 +538,37 @@ def _pisa_calculator(valve: str) -> CalculatorSpec:
                 (rvol_id, "lvot_d", "lvot_vti"),
                 rf,
                 reference_ids=refs_rf,
+            ),
+            OutputSpec(
+                f"grade_{key}",
+                f"{upper} integrated severity grade",
+                f"calc.output.grade_{key}",
+                "",
+                0,
+                "Lower median of available guideline grades (VC, EROA, RVol; AR also jet area and jet width over LVOT)",
+                (
+                    ("eroa_mr", "rvol_mr", "mr_vc_mm")
+                    if key == "mr"
+                    else (
+                        "eroa_ar",
+                        "rvol_ar",
+                        "ar_vc_mm",
+                        "ar_jet_area_ratio_pct",
+                        "ar_jet_diameter_ratio_pct",
+                    )
+                ),
+                lambda v: (
+                    mr_integrated_grade(v.get("eroa_mr"), v.get("rvol_mr"), v.get("mr_vc_mm"))
+                    if key == "mr"
+                    else ar_integrated_grade(
+                        v.get("eroa_ar"),
+                        v.get("rvol_ar"),
+                        v.get("ar_vc_mm"),
+                        v.get("ar_jet_area_ratio_pct"),
+                        v.get("ar_jet_diameter_ratio_pct"),
+                    )
+                ),
+                subset_requires=True,
             ),
         ),
         assumptions_key=f"calc.assumptions.pisa_{key}",
