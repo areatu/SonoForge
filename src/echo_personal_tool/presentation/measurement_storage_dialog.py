@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.user_preferences import load_user_preferences, save_user_preferences
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.display_formats import format_storage_unit_value
 
 
@@ -134,7 +134,7 @@ class MeasurementStorageDialog(QDialog):
             item = QListWidgetItem(self._row_text(record))
             item.setData(Qt.ItemDataRole.UserRole, record.key)
             if not record.readable:
-                item.setForeground(QColor(get_theme_palette()["text_dim"]))
+                item.setForeground(QColor(get_theme_tokens()["text.2"]))
                 item.setToolTip(tr("persistence.record_unreadable_tip"))
             self.records.addItem(item)
         text = tr_plural(

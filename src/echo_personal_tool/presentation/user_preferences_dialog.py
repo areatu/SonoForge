@@ -1810,10 +1810,10 @@ class UserPreferencesDialog(QDialog):
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+        from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 
-        p = get_theme_palette()
-        color = QColor(p["text"])
+        p = get_theme_tokens()
+        color = QColor(p["text.1"])
         for btn in box.findChildren(QPushButton):
             old_icon = btn.icon()
             if old_icon.isNull():
