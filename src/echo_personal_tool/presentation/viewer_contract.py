@@ -73,6 +73,14 @@ _DISPLAY_MEMBERS = {
 }
 
 
+#: Members whose owner moved from ``ViewerWidget`` to ``ViewerZoom`` (A3).
+_DISPLAY_ZOOM_MEMBERS = {
+    "handle_ctrl_wheel": "handle_ctrl_wheel",
+    "zoom_loupe_click": "loupe_click",
+    "zoom_loupe_hint": "loupe_hint",
+}
+
+
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
 EXPOSED_PRIVATE_NAMES = frozenset(
@@ -293,6 +301,9 @@ class ViewerContract:
             display = getattr(self._viewer, "display", None)
             if display is not None and name in _DISPLAY_MEMBERS:
                 return getattr(display, _DISPLAY_MEMBERS[name])
+            zoom = getattr(self._viewer, "zoom", None)
+            if zoom is not None and name in _DISPLAY_ZOOM_MEMBERS:
+                return getattr(zoom, _DISPLAY_ZOOM_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -309,6 +320,10 @@ class ViewerContract:
             display = getattr(self._viewer, "display", None)
             if display is not None and name in _DISPLAY_MEMBERS:
                 setattr(display, _DISPLAY_MEMBERS[name], value)
+                return
+            zoom = getattr(self._viewer, "zoom", None)
+            if zoom is not None and name in _DISPLAY_ZOOM_MEMBERS:
+                setattr(zoom, _DISPLAY_ZOOM_MEMBERS[name], value)
                 return
             setattr(self._viewer, private, value)
             return

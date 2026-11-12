@@ -51,12 +51,12 @@ def test_zoom_keeps_the_point_under_the_pointer(viewer: ViewerWidget) -> None:
 
 
 def test_zoom_is_clamped_to_the_supported_range(viewer: ViewerWidget) -> None:
-    from echo_personal_tool.presentation.viewer_widget import _ZOOM_MAX, _ZOOM_MIN
+    from echo_personal_tool.presentation.viewer.zoom import ZOOM_MAX, ZOOM_MIN
 
     viewer.zoom_around(10, 10, 1e6)
-    assert viewer.zoom_factor == pytest.approx(_ZOOM_MAX)
+    assert viewer.zoom_factor == pytest.approx(ZOOM_MAX)
     viewer.zoom_around(10, 10, 1e-6)
-    assert viewer.zoom_factor == pytest.approx(_ZOOM_MIN)
+    assert viewer.zoom_factor == pytest.approx(ZOOM_MIN)
 
 
 def test_loupe_click_magnifies_and_shift_click_restores(viewer: ViewerWidget) -> None:

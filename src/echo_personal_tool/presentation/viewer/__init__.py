@@ -31,6 +31,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
 )
 from echo_personal_tool.presentation.viewer.target_boundary import BOUNDARY
 from echo_personal_tool.presentation.viewer.transport import ViewerTransport
+from echo_personal_tool.presentation.viewer.zoom import ViewerZoom
 
 __all__ = [
     # boundary doc
@@ -59,4 +60,5 @@ __all__ = [
     "DopplerViewerPort",
     "ViewerTransport",
     "ViewerDisplay",
+    "ViewerZoom",
 ]

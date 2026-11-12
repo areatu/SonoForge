@@ -157,6 +157,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     TagsOverlayController,
 )
 from echo_personal_tool.presentation.viewer.transport import ViewerTransport
+from echo_personal_tool.presentation.viewer.zoom import ViewerZoom
 from echo_personal_tool.presentation.viewer_contract import ViewerContract
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
@@ -230,11 +231,6 @@ _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
 #: How many colour clips the viewer remembers as colour (sticky per instance).
 _COLOR_INSTANCE_MEMORY = 64
-#: Zoom bounds of a manual zoom (Ctrl+wheel or the loupe click).
-_ZOOM_MIN = 0.1
-_ZOOM_MAX = 20.0
-#: Magnification of one loupe click (Shift+click divides by it).
-_ZOOM_CLICK_STEP = 1.6
 #: Hot spot of the magnifier pointer: the centre of the lens, not its corner.
 _ZOOM_CURSOR_HOTSPOT = (9, 9)
 
@@ -1107,14 +1103,15 @@ class ViewerWidget(QWidget):
         self._armed_next: tuple | None = None
         self._armed_next_origin: tuple[int | None, str | None] = (None, None)
         self._syncing_state = False
-        self._zoom_mode: str = "fit"
-        self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
-        #: The «лупа» tool of the tool row: the cursor becomes a magnifier and a
-        #: click zooms the frame at the clicked point (item 4 of the 2026-10-23
-        #: acceptance list — the old button only cycled fit/100/200 % blindly).
-        self._zoom_loupe_active = False
-        #: Last loupe prompt written into the hint strip (cleared on disarm).
-        self._zoom_loupe_hint = ""
+        #: Viewport mode/factor and the loupe state live in one owner; the
+        #: widget keeps only public delegate methods for callers/tests.
+        self.zoom = ViewerZoom(
+            graphics=self._graphics,
+            view=self._view,
+            frame_provider=lambda: self._current_frame,
+            set_hint=self.set_hint,
+            refresh_cursor=self._apply_viewport_cursor,
+        )
         self._is_color_frame = False
         #: Instances (clips) that showed colour at least once.  A colour Doppler
         #: clip keeps its colour even when a particular frame carries a tiny jet
@@ -1249,7 +1246,6 @@ class ViewerWidget(QWidget):
         self._hint_bar.setFixedHeight(30)
         self._hint_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._hint_bar.hide()
-
         layout.addWidget(self.transport.bar)
         self._graphics.setMouseTracking(True)
         self._graphics.setViewportUpdateMode(
@@ -1472,11 +1468,11 @@ class ViewerWidget(QWidget):
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
             if (
-                self._zoom_loupe_active
+                self.zoom.loupe_active
                 and event.type() == QEvent.Type.MouseButtonPress
                 and event.button() == Qt.MouseButton.LeftButton
                 and hasattr(event, "position")
-                and self._zoom_loupe_click(event)
+                and self.zoom.loupe_click(event)
             ):
                 # The loupe owns the left click while it is armed: a zoom must not
                 # also drop a caliper point on the frame under the pointer.
@@ -2492,60 +2488,22 @@ class ViewerWidget(QWidget):
                 frame_idx = self._current_state.current_frame_index if self._current_state else 0
                 self.mmode_column_ready.emit(col, frame_idx)
         self._update_debug_overlay()
-        self._apply_zoom_mode()
-
-    def _apply_zoom_mode(self) -> None:
-        if self._current_frame is None:
-            return
-        h, w = self._current_frame.shape[:2]
-        if self._zoom_mode == "fit":
-            self._view.setRange(xRange=(0, w), yRange=(0, h), padding=0)
-        elif self._zoom_mode == "100%":
-            dpr = self._graphics.devicePixelRatioF()
-            view_w = self._graphics.viewport().width() / dpr
-            view_h = self._graphics.viewport().height() / dpr
-            cx, cy = w / 2.0, h / 2.0
-            half_w = view_w / 2.0
-            half_h = view_h / 2.0
-            self._view.setRange(
-                xRange=(cx - half_w, cx + half_w),
-                yRange=(cy - half_h, cy + half_h),
-                padding=0,
-            )
-        elif self._zoom_mode == "200%":
-            dpr = self._graphics.devicePixelRatioF()
-            view_w = self._graphics.viewport().width() / dpr
-            view_h = self._graphics.viewport().height() / dpr
-            cx, cy = w / 2.0, h / 2.0
-            half_w = view_w / 4.0
-            half_h = view_h / 4.0
-            self._view.setRange(
-                xRange=(cx - half_w, cx + half_w),
-                yRange=(cy - half_h, cy + half_h),
-                padding=0,
-            )
+        self.zoom.apply_mode()
 
     def cycle_zoom_mode(self) -> None:
-        modes = ["fit", "100%", "200%"]
-        idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
-        self._zoom_mode = modes[(idx + 1) % len(modes)]
-        self._zoom_factor = 1.0
-        self._apply_zoom_mode()
+        self.zoom.cycle_mode()
 
     def set_zoom_mode(self, mode: str) -> None:
-        if mode in ("fit", "100%", "200%"):
-            self._zoom_mode = mode
-            self._zoom_factor = 1.0
-            self._apply_zoom_mode()
+        self.zoom.set_mode(mode)
 
     @property
     def zoom_mode(self) -> str:
-        return self._zoom_mode
+        return self.zoom.mode
 
     @property
     def zoom_factor(self) -> float:
         """Factor of the manual zoom (wheel, loupe); 1.0 in the fit, 100% and 200% modes."""
-        return self._zoom_factor
+        return self.zoom.factor
 
     @_prof
     def show_frame_fast(self, pixels: np.ndarray) -> None:
@@ -2641,7 +2599,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is not None:
             height, width = self._current_frame.shape[:2]
             # Preserve zoom if user has zoomed in (custom or 100%/200%)
-            if self._zoom_mode != "fit" or self._zoom_factor != 1.0:
+            if self.zoom.preserve_range:
                 pass  # keep current view range, don't reset
             else:
                 self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
@@ -3640,7 +3598,7 @@ class ViewerWidget(QWidget):
         viewport = self._graphics.viewport() if self._graphics is not None else None
         if viewport is None:
             return
-        if self._zoom_loupe_active:
+        if self.zoom.loupe_active:
             viewport.setCursor(_magnifier_cursor())
         elif self.mmode.line_active:
             viewport.setCursor(Qt.CursorShape.CrossCursor)
@@ -4584,7 +4542,7 @@ class ViewerWidget(QWidget):
     def cancel_active_tool(self) -> None:
         # A tool switch must not leave the previous tool's prompt in the strip
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
-        if self._zoom_loupe_active:
+        if self.zoom.loupe_active:
             self.set_zoom_loupe_active(False)
         self._armed_next = None
         self.dismiss_label_picker()
@@ -5107,7 +5065,7 @@ class ViewerWidget(QWidget):
         # Ctrl+Scroll → zoom
         modifiers = ev.modifiers() if hasattr(ev, "modifiers") else Qt.KeyboardModifier.NoModifier
         if modifiers & Qt.KeyboardModifier.ControlModifier:
-            return self._handle_ctrl_wheel(ev, delta_y)
+            return self.zoom.handle_ctrl_wheel(ev, delta_y)
 
         # Plain scroll → frame navigation
         if self._current_state.total_frames <= 1:
@@ -5129,108 +5087,18 @@ class ViewerWidget(QWidget):
         self.transport.queue_scroll(new_index)
         return True
 
-    def _handle_ctrl_wheel(self, ev, delta_y: int) -> bool:
-        if self._current_frame is None:
-            return False
-
-        zoom_step = 1.1
-        new_factor = self._zoom_factor * zoom_step if delta_y > 0 else self._zoom_factor / zoom_step
-        if hasattr(ev, "position"):
-            mouse_pos = ev.position()
-            mx, my = mouse_pos.x(), mouse_pos.y()
-        elif hasattr(ev, "pos"):
-            point = ev.pos()
-            mx, my = point.x(), point.y()
-        else:
-            viewport = self._graphics.viewport()
-            mx = viewport.width() / 2.0
-            my = viewport.height() / 2.0
-        if not self.zoom_around(mx, my, new_factor):
-            return False
-        ev.accept()
-        return True
-
     def zoom_around(self, mx: float, my: float, factor: float) -> bool:
-        """Show the frame at *factor*, keeping the scene point under (mx, my) fixed.
-
-        ``mx``/``my`` are viewport coordinates (device-independent pixels).  One
-        implementation for Ctrl+wheel and for the loupe click, so the two can
-        never disagree about where the focus goes.
-        """
-        if self._current_frame is None:
-            return False
-        new_factor = max(_ZOOM_MIN, min(_ZOOM_MAX, float(factor)))
-        if abs(new_factor - self._zoom_factor) < 1e-6:
-            return False
-        scene_pos = self._graphics.mapToScene(QPointF(mx, my).toPoint())
-        data_x = scene_pos.x()
-        data_y = scene_pos.y()
-        self._zoom_factor = new_factor
-        self._zoom_mode = "custom"  # any manual zoom is «custom», not fit/100/200
-        view_w = self._graphics.viewport().width() / self._graphics.devicePixelRatioF()
-        view_h = self._graphics.viewport().height() / self._graphics.devicePixelRatioF()
-        half_w = (view_w / 2.0) / new_factor
-        half_h = (view_h / 2.0) / new_factor
-        ratio_x = mx / view_w if view_w > 0 else 0.5
-        ratio_y = my / view_h if view_h > 0 else 0.5
-        cx = data_x - half_w * (2 * ratio_x - 1)
-        cy = data_y - half_h * (2 * ratio_y - 1)
-        self._view.setRange(
-            xRange=(cx - half_w, cx + half_w),
-            yRange=(cy - half_h, cy + half_h),
-            padding=0,
-        )
-        return True
+        """Show the frame at *factor*, keeping the scene point under (mx, my) fixed."""
+        return self.zoom.zoom_around(mx, my, factor)
 
     # ── «лупа»: click-to-zoom tool of the tool row ───────────────────────
 
     def set_zoom_loupe_active(self, active: bool) -> None:
-        """Arm/disarm the magnifier tool (the row's «Лупа» button).
-
-        Armed, the pointer over the frame is a magnifier and a click zooms the
-        picture at the clicked point: ×1.6 per click, Shift+click zooms out, and
-        ``0`` (or the same button again) returns to «вписать».  The tool stays
-        armed after a click, so a reader can walk over the frame the way a PACS
-        viewer allows; Esc leaves it with every other tool.
-        """
-        self._zoom_loupe_active = bool(active)
-        self._apply_zoom_cursor()
-        if self._zoom_loupe_active:
-            self._zoom_loupe_hint = tr("viewer.zoom_loupe_hint")
-            self.set_hint(self._zoom_loupe_hint)
-        elif self._zoom_loupe_hint:
-            self.set_hint("")
-            self._zoom_loupe_hint = ""
+        """Arm/disarm the magnifier tool (the row's «Лупа» button)."""
+        self.zoom.set_loupe_active(active)
 
     def zoom_loupe_active(self) -> bool:
-        return self._zoom_loupe_active
-
-    def _apply_zoom_cursor(self) -> None:
-        # Shared with the anatomical M-mode scan line: whichever tool is armed
-        # owns the pointer over the 2D cine, and only over the 2D cine.
-        self._apply_viewport_cursor()
-
-    def _zoom_loupe_click(self, event) -> bool:
-        """Apply one loupe click at the pointer position of *event*."""
-        if self._current_frame is None:
-            return False
-        position = event.position()
-        factor = (
-            self._zoom_factor / _ZOOM_CLICK_STEP
-            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier
-            else self._zoom_factor * _ZOOM_CLICK_STEP
-        )
-        if not self.zoom_around(position.x(), position.y(), factor):
-            return False
-        self._zoom_loupe_status()
-        return True
-
-    def _zoom_loupe_status(self) -> None:
-        """Say what the current magnification is, so the click is not a mystery."""
-        if not self._zoom_loupe_active:
-            return
-        self._zoom_loupe_hint = tr("viewer.zoom_loupe_status", percent=int(round(self._zoom_factor * 100)))
-        self.set_hint(self._zoom_loupe_hint)
+        return self.zoom.loupe_active
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
         self.transport.update_timeline_indicator(viewer_state)
@@ -8146,25 +8014,15 @@ class ViewerWidget(QWidget):
             event.accept()
             return
         if event_matches_shortcut(event, "zoom_in", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
-            modes = ["fit", "100%", "200%"]
-            idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
-            self._zoom_mode = modes[min(idx + 1, len(modes) - 1)]
-            self._zoom_factor = 1.0
-            self._apply_zoom_mode()
+            self.zoom.step_mode(1)
             event.accept()
             return
         if event_matches_shortcut(event, "zoom_out", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
-            modes = ["fit", "100%", "200%"]
-            idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
-            self._zoom_mode = modes[max(idx - 1, 0)]
-            self._zoom_factor = 1.0
-            self._apply_zoom_mode()
+            self.zoom.step_mode(-1)
             event.accept()
             return
         if event_matches_shortcut(event, "zoom_fit", exact_modifiers=False, forbidden_modifiers=("Ctrl",)):
-            self._zoom_mode = "fit"
-            self._zoom_factor = 1.0
-            self._apply_zoom_mode()
+            self.zoom.set_mode("fit")
             event.accept()
             return
         if (
