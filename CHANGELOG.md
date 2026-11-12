@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(arch)`: S-03a — состояние загрузки Orthanc перешло к одному Qt-free владельцу `DownloadBatch`; координатор использует публичный seam диалога ([полностью](changelog.d/033-refactor-arch-s03a-download-batch-530.md))
+
 - `refactor(arch)`: A5 — состояние рисования и хранения контуров перешло к одному владельцу `ViewerContours`; клинические расчёты и рендеринг остались у виджета ([полностью](changelog.d/032-refactor-a5-contours-528.md))
 
 - `refactor(arch)`: A4 — окно подписи измерения, overrides и цикл подписей калипера перешли к одному владельцу `ViewerLabelPicker`; клиническое применение подписи осталось у виджета ([полностью](changelog.d/031-refactor-a4-label-picker-526.md))

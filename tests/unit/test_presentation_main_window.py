@@ -1572,7 +1572,7 @@ class TestLastSessionSource:
         monkeypatch.setattr(
             "echo_personal_tool.presentation.theme.dialog_outline.ensure_dialog_outline", lambda *a: None
         )
-        dialog._background_requested = False
+        dialog.batch_snapshot.return_value.background_requested = False
         dialog.open.side_effect = lambda: dialog.finished.connect.call_args.args[0](0)
         opened: list = []
         monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))

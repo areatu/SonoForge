@@ -58,6 +58,7 @@ from echo_personal_tool.application.dicom_io import (
     read_series_instance_uid,
     read_sop_instance_uid,
 )
+from echo_personal_tool.application.download_batch import DownloadBatch, DownloadBatchAttribute, DownloadBatchSnapshot
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.profile_settings import SettingsStore, settings_store_for
 from echo_personal_tool.application.server_io import (
@@ -469,6 +470,19 @@ def _known_series_uids(series_cache: dict[str, list[SeriesInfo]], study_uid: str
 class OrthancStudyDialog(QDialog):
     """Browse studies with a master–detail layout and download the selection."""
 
+    # Batch state lives in exactly one owner (application/download_batch.py).
+    # These aliases keep the historic field spelling used by tests and a few
+    # UI call sites without creating a second copy of the state.
+    _downloading = DownloadBatchAttribute("active")
+    _background_requested = DownloadBatchAttribute("background_requested")
+    _pending_downloads = DownloadBatchAttribute("queue")
+    _completed_downloads = DownloadBatchAttribute("completed")
+    _failed_downloads = DownloadBatchAttribute("failed")
+    _total_studies = DownloadBatchAttribute("total")
+    _partial_download_warnings = DownloadBatchAttribute("warnings")
+    _downloaded_studies = DownloadBatchAttribute("downloaded_studies")
+    _result = DownloadBatchAttribute("result")
+
     def __init__(
         self,
         client: DicomWebClient,
@@ -507,9 +521,7 @@ class OrthancStudyDialog(QDialog):
         # and is responsible for closing it.  The dialog only closes a client
         # it created itself via the fallback retrieve-service path.
         self._owns_client = query_service is None and retrieve_service is None
-        self._result: tuple[str, str] | None = None
-        self._downloading = False
-        self._background_requested = False
+        self.download_batch = DownloadBatch()
         # Typed loosely on purpose: during the download phase this is an
         # ``OrthancDownloadWorker``, and while the export writes files it is a
         # ``DicomDeidentifyWorker``.  Both expose ``cancel()``.
@@ -517,12 +529,6 @@ class OrthancStudyDialog(QDialog):
         self._session_id: str | None = None
         self._client_closed = False
         self._close_pending = False
-        self._pending_downloads: list[tuple[str, list[str]]] = []
-        self._completed_downloads = 0
-        self._failed_downloads = 0
-        self._total_studies = 0
-        self._partial_download_warnings: list[str] = []
-        self._downloaded_studies: list[StudyMetadata] = []
         self._force_close_timer = QTimer(self)
         self._force_close_timer.setSingleShot(True)
         self._force_close_timer.timeout.connect(self._force_close_if_still_downloading)
@@ -1128,15 +1134,19 @@ class OrthancStudyDialog(QDialog):
 
     def result_data(self) -> tuple[str, str] | None:
         """Return (session_id, study_uid) after successful download, else None."""
-        return self._result
+        return self.download_batch.result
 
     def downloaded_studies(self) -> list[StudyMetadata]:
         """Return pre-scanned StudyMetadata from download worker (P4)."""
-        return self._downloaded_studies
+        return self.download_batch.downloaded_studies
 
     def completed_disk_download_path(self) -> Path | None:
         """Return the exported folder to open after a successful disk download."""
         return self._completed_disk_download_path
+
+    def batch_snapshot(self) -> DownloadBatchSnapshot:
+        """Public read-only view of the batch for the download coordinator."""
+        return self.download_batch.snapshot()
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]  # mypy does not check this file (outside tool.mypy.files)
         log.info("[DLG] closeEvent: downloading=%s", self._downloading)
@@ -2326,7 +2336,7 @@ class OrthancStudyDialog(QDialog):
         """
         if not self._downloading:
             return
-        self._background_requested = True
+        self.download_batch.request_background()
         self._background_btn.hide()
         self.hide()
         self.setWindowModality(Qt.WindowModality.NonModal)
@@ -2343,13 +2353,11 @@ class OrthancStudyDialog(QDialog):
 
         session_id = self._cache.create_session()
         self._session_id = session_id
-        self._downloading = True
-        self._close_pending = False
-        self._background_btn.setVisible(True)
         # A fresh download batch must not inherit StudyMetadata from a previous
         # (possibly partially failed) batch whose session files were removed.
-        self._downloaded_studies = []
-        self._result = None
+        self.download_batch.start(all_series)
+        self._close_pending = False
+        self._background_btn.setVisible(True)
         set_button_loading(self._load_btn, True, "…")
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
@@ -2361,11 +2369,6 @@ class OrthancStudyDialog(QDialog):
         self._progress.show()
         self._set_status(tr("orthanc.preparing"))
 
-        self._partial_download_warnings = []
-        self._pending_downloads = list(all_series)
-        self._completed_downloads = 0
-        self._failed_downloads = 0
-        self._total_studies = len(all_series)
         self._study_states.clear()
         self._start_next_download()
 
@@ -2395,10 +2398,8 @@ class OrthancStudyDialog(QDialog):
         # Start download to disk
         session_id = self._cache.create_session()
         self._session_id = session_id
-        self._downloading = True
+        self.download_batch.start(all_series)
         self._close_pending = False
-        self._downloaded_studies = []
-        self._result = None
         self._save_to_disk_path = directory
         self._completed_disk_download_path = None
         set_button_loading(self._save_disk_btn, True, "…")
@@ -2412,11 +2413,6 @@ class OrthancStudyDialog(QDialog):
         self._progress.show()
         self._set_status(tr("orthanc.saving_to_disk", path=directory))
 
-        self._partial_download_warnings = []
-        self._pending_downloads = list(all_series)
-        self._completed_downloads = 0
-        self._failed_downloads = 0
-        self._total_studies = len(all_series)
         self._study_states.clear()
         self._start_next_download_to_disk()
 
@@ -2442,11 +2438,11 @@ class OrthancStudyDialog(QDialog):
             self._completed_downloads,
             self._total_studies,
         )
-        if not self._pending_downloads:
+        if not self.download_batch.queue:
             if self._session_id is None:
                 return
-            if self._failed_downloads > 0:
-                if self._completed_downloads > self._failed_downloads:
+            if self.download_batch.failed > 0:
+                if self.download_batch.saved > 0:
                     # Some studies succeeded: keep them (do not wipe the whole
                     # session) and let the user open the successful ones.
                     self._on_partial_done()
@@ -2454,11 +2450,10 @@ class OrthancStudyDialog(QDialog):
                     # Nothing succeeded — discard the session and report.
                     self._on_failed("", tr("orthanc.partial_failed"))
             else:
-                first_study = self._downloaded_studies[0].study_uid if self._downloaded_studies else ""
-                self._on_done(self._session_id, first_study)
+                self._on_done(self._session_id, self.download_batch.first_study_uid)
             return
 
-        study_uid, series_uids = self._pending_downloads.pop(0)
+        study_uid, series_uids = self.download_batch.next_item()
         self._set_status(
             tr("orthanc.loading_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
@@ -2483,18 +2478,18 @@ class OrthancStudyDialog(QDialog):
             self._completed_downloads,
             self._total_studies,
         )
-        if not self._pending_downloads:
+        if not self.download_batch.queue:
             if self._session_id is None:
                 return
-            if self._completed_downloads > self._failed_downloads:
+            if self.download_batch.saved > 0:
                 # Copy whatever was downloaded successfully — a partial batch
                 # must not silently discard the studies that did succeed.
-                self._on_disk_download_done(partial=self._failed_downloads > 0)
+                self._on_disk_download_done(partial=self.download_batch.failed > 0)
             else:
                 self._on_failed("", tr("orthanc.partial_failed"))
             return
 
-        study_uid, series_uids = self._pending_downloads.pop(0)
+        study_uid, series_uids = self.download_batch.next_item()
         self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
@@ -2540,7 +2535,7 @@ class OrthancStudyDialog(QDialog):
             return
         if not self._downloading:
             return
-        self._downloading = False
+        self.download_batch.finish()
         self._worker = None
         if self._session_id is not None:
             self._cache.clear_session(self._session_id)
@@ -2579,12 +2574,12 @@ class OrthancStudyDialog(QDialog):
         for s in studies:
             total_inst = sum(len(sr.instances) for sr in s.series)
             log.info("[DLG]   study_uid=%s series=%d instances=%d", s.study_uid[:16], len(s.series), total_inst)
-        self._downloaded_studies.extend(studies)
+        self.download_batch.add_studies(studies)
 
     def _reset_after_download(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
-        self._downloading = False
+        self.download_batch.finish()
         self._background_btn.hide()
         self._worker = None
         self._force_close_timer.stop()
@@ -2603,7 +2598,7 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         log.info("[DLG] _on_single_study_done: uid=%s", study_uid[:16])
-        self._completed_downloads += 1
+        self.download_batch.record_completed()
         self._set_study_state(study_uid, tr("orthanc.state_done"), "success")
         self._set_status(tr("orthanc.series_done", current=self._completed_downloads, total=self._total_studies))
         self._start_next_download()
@@ -2613,7 +2608,7 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         log.info("[DLG] _on_single_study_done_to_disk: uid=%s", study_uid[:16])
-        self._completed_downloads += 1
+        self.download_batch.record_completed()
         self._set_study_state(study_uid, tr("orthanc.state_done"), "success")
         self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads, total=self._total_studies)
@@ -2767,7 +2762,7 @@ class OrthancStudyDialog(QDialog):
             self.accept()
             return
         partial = bool(getattr(self, "_partial_export", False))
-        partial_warning = self._partial_instance_warning_text()
+        partial_warning = self._clip(self.download_batch.warning_text(), _DIALOG_TEXT_LIMIT)
         if failed or unverified or partial or partial_warning:
             messages: list[str] = []
             if failed:
@@ -2775,13 +2770,12 @@ class OrthancStudyDialog(QDialog):
             if unverified:
                 messages.append(tr("orthanc.disk_export_unverified", count=str(unverified)))
             if partial:
-                saved = self._completed_downloads - self._failed_downloads
                 messages.append(
                     tr(
                         "orthanc.disk_download_partial",
                         path=self._save_to_disk_path,
-                        saved=str(saved),
-                        total=str(self._total_studies),
+                        saved=str(self.download_batch.saved),
+                        total=str(self.download_batch.total),
                     )
                 )
             if partial_warning:
@@ -2916,17 +2910,13 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         log.warning("[DLG] partial instance download: study=%s message=%s", study_uid[:16], message)
-        self._partial_download_warnings.append(self._clip(message, _DIALOG_TEXT_LIMIT))
-
-    def _partial_instance_warning_text(self) -> str:
-        return self._clip("\n".join(self._partial_download_warnings), _DIALOG_TEXT_LIMIT)
+        self.download_batch.add_warning(self._clip(message, _DIALOG_TEXT_LIMIT))
 
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():
             return
         log_boundary_event(log, "orthanc.download", "io", "OSError", level=logging.WARNING)
-        self._completed_downloads += 1
-        self._failed_downloads += 1
+        self.download_batch.record_failed()
         self._set_study_state(_uid, tr("orthanc.state_failed"), "error")
         self._set_status(
             tr(
@@ -2946,27 +2936,26 @@ class OrthancStudyDialog(QDialog):
         """
         if not self._is_alive():
             return
-        saved = self._completed_downloads - self._failed_downloads
+        saved = self.download_batch.saved
         log.warning(
             "[DLG] _on_partial_done: saved=%d failed=%d total=%d",
             saved,
-            self._failed_downloads,
-            self._total_studies,
+            self.download_batch.failed,
+            self.download_batch.total,
         )
         self._reset_after_download()
         if self._session_id is None:
             return
         session_id = self._session_id
         self._session_id = None
-        first_study = self._downloaded_studies[0].study_uid if self._downloaded_studies else ""
-        self._result = (session_id, first_study)
+        self.download_batch.set_result(session_id, self.download_batch.first_study_uid)
         self._progress.setValue(self._progress.maximum())
         message = tr(
             "orthanc.partial_done",
             saved=str(saved),
             total=str(self._total_studies),
         )
-        details = self._partial_instance_warning_text()
+        details = self._clip(self.download_batch.warning_text(), _DIALOG_TEXT_LIMIT)
         if details:
             message = f"{message}\n{details}"
         message = self._clip(message, _DIALOG_TEXT_LIMIT)
@@ -2988,9 +2977,9 @@ class OrthancStudyDialog(QDialog):
         )
         self._reset_after_download()
         self._session_id = None
-        self._result = (session_id, study_uid)
+        self.download_batch.set_result(session_id, study_uid)
         self._progress.setValue(self._progress.maximum())
-        partial_warning = self._partial_instance_warning_text()
+        partial_warning = self._clip(self.download_batch.warning_text(), _DIALOG_TEXT_LIMIT)
         if partial_warning:
             self._set_status(partial_warning)
             QMessageBox.warning(
@@ -3007,13 +2996,13 @@ class OrthancStudyDialog(QDialog):
             return
         log_boundary_event(log, "orthanc.download", "io", "OSError", level=logging.WARNING)
         self._reset_after_download()
-        if self._pending_downloads and self._session_id is not None:
+        if self.download_batch.queue and self._session_id is not None:
             self._start_next_download()
             return
         if self._session_id is not None:
             self._cache.clear_session(self._session_id)
             self._session_id = None
-        self._downloaded_studies = []
+        self.download_batch.clear_studies()
         self._progress.hide()
         self._set_lists_enabled(True)
         self._cancel_btn.setText(tr("orthanc.cancel"))
