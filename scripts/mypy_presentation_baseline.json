@@ -2,8 +2,8 @@
   "comment": "Ratcheted ceiling of mypy --strict errors in presentation modules not yet in [tool.mypy].files (#476). Counts may only decrease; modules reaching 0 errors (with clean presentation imports) graduate to [tool.mypy].files via --fix.",
   "origin_issue": 476,
   "python_version": "3.11",
-  "total_files": 68,
-  "total_errors": 814,
+  "total_files": 67,
+  "total_errors": 813,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -46,9 +46,6 @@
     },
     "src/echo_personal_tool/presentation/focus_widgets.py": {
       "union-attr": 1
-    },
-    "src/echo_personal_tool/presentation/label_picker.py": {
-      "assignment": 1
     },
     "src/echo_personal_tool/presentation/magnifier_lens.py": {
       "call-overload": 1

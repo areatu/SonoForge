@@ -75,9 +75,10 @@
 
 - `ViewerWidget`: 7 313 → 7 268 строк, 407 → 406 методов, 169 → 163 поля; модуль `viewer_widget.py` 8 203 → 8 159 строк.
 - Новый `presentation/viewer/label_picker_owner.py` — 207 строк, порог модуля в 2 000 строк не затрагивает.
-- `mypy presentation`: 818 → 814 exact, 79/159 strict-модулей; полный `mypy --no-incremental` по пинам `uv.lock` — 394 файла, 0 ошибок.
-- `class_size_baseline.json` понижен точечно для `ViewerWidget`; mypy-базлайн — 814 и `no-untyped-call` 17 → 13.
-- Все ratchet-скрипты зелёные: function-length 200, id-references 641, private-access 0, doc-links 262, test-signal 10 011 тестов, type-ignores 53, ui-colors 188, untranslated 0, broad-excepts 280.
+- `mypy presentation`: 818 → 813 exact, 80/159 strict-модулей; полный `mypy --no-incremental` по пинам `uv.lock` — 395 файлов, 0 ошибок.
+- Импорт каталога из нового владельца вскрыл давнюю ошибку `label_picker.py` (`option` выводился как `LabelOption`, а `_option_from_spec()` возвращает `LabelOption | None`). Присваивание переименовано в `candidate`; модуль стал чистым и переведён в strict-список `[tool.mypy].files`.
+- `class_size_baseline.json` понижен точечно для `ViewerWidget`; `function_length_baseline.json` — `ViewerWidget.__init__` 335 → 323; mypy-базлайн — 813, `total_files` 67, `no-untyped-call` 17 → 13.
+- Все ratchet-скрипты зелёные: function-length 200, id-references 641, private-access 0, doc-links 264, test-signal 10 011 тестов, type-ignores 53, ui-colors 188, untranslated 0, broad-excepts 280.
 
 ## 6. Что не проверено
 

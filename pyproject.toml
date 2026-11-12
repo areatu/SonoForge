@@ -209,6 +209,7 @@ files = [
     "src/echo_personal_tool/presentation/ge_labeled_slider.py",
     "src/echo_personal_tool/presentation/help_dialog.py",
     "src/echo_personal_tool/presentation/icon_loader.py",
+    "src/echo_personal_tool/presentation/label_picker.py",
     "src/echo_personal_tool/presentation/layout/__init__.py",
     "src/echo_personal_tool/presentation/layout/layout_settings.py",
     "src/echo_personal_tool/presentation/layout/presets.py",
