@@ -158,8 +158,10 @@ from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWi
 from echo_personal_tool.presentation.tool_buttons import buttons as tool_buttons
 from echo_personal_tool.presentation.tool_buttons.rail import ToolButtonRail
 from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
+from echo_personal_tool.presentation.tool_context import sync_tool_panel_context
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
+from echo_personal_tool.presentation.viewer.compare_tools import start_hint
 from echo_personal_tool.presentation.viewer_column import ViewerColumn
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 from echo_personal_tool.presentation.window_chrome import (
@@ -4405,6 +4407,12 @@ class MainWindow(QMainWindow):
             self._controller.request_la_assist_for_manual,
             self._controller.la_assist_contour_ready,
         )
+        # A manual Doppler calibration (and the wizard ROI that precedes it)
+        # makes the calibrated zone a Doppler context even when the file is
+        # tagged as B-mode — common on Samsung — so the panel must offer the
+        # Doppler tools right away, not on the next study-state change.
+        self._viewer.doppler_calibration_changed.connect(lambda *_: self._sync_tool_panel_context())
+        self._viewer.spectral_calibration_completed.connect(lambda *_: self._sync_tool_panel_context())
 
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
@@ -5231,18 +5239,8 @@ class MainWindow(QMainWindow):
     def _sync_tool_panel_context(self) -> None:
         """Tell the 2.0 panel which viewer context it is in (§4.2)."""
         panel = getattr(self, "_tool_panel", None)
-        if panel is None or not getattr(panel, "is_v2", False):
-            return
-        if self._mmode_active:
-            panel.set_view_context("m", defer=True)
-            return
-        context = "doppler" if self._viewer.doppler.is_context() else "2d"
-        mode = ""
-        if context == "doppler":
-            resolved = self._viewer.doppler.resolved_mode
-            if callable(resolved):
-                mode = resolved()
-        panel.set_view_context(context, mode, defer=True)
+        if panel is not None:
+            sync_tool_panel_context(panel, mmode_active=self._mmode_active, doppler=self._viewer.doppler)
 
     # ── Radial menu (TP-6, spec §4.4) ──────────────────────────────
 
@@ -5430,6 +5428,8 @@ class MainWindow(QMainWindow):
             MeasurementAction.TEICHHOLZ_ED: self._on_teichholz_ed_from_menu,
             MeasurementAction.TEICHHOLZ_ES: self._on_teichholz_es_from_menu,
             MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
+            MeasurementAction.AR_JET_DIAMETER_COMPARE: (lambda: self._on_diameter_compare_requested("ar_jet_diameter")),
+            MeasurementAction.AR_JET_AREA_COMPARE: lambda: self._on_area_compare_requested("ar_jet_area"),
             MeasurementAction.HEART_RATE: self._on_heart_rate_requested,
         }
         if action == MeasurementAction.CALIPER:
@@ -5643,14 +5643,14 @@ class MainWindow(QMainWindow):
         """Start LVIDs caliper on the current M-mode frame (no anatomic M-mode panel)."""
         self._start_mmode_frame_sequence_or_calibrate(("LVESD",), ed=False)
 
-    def _on_diameter_compare_requested(self) -> None:
-        if self._viewer.start_diameter_compare():
-            self._show_status(tr("viewer.dcmp_click_start"))
+    def _on_diameter_compare_requested(self, kind: str = "diameter") -> None:
+        if self._viewer.start_diameter_compare(kind=kind):
+            self._show_status(tr(start_hint(kind)))
         else:
             self._show_status("Load a frame first")
 
-    def _on_area_compare_requested(self) -> None:
-        self._viewer.start_area_compare()
+    def _on_area_compare_requested(self, kind: str = "area") -> None:
+        self._viewer.start_area_compare(kind=kind)
 
     @_prof
     def _on_reset_measurements_requested(self) -> None:
@@ -6298,7 +6298,7 @@ class MainWindow(QMainWindow):
             return
         extra_lines: tuple[str, ...] = ()
         if chamber in {"AREA", "VOL"}:
-            if self._viewer._comparison_state.kind == "area":
+            if self._viewer._comparison_state.kind in {"area", "ar_jet_area"}:
                 self._viewer._handle_area_compare_contour(contour)
                 self._sync_results_overlay(self._controller.state_manager.snapshot)
                 return

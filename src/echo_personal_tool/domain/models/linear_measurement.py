@@ -20,6 +20,15 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "LVPWD": "result.lvpwd",
     "LVESD": "result.lvesd",
     "LVOTd": "menu.lvotd",
+    "MR VC": "menu.mr_vc",
+    "AR VC": "menu.ar_vc",
+    "PR VC": "menu.pr_vc",
+    "TR VC": "menu.tr_vc",
+    "AR Jet D1": "measure.ar_jet_d1",
+    "AR Jet S1": "measure.ar_jet_s1",
+    "LVOT S": "measure.lvot_s",
+    "AR Jet %D": "measure.ar_jet_d_ratio",
+    "AR Jet %S": "measure.ar_jet_s_ratio",
     "LA": "menu.la_lavir",
     "%D": "result.percent_d",
     "%S": "result.percent_s",
@@ -86,7 +95,10 @@ _LABEL_I18N_KEY: dict[str, str] = {
 #: The comparison tools store a ratio under ``%D``/``%S``; the vessel stenosis
 #: tools store a stenosis degree under ``%D стеноз``/``%S стеноз``. All four are
 #: percentages and must never be formatted as a length.
-PERCENT_LABELS = frozenset({"%D", "%S", "%D стеноз", "%S стеноз"})
+PERCENT_LABELS = frozenset({"%D", "%S", "%D стеноз", "%S стеноз", "AR Jet %D", "AR Jet %S"})
+
+#: Labels under which the area comparison tools store a planimeter area (cm²).
+AREA_LABELS = frozenset({"S1", "S2", "AR Jet S1", "LVOT S"})
 
 
 @dataclass(frozen=True)
@@ -160,7 +172,7 @@ class LinearMeasurement:
         if self.label in PERCENT_LABELS:
             pct_text = format_measurement("caliper.stenosis_pct", self.millimeter_length, "%")
             return f"{display_label}: {pct_text}%"
-        if self.label in ("S1", "S2"):
+        if self.label in AREA_LABELS:
             area_text = format_measurement("caliper.area", self.millimeter_length, "cm²")
             return f"{display_label}: {area_text} cm²"
         measurement_id = measurement_for_caliper(self.label)
@@ -207,6 +219,8 @@ def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "m
     if measurement.millimeter_length is None:
         px_text = format_measurement("caliper.pixel", measurement.pixel_length, "px")
         return f"{measurement.label} {px_text} px"
+    if measurement.label in AREA_LABELS:
+        return f"{measurement.label} {format_measurement('caliper.area', measurement.millimeter_length, 'cm²')} cm²"
     measurement_id = measurement_for_caliper(measurement.label)
     return (
         f"{measurement.label} "

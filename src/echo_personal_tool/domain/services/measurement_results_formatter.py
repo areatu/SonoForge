@@ -22,6 +22,7 @@ from echo_personal_tool.domain.measurement_catalog import (
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     _LABEL_I18N_KEY,
+    AREA_LABELS,
     PERCENT_LABELS,
 )
 from echo_personal_tool.domain.models.measurements import (
@@ -463,7 +464,7 @@ def _build_custom_rows(
             )
             continue
 
-        if measurement.label in ("S1", "S2"):
+        if measurement.label in AREA_LABELS:
             rows.append(
                 OverlayRow(
                     label=display_label,

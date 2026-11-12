@@ -8,6 +8,7 @@ import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+from echo_personal_tool.domain.models.frame_panels import FramePanelLayout
 from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController, DopplerViewerPort
 
 
@@ -24,6 +25,8 @@ class FakeSignals(QObject):
 class FakeDopplerViewer:
     def __init__(self, frame: np.ndarray | None = None) -> None:
         self.frame = frame
+        self.panels: FramePanelLayout | None = None
+        self.vendor_panels: FramePanelLayout | None = None
         self.uid: str | None = "instance"
         self.frame_index: int | None = 3
         self.syncing = False
@@ -70,7 +73,8 @@ class FakeDopplerViewer:
             instance_uid=lambda: self.uid,
             frame_index=lambda: self.frame_index,
             contour_frame_index=lambda: self.frame_index,
-            resolve_panels=lambda: None,
+            resolve_panels=lambda: self.panels,
+            vendor_panels=lambda: self.vendor_panels,
             dicom_doppler_panel=lambda: None,
             syncing=lambda: self.syncing,
             calibration_active=lambda: self.active,
