@@ -20,7 +20,7 @@ worse than the reload.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore, HeartRateCandidate
@@ -30,6 +30,7 @@ from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementSessionStore,
 )
 from echo_personal_tool.domain.calculators.models import SOURCE_ESTIMATE
+from echo_personal_tool.domain.models.ste_analysis import StrainStudy
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,12 @@ class TabClinicalMemory:
     #: Cine heart-rate estimates are session-only (not part of the persisted
     #: record), so losing them on a switch silently changed cardiac output.
     heart_rates: dict[str, HeartRateCandidate] = field(default_factory=dict)
+    #: Playback FPS retiming per SOP Instance UID: the transport label and the
+    #: playback interval follow the tab, not the whole session.
+    frame_time_overrides: dict[str, float] = field(default_factory=dict)
+    #: Analysed strain views. The DTO keeps the reportable subset; the window's
+    #: curves and segments are RAM-only, so the tab parks them alongside it.
+    strain_studies: dict[str, StrainStudy] = field(default_factory=dict)
 
     @classmethod
     def capture(
@@ -50,6 +57,8 @@ class TabClinicalMemory:
         session: StudyMeasurementSessionStore,
         calculator_inputs: CalculatorInputStore,
         study_uids: Iterable[str],
+        frame_time_overrides: Mapping[str, float] | None = None,
+        strain_studies: Mapping[str, StrainStudy] | None = None,
     ) -> TabClinicalMemory:
         """Snapshot the stores for *study_uids*; unknown studies stay absent."""
         uids = tuple(dict.fromkeys(study_uids))
@@ -63,6 +72,8 @@ class TabClinicalMemory:
             studies={uid: session.snapshot(uid) for uid in uids if uid in session},
             manual_inputs=manual_inputs,
             heart_rates=heart_rates,
+            frame_time_overrides=dict(frame_time_overrides or {}),
+            strain_studies={uid: strain_studies[uid] for uid in uids if strain_studies and uid in strain_studies},
         )
 
     def restore_into(
@@ -89,7 +100,9 @@ class TabClinicalMemory:
         return any(data.has_measurements for data in self.studies.values())
 
     def __bool__(self) -> bool:
-        return bool(self.studies or self.manual_inputs or self.heart_rates)
+        return bool(
+            self.studies or self.manual_inputs or self.heart_rates or self.frame_time_overrides or self.strain_studies
+        )
 
 
 def adopt_loaded_bsa(

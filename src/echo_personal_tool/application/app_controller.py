@@ -503,8 +503,7 @@ class AppController(QObject):
         self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
         self._studies = studies
-        count = len(self._studies)
-        self.status_message.emit(tr_plural("status.studies_loaded", count))
+        self.status_message.emit(tr_plural("status.studies_loaded", len(studies)))
         self._restore_measurement_studies(clinical_memory)
         return True
 
@@ -513,7 +512,11 @@ class AppController(QObject):
         if self.measurement_persistence.enabled:
             return None
         return TabClinicalMemory.capture(
-            self._measurement_session, self._calculator_inputs, (study.study_uid for study in self._studies)
+            self._measurement_session,
+            self._calculator_inputs,
+            (study.study_uid for study in self._studies),
+            dict(self._frame_time_overrides),
+            self._strain_studies,
         )
 
     def _begin_study_switch(self) -> None:
@@ -524,6 +527,7 @@ class AppController(QObject):
         self._state_manager.set_playing(False)
         self._clear_fusion_state()
         self._strain_studies.clear()
+        self._frame_time_overrides.clear()
         self._calculator_inputs.clear()
         if self.measurement_persistence.enabled:
             self.persistence_status.emit("loading")
@@ -532,6 +536,8 @@ class AppController(QObject):
         self._measurement_session.clear()
         if clinical_memory is not None and not self.measurement_persistence.enabled:
             clinical_memory.restore_into(self._measurement_session, self._calculator_inputs)
+            self._frame_time_overrides = dict(clinical_memory.frame_time_overrides)
+            self._strain_studies = dict(clinical_memory.strain_studies)
         generation = self._study_load_generation
         studies = list(self._studies)
 
@@ -1104,13 +1110,7 @@ class AppController(QObject):
         return self._frame_time_overrides.get(instance.sop_instance_uid) or instance.frame_time_ms
 
     def set_frame_time_override(self, frame_time_ms: float | None) -> None:
-        """Set — or with ``None``/≤0 clear — the playback FPS of the current clip.
-
-        Session-scoped per SOP Instance UID: the value survives clip
-        re-selection and tab switches, and only the playback interval and the
-        transport's FPS label move — the state instance, the playhead, the
-        contours and the decoded frames are untouched.
-        """
+        """Set — or clear with ``None``/≤0 — the playback FPS of the clip; parked with the tab."""
         instance = self._state_manager.snapshot.instance
         if instance is None:
             return
@@ -4500,12 +4500,10 @@ class AppController(QObject):
     def _record_strain_result(self, result: StrainResult) -> None:
         """Accumulate the analysed views of the study and publish the protocol row.
 
-        The strain window keeps its own :class:`StrainStudy` for the screen, but
-        the protocol must not read numbers off a widget: the study is rebuilt
-        here from the same :class:`StrainResult` objects with the same
-        conversion (:meth:`StrainAnalysis.from_result`), so the report and the
-        window always agree (plan §5.3 п.6). One study accumulates up to three
-        apical views; re-running a view replaces it.
+        The study is rebuilt here from the same :class:`StrainResult` objects and
+        conversion (:meth:`StrainAnalysis.from_result`) the window uses, so the
+        report and the window always agree (plan §5.3 п.6); up to three apical
+        views accumulate and re-running a view replaces it.
         """
         study_uid = self._resolve_study_uid()
         study = self._strain_studies.get(study_uid, StrainStudy())

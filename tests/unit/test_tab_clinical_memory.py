@@ -13,6 +13,7 @@ from echo_personal_tool.application.calculator_inputs import CalculatorInputStor
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
 from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory, adopt_loaded_bsa
 from echo_personal_tool.domain.models.contour import Contour
+from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 
 
 def _contour() -> Contour:
@@ -40,6 +41,26 @@ def test_capture_keeps_only_open_studies_and_survives_the_live_store() -> None:
     session.clear()
     calculator.clear()
     assert memory.studies["a.study"].contours, "the snapshot is a deep copy, not a live view"
+
+
+def test_capture_keeps_the_playback_overrides_and_strain_analyses_of_the_tab() -> None:
+    session, calculator = _stores()
+    analysis = StrainAnalysis(view="A4C", gls=-18.5)
+    overrides = {"a.0": 40.0, "b.0": 50.0}
+
+    memory = TabClinicalMemory.capture(
+        session,
+        calculator,
+        ["a.study"],
+        overrides,
+        {"a.study": StrainStudy(analyses={"A4C": analysis}), "b.study": StrainStudy()},
+    )
+
+    assert memory.frame_time_overrides == overrides
+    assert set(memory.strain_studies) == {"a.study"}, "only the tab's own studies are parked"
+    overrides["a.0"] = 10.0
+    assert memory.frame_time_overrides["a.0"] == 40.0, "the snapshot is a copy, not a live view"
+    assert memory
 
 
 def test_restore_makes_the_parked_values_live_again() -> None:
