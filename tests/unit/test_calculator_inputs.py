@@ -60,6 +60,20 @@ def test_lvot_diameter_is_mean_of_last_three_calipers_in_cm() -> None:
     assert source_text(item) == "измерение, среднее (n=3)"
 
 
+def test_regurgitation_vc_and_ar_comparison_results_resolve_into_calculator() -> None:
+    measurements = [
+        LinearMeasurement(label="MR VC", pixel_length=10.0, millimeter_length=10.0),
+        LinearMeasurement(label="AR VC", pixel_length=4.0, millimeter_length=4.0),
+        LinearMeasurement(label="AR Jet %S", pixel_length=0.0, millimeter_length=4.0),
+        LinearMeasurement(label="AR Jet %D", pixel_length=0.0, millimeter_length=8.0),
+    ]
+    inputs = resolve_study_inputs(doppler=None, linear_measurements=measurements)
+    assert inputs["mr_vc_mm"].value == pytest.approx(10.0)
+    assert inputs["ar_vc_mm"].value == pytest.approx(4.0)
+    assert inputs["ar_jet_area_ratio_pct"].value == pytest.approx(4.0)
+    assert inputs["ar_jet_diameter_ratio_pct"].value == pytest.approx(8.0)
+
+
 def test_lvot_diameter_ignores_uncalibrated_doppler_and_other_labels() -> None:
     measurements = [
         LinearMeasurement(label="LVOTd", pixel_length=40.0, millimeter_length=None),

@@ -97,6 +97,31 @@ class FramePanelLayout:
     def doppler(self) -> UltrasoundPanel | None:
         return self.first_of_kind(PanelKind.DOPPLER)
 
+    def with_doppler_zone(self, bounds: DopplerSpectrogramRoi) -> FramePanelLayout:
+        """A copy where *bounds* is the Doppler panel.
+
+        A spectral zone the user calibrated beats the vendor tags: Samsung writes
+        the B-mode region into many Doppler stills, and the tag must not turn the
+        calibrated spectrum back into B-mode geometry.  The zone goes first, so
+        :meth:`panel_at` prefers it over a B-mode panel that covers the frame.
+        """
+        zone = UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=bounds)
+        others = tuple(panel for panel in self.panels if panel.kind is not PanelKind.DOPPLER)
+        return FramePanelLayout((zone, *others))
+
+    def b_mode_panel_at(self, x: float, y: float) -> UltrasoundPanel | None:
+        """B-mode panel under the point — ``None`` where a Doppler zone covers it.
+
+        Composite frames keep a B-mode panel beside the spectrum, so the B-mode
+        geometry is still used next to the Doppler zone, never inside it.
+        """
+        for panel in self.panels:
+            if panel.kind is PanelKind.DOPPLER and panel.contains(x, y):
+                return None
+            if panel.kind is PanelKind.B_MODE and panel.contains(x, y):
+                return panel
+        return None
+
 
 @dataclass(frozen=True)
 class MmodeCalibrationState:

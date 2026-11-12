@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.calculator_inputs import evaluate_standalone
 from echo_personal_tool.application.localization import get_language, tr
+from echo_personal_tool.domain.calculations.regurgitation_grade import parameter_grade
 from echo_personal_tool.domain.calculators import (
     CALCULATORS,
     CalculationsSnapshot,
@@ -73,6 +74,14 @@ _SOURCE_TOKENS = {
 }
 _DEFAULT_SOURCE_TOKEN = "provenance.default"
 _WARNING_TOKEN = "provenance.warning"
+
+
+#: Mild / moderate / severe row tint for the MR and AR cards — theme roles, so
+#: the colours follow the active theme instead of a hard-coded palette.
+_GRADE_COLOR_TOKENS = {1: "state.ok", 2: "state.warn", 3: "state.err"}
+_GRADE_NAME_KEYS = {1: "calc.grade.mild", 2: "calc.grade.moderate", 3: "calc.grade.severe"}
+#: Outputs whose value *is* the integrated grade (shown as a word, not a number).
+_INTEGRATED_GRADE_OUTPUTS = frozenset({"grade_mr", "grade_ar"})
 
 
 def parse_number(text: str) -> float | None:
@@ -232,6 +241,7 @@ class _CalculatorCard:
         grid.setVerticalSpacing(2)
         outer.addLayout(grid)
         self.rows: dict[str, tuple[QLabel, QLabel, QLabel]] = {}
+        self._grade_colors: dict[str, str] = {}
         for row, output in enumerate(spec.outputs):
             name = QLabel()
             name.setTextFormat(Qt.TextFormat.RichText)
@@ -324,13 +334,25 @@ class _CalculatorCard:
         for output in self.spec.outputs:
             _name, value, _unit = self.rows[output.id]
             item = result.output(output.id) if result is not None else None
+            grade = parameter_grade(output.id, item.value if item is not None else None)
             if self.spec.id == "diastolic_grade" and item is not None and item.value is not None:
                 from echo_personal_tool.application.localization import get_language
                 from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_label
 
                 value.setText(grade_diastolic_label(int(item.value), language=get_language()))
+            elif grade is not None and output.id in _INTEGRATED_GRADE_OUTPUTS:
+                # Keep the ordinal next to the word: the integrated grade is the
+                # lower median of the parameter grades shown right above.
+                value.setText(f"{tr(_GRADE_NAME_KEYS[grade])} ({grade})")
             else:
                 value.setText(item.formatted() if item is not None else "—")
+            token = _GRADE_COLOR_TOKENS.get(grade) if grade is not None else None
+            color = get_theme_tokens().get(token, "") if token else ""
+            if self._grade_colors.get(output.id) != color:
+                # ``setStyleSheet`` repolishes the widget, so only touch it when
+                # the band actually changes (the panel updates on every edit).
+                self._grade_colors[output.id] = color
+                value.setStyleSheet(f"color: {color};" if color else "")
             if item is None:
                 missing.extend(i for i in self.spec.input_closure(output.id) if i not in missing)
             else:

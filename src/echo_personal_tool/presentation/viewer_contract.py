@@ -177,6 +177,7 @@ EXPOSED_PRIVATE_NAMES = frozenset(
         "_pending_scroll_index",
         "_phi_filter",
         "_pinned_indices_for_contour",
+        "_pixel_spacing_for_linear_label",
         "_play_button",
         "_position_overlay_labels",
         "_position_vessel_sensitivity_overlay",

@@ -128,6 +128,11 @@ class DopplerViewerPort:
     auto_detect_velocity: Callable[..., Any] = try_auto_doppler_velocity_calibration
     load_tick_calibration: Callable[[], Any] = load_samsung_tick_calibration
     read_ecg: Callable[[Path], Any] = read_ecg_waveform
+    #: The panel layout as the *file* declares it, without the user's spectral
+    #: zone and without the image heuristic.  The calibration-hint veto needs it:
+    #: only a vendor-declared B-mode region may silence the prompt, because a
+    #: heuristic guess about a blank or unusual frame says nothing about modality.
+    vendor_panels: Callable[[], FramePanelLayout | None] | None = None
 
 
 class DopplerController(QObject):
@@ -494,6 +499,31 @@ class DopplerController(QObject):
         panel = self._port.dicom_doppler_panel()
         return panel is not None and panel.vertical_cm_s_per_pixel is not None
 
+    def spectral_zone(self) -> DopplerSpectrogramRoi | None:
+        """The part of the frame the viewer treats as a spectrum.
+
+        A manual calibration wins over the vendor tags.  Samsung writes the
+        B-mode region into many Doppler stills, and on such a frame the tag must
+        not take the calibrated spectrum back to B-mode geometry — that would
+        block Doppler measurements and hand B-mode spacing to a spectral zone.
+        A calibration wizard that is still in progress already counts: the user
+        has pointed at the spectrum, so everything inside that ROI is Doppler.
+        """
+        state = self._calibration_state
+        if (
+            state is not None
+            and self.calibration_matches_instance()
+            and state.roi.width > 0.0
+            and state.roi.height > 0.0
+            and (state.has_time_scale() or state.has_velocity_scale() or state.from_dicom_tags)
+        ):
+            return state.roi
+        if self._cal_step is not None:
+            pending = self._pending_roi
+            if pending is not None and pending.width > 0.0 and pending.height > 0.0:
+                return pending
+        return None
+
     def _hint_roi(self) -> DopplerSpectrogramRoi | None:
         state = self._calibration_state
         if state is not None and state.roi.width > 0.0 and state.roi.height > 0.0:
@@ -511,8 +541,28 @@ class DopplerController(QObject):
         active = self.calibration_in_progress
         roi = self._hint_roi()
         clip_open = self._port.frame() is not None and roi is not None
+        # ``resolve_panels`` already carries the user's spectral zone; the veto
+        # below must read the vendor declaration instead, hence ``vendor_panels``.
+        vendor = self._port.vendor_panels() if self._port.vendor_panels is not None else self._port.resolve_panels()
+        # A parsed DICOM panel layout is authoritative for modality.  Some
+        # Samsung B-mode frames carry ultrasound-region tags with spatial
+        # units that resemble Doppler calibration, but the panel parser
+        # correctly classifies them as B-mode.  Do not turn the generic
+        # full-frame axis mapping into a spectral-calibration prompt in that
+        # case; a missing Doppler panel means there is no spectral ROI to
+        # calibrate.  When no panel metadata exists, retain the image-based
+        # fallback behavior for untagged spectral cine frames.
+        b_mode_only = False
+        if vendor is not None and vendor.b_mode is not None and vendor.doppler is None and self.spectral_zone() is None:
+            frame = self._port.frame()
+            # A few composite cines describe only their B-mode region in the
+            # tags while still showing an untagged spectrum. Let clear image
+            # evidence preserve the fallback prompt in those cases.
+            visual_spectrum = frame is not None and detect_spectrogram_roi(frame) is not None
+            b_mode_only = not visual_spectrum
         wanted = (
             clip_open
+            and not b_mode_only
             and not self._port.vessel_measurement_mode()
             and not self._hint_dismissed
             and not self._velocity_scale_is_set()

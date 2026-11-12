@@ -51,6 +51,12 @@ CALIPER_INPUT_LABELS: dict[str, frozenset[str]] = {
     "lvedd": frozenset({"lvedd", "lvidd", "lv_edd"}),
     "lvesd": frozenset({"lvesd", "lvids", "lv_esd"}),
 }
+VC_INPUT_LABELS: dict[str, frozenset[str]] = {
+    "mr_vc_mm": frozenset({"mr vc"}),
+    "ar_vc_mm": frozenset({"ar vc"}),
+    "ar_jet_area_ratio_pct": frozenset({"ar jet %s"}),
+    "ar_jet_diameter_ratio_pct": frozenset({"ar jet %d"}),
+}
 #: Spectral inputs read from the study-wide Doppler results:
 #: input id → (flow site, field, divisor to the input unit).
 _DOPPLER_INPUTS: dict[str, tuple[str, str, float]] = {
@@ -92,6 +98,19 @@ def caliper_mean_cm(measurements: Iterable[LinearMeasurement], labels: frozenset
     """Mean of the most recent calibrated calipers with one of *labels* (D-23 window), in cm, and their count."""
     values = [
         item.millimeter_length / 10.0
+        for item in measurements
+        if not item.doppler
+        and item.millimeter_length is not None
+        and item.millimeter_length > 0
+        and item.label.casefold().strip() in labels
+    ]
+    return mean_of_last(values), len(values)
+
+
+def caliper_mean_mm(measurements: Iterable[LinearMeasurement], labels: frozenset[str]) -> tuple[float | None, int]:
+    """Mean of the newest calibrated calipers with one of *labels*, in mm."""
+    values = [
+        item.millimeter_length
         for item in measurements
         if not item.doppler
         and item.millimeter_length is not None
@@ -186,6 +205,9 @@ def resolve_study_inputs(
     for input_id, labels in CALIPER_INPUT_LABELS.items():
         mean_cm, count = caliper_mean_cm(measurements, labels)
         auto[input_id] = _measured(input_id, mean_cm, source=SOURCE_MEASURED, repeats=count)
+    for input_id, labels in VC_INPUT_LABELS.items():
+        mean_mm, count = caliper_mean_mm(measurements, labels)
+        auto[input_id] = _measured(input_id, mean_mm, source=SOURCE_MEASURED, repeats=count)
     # LAVi from indexed volumes: prefer biplane Simpson, fall back to 4C.
     lav_i = None
     if indexed is not None:

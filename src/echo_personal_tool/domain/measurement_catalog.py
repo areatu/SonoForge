@@ -416,6 +416,18 @@ _LEN, _ORI, _PIS, _VTI, _VEL, _TIM = (
 )
 
 _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
+    # ── Regurgitation (vena contracta, AR jet vs LVOT) ──
+    # The VC calipers follow ASE Table 6 (cm, one decimal); the AR jet comparison
+    # tools store the jet first and the LVOT second, and the ratio is directed.
+    _m("mr.vc", ("ШК МР", "Ширина шейки митральной регургитации"), ("MR VC", "Mitral regurgitation vena contracta width"), _ORI, 1, ase=_T6, ase_row="mr.vc", verified=True, synonyms=("MR VC", "vena contracta МР", "ШК МР")),
+    _m("ar.vc", ("ШК АР", "Ширина шейки аортальной регургитации"), ("AR VC", "Aortic regurgitation vena contracta width"), _ORI, 1, ase=_T6, ase_row="ar.vc", verified=True, synonyms=("AR VC", "vena contracta АР", "ШК АР")),
+    _m("ar.jet_d1", ("Ширина струи АР", "Ширина струи аортальной регургитации"), ("AR jet width", "Aortic regurgitation jet width"), _LEN, 1),
+    _m("ar.jet_s1", ("Площадь струи АР", "Площадь струи аортальной регургитации"), ("AR jet area", "Aortic regurgitation jet area"), Quantity.AREA, 2),
+    _m("lvot.s", ("Площадь ВТЛЖ", "Площадь поперечного сечения выносящего тракта ЛЖ"), ("LVOT area", "LVOT cross-sectional area"), Quantity.AREA, 2),
+    _m("ar.jet_d_ratio", ("Струя АР/ВТЛЖ", "Отношение ширины струи аортальной регургитации к ширине ВТЛЖ"), ("AR jet/LVOT width", "AR jet width as a percentage of the LVOT width"), Quantity.PERCENT, 0),
+    _m("ar.jet_s_ratio", ("Площадь АР/ВТЛЖ", "Отношение площади струи аортальной регургитации к площади ВТЛЖ"), ("AR jet/LVOT area", "AR jet area as a percentage of the LVOT area"), Quantity.PERCENT, 0),
+    _m("pr.vc", ("ШК ЛР", "Ширина шейки пульмональной регургитации"), ("PR VC", "Pulmonary regurgitation vena contracta width"), _ORI, 1, synonyms=("PR VC", "vena contracta ЛР", "ШК ЛР")),
+    _m("tr.vc", ("ШК ТР", "Ширина шейки трикуспидальной регургитации"), ("TR VC", "Tricuspid regurgitation vena contracta width"), _ORI, 1, synonyms=("TR VC", "vena contracta ТР", "ШК ТР")),
     # ── LV linear (protocol «ЛЖ линейно») ──
     _m("lv.ivsd", ("МЖП", "Толщина межжелудочковой перегородки в диастолу"),
        ("IVSD", "Interventricular septal thickness in diastole"), _LEN, 0, ase=_T6, ase_row='lv.ivsd', verified=True, synonyms=("IVSd", "ivs", "межжелудочковая перегородка")),
@@ -1026,6 +1038,7 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        synonyms=("Автотрассировка МК VTI", "auto")),
     _t("mv.pht", _K.INTERVAL, "mv_av", "menu.mv_pht", _A(None, doppler_interval="MV PHT"), _CW, requires=_DC),
     _t("mv.pisa_r", _K.DISTANCE, "mv_av", "menu.pisa_ms", _A(None, caliper_label="PISA MS"), _2D, requires=_SP),
+    _t("mr.vc", _K.DISTANCE, "mv_av", "menu.mr_vc", _A(None, caliper_label="MR VC"), _2D, results=("mr.vc",), requires=_SP),
     _t("mr.vmax", _K.PEAK, "mv_av", "menu.mr_vmax", _A(None, doppler_peak="MR Vmax"), _CW, requires=_DC),
     _t("mr.vti", _K.TRACE, "mv_av", "menu.mr_vti", _A(None, doppler_trace="MR VTI"), _CW, requires=_DC),
     _t("mr.vti.auto", _K.AUTO, "mv_av", "menu.trace_auto_mr",
@@ -1056,6 +1069,9 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        ru=("Автотрасса VTI ВТЛЖ", "Автоматическая трассировка VTI выносящего тракта ЛЖ"),
        en=("Auto-trace LVOT VTI", "Automatic LVOT VTI trace"), requires=_DC,
        synonyms=("Автотрассировка ВТЛЖ VTI", "auto", "Автотрассировка ЛОК VTI")),
+    _t("ar.vc", _K.DISTANCE, "mv_av", "menu.ar_vc", _A(None, caliper_label="AR VC"), _2D, results=("ar.vc",), requires=_SP),
+    _t("ar.jet.diameter_compare", _K.ACTION, "mv_av", "menu.ar_jet_diameter_compare", _A("ar_jet_diameter_compare"), _2D, results=("ar.jet_d1", "lvot.d", "ar.jet_d_ratio"), ru=("Сравн. ширин АР", "Сравнение ширины струи аортальной регургитации с шириной ВТЛЖ"), en=("AR jet/LVOT width", "Compare the AR jet width with the LVOT width"), requires=_SP),
+    _t("ar.jet.area_compare", _K.ACTION, "mv_av", "menu.ar_jet_area_compare", _A("ar_jet_area_compare"), _2D, results=("ar.jet_s1", "lvot.s", "ar.jet_s_ratio"), ru=("Сравн. площадей АР", "Сравнение площади струи аортальной регургитации с площадью ВТЛЖ"), en=("AR jet/LVOT area", "Compare the AR jet area with the LVOT area"), requires=_SP),
     _t("ar.vmax", _K.PEAK, "mv_av", "menu.ar_vmax", _A(None, doppler_peak="AR Vmax"), _CW, requires=_DC),
     _t("ar.vti", _K.TRACE, "mv_av", "menu.ar_vti", _A(None, doppler_trace="AR VTI"), _CW, requires=_DC),
     _t("ar.vti.auto", _K.AUTO, "mv_av", "menu.trace_auto_ar",
@@ -1076,6 +1092,7 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        en=("Auto-trace TV VTI", "Automatic TV VTI trace"), requires=_DC,
        synonyms=("Автотрассировка ТК VTI", "auto", "Автотрассировка ТПК VTI")),
     _t("tv.pht", _K.INTERVAL, "tv_pv", "menu.tv_pht", _A(None, doppler_interval="TV PHT"), _CW, requires=_DC),
+    _t("tr.vc", _K.DISTANCE, "tv_pv", "menu.tr_vc", _A(None, caliper_label="TR VC"), _2D, results=("tr.vc",), requires=_SP),
     _t("tr.vmax", _K.PEAK, "tv_pv", "menu.tr_vmax", _A(None, doppler_peak="TR Vmax"), _CW, requires=_DC),
     _t("tr.vti", _K.TRACE, "tv_pv", "menu.tr_vti", _A(None, doppler_trace="TR VTI"), _CW, requires=_DC),
     _t("tr.vti.auto_direct", _K.AUTO, "tv_pv", "menu.trace_auto_tr",
@@ -1105,6 +1122,7 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        synonyms=("Автотрассировка ВТПЖ VTI", "auto", "Автотрассировка ПОК VTI")),
     _t("rvot.d", _K.DISTANCE, "tv_pv", "menu.rvotd", _A(None, caliper_label="RVOTd"), _2D, requires=_SP),
     _t("rvot.at", _K.INTERVAL, "tv_pv", "menu.rvot_at", _A(None, doppler_interval="RVOT AT"), _PW, requires=_DC),
+    _t("pr.vc", _K.DISTANCE, "tv_pv", "menu.pr_vc", _A(None, caliper_label="PR VC"), _2D, results=("pr.vc",), requires=_SP),
     _t("pr.vmax", _K.PEAK, "tv_pv", "menu.pr_vmax", _A(None, doppler_peak="PR Vmax"), _CW, requires=_DC),
     _t("pr.vti", _K.TRACE, "tv_pv", "menu.pr_vti", _A(None, doppler_trace="PR VTI"), _CW, requires=_DC),
     _t("pr.vti.auto", _K.AUTO, "tv_pv", "menu.trace_auto_pr",
@@ -1285,6 +1303,15 @@ CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
         "LVPWD": "lv.lvpwd",
         "LVESD": "lv.lvesd",
         "LVOTd": "lvot.d",
+        "MR VC": "mr.vc",
+        "AR VC": "ar.vc",
+        "AR Jet D1": "ar.jet_d1",
+        "AR Jet S1": "ar.jet_s1",
+        "LVOT S": "lvot.s",
+        "AR Jet %D": "ar.jet_d_ratio",
+        "AR Jet %S": "ar.jet_s_ratio",
+        "PR VC": "pr.vc",
+        "TR VC": "tr.vc",
         "LA": "la.ap",
         "LIV-LL": "liver.llt",
         "LIV-RL": "liver.rlt",
