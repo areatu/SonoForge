@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 69,
-  "total_errors": 831,
+  "total_errors": 822,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -297,9 +297,9 @@
       "union-attr": 3
     },
     "src/echo_personal_tool/presentation/viewer_widget.py": {
-      "arg-type": 13,
-      "assignment": 13,
-      "attr-defined": 8,
+      "arg-type": 12,
+      "assignment": 9,
+      "attr-defined": 5,
       "comparison-overlap": 1,
       "has-type": 1,
       "index": 9,
@@ -307,8 +307,7 @@
       "no-any-return": 5,
       "no-redef": 1,
       "no-untyped-call": 17,
-      "no-untyped-def": 55,
-      "return-value": 1
+      "no-untyped-def": 55
     },
     "src/echo_personal_tool/presentation/web_reference/web_reference_bridge.py": {
       "attr-defined": 2

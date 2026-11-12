@@ -25,8 +25,8 @@
       "methods": 117
     },
     "presentation/viewer_widget.py::ViewerWidget": {
-      "lines": 7766,
-      "methods": 420
+      "lines": 7451,
+      "methods": 412
     }
   },
   "modules": {
@@ -34,11 +34,11 @@
     "presentation/main_window.py": 6708,
     "presentation/orthanc_study_dialog.py": 3039,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 8665
+    "presentation/viewer_widget.py": 8345
   },
   "fields": {
     "application/app_controller.py::AppController": 88,
     "presentation/main_window.py::MainWindow": 106,
-    "presentation/viewer_widget.py::ViewerWidget": 187
+    "presentation/viewer_widget.py::ViewerWidget": 172
   }
 }

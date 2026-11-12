@@ -55,6 +55,24 @@ _TRANSPORT_MEMBERS = {
 }
 
 
+#: Members whose owner moved from ``ViewerWidget`` to ``ViewerDisplay`` (A2).
+#: Same fallback rule as the transport map: an adapter bound to a plain
+#: namespace still resolves the old private attribute.
+_DISPLAY_MEMBERS = {
+    "window_slider": "window_slider",
+    "level_slider": "level_slider",
+    "dr_slider": "dr_slider",
+    "cached_levels_key": "cached_levels_key",
+    "external_wl_dr_sliders": "external_sliders",
+    "set_wl_dr_sliders": "set_values",
+    "save_current_wl_dr": "save_current_wl_dr",
+    "levels_sliders_key": "levels_key",
+    "update_levels": "update_levels",
+    "is_levels_outlier": "is_levels_outlier",
+    "effective_display_levels": "effective_levels",
+}
+
+
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
 EXPOSED_PRIVATE_NAMES = frozenset(
@@ -272,6 +290,9 @@ class ViewerContract:
             transport = getattr(self._viewer, "transport", None)
             if transport is not None and name in _TRANSPORT_MEMBERS:
                 return getattr(transport, _TRANSPORT_MEMBERS[name])
+            display = getattr(self._viewer, "display", None)
+            if display is not None and name in _DISPLAY_MEMBERS:
+                return getattr(display, _DISPLAY_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -284,6 +305,10 @@ class ViewerContract:
             transport = getattr(self._viewer, "transport", None)
             if transport is not None and name in _TRANSPORT_MEMBERS:
                 setattr(transport, _TRANSPORT_MEMBERS[name], value)
+                return
+            display = getattr(self._viewer, "display", None)
+            if display is not None and name in _DISPLAY_MEMBERS:
+                setattr(display, _DISPLAY_MEMBERS[name], value)
                 return
             setattr(self._viewer, private, value)
             return

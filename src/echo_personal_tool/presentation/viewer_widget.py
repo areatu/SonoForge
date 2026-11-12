@@ -7,7 +7,6 @@ import math
 import os
 import time
 import weakref
-from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -26,7 +25,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QSizePolicy,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -115,9 +113,6 @@ from echo_personal_tool.domain.services.pixel_spacing_resolver import (
 )
 from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
 from echo_personal_tool.imaging.display import (
-    apply_window_level_rgb,
-    compute_display_levels,
-    dr_percentiles_from_slider,
     is_color_frame,
     to_display_rgb,
     to_grayscale_array,
@@ -146,6 +141,7 @@ from echo_personal_tool.presentation.viewer.compare_tools import (
     stored_widths,
 )
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
+from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
     DopplerViewerPort,
@@ -232,7 +228,6 @@ _DEFAULT_OVERLAY_STYLE = (
 _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
-_WL_DR_CACHE_MAX = 200
 #: How many colour clips the viewer remembers as colour (sticky per instance).
 _COLOR_INSTANCE_MEMORY = 64
 #: Zoom bounds of a manual zoom (Ctrl+wheel or the loupe click).
@@ -997,7 +992,6 @@ class ViewerWidget(QWidget):
         self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
-        self._current_instance_path: Path | None = None
         self._linear_caliper_active = False
         self._linear_caliper_start: tuple[float, float] | None = None
         # Generic caliper stays armed after each measurement (scanner-like UX):
@@ -1128,13 +1122,6 @@ class ViewerWidget(QWidget):
         self._color_instances: set[object] = set()
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
-        self._cached_levels_key: tuple[int, int, int] | None = None
-        self._cached_display_low: float | None = None
-        self._cached_display_high: float | None = None
-        self._cached_lut: np.ndarray | None = None
-        self._cached_lut_key: tuple[float, float, str] | None = None
-        self._display_buffers: list[np.ndarray] = []
-        self._display_buf_idx: int = 0
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
         self._hover_tier: int | None = None
@@ -1226,27 +1213,15 @@ class ViewerWidget(QWidget):
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
 
-        self._window_slider = QSlider(Qt.Orientation.Horizontal)
-        self._window_slider.setRange(1, 400)
-        self._window_slider.setValue(100)
-        self._window_slider.valueChanged.connect(self._update_levels)
-        # Per-instance WL/DR cache to preserve settings across playback
-        self._instance_wl_dr_cache: OrderedDict[str, tuple[int, int, int]] = OrderedDict()
-
-        self._level_slider = QSlider(Qt.Orientation.Horizontal)
-        self._level_slider.setRange(0, 100)
-        self._level_slider.setValue(50)
-        self._level_slider.valueChanged.connect(self._update_levels)
-
-        self._dr_slider = QSlider(Qt.Orientation.Horizontal)
-        self._dr_slider.setRange(0, 100)
-        self._dr_slider.setValue(50)
-        self._dr_slider.setToolTip("Dynamic range: center = full range; left = clip dark (typical for US)")
-        self._dr_slider.valueChanged.connect(self._update_levels)
-
-        # Per-file slider state: {instance_path: (window, level, dr)}
-        self._per_file_wl_dr: dict[Path, tuple[int, int, int]] = {}
-        self._external_wl_dr_sliders: tuple[object, object, object] | None = None
+        self.display = ViewerDisplay(
+            parent=self,
+            frame_provider=lambda: self._current_frame,
+            enabled_provider=lambda: self._window_level_enabled,
+            color_source_provider=lambda: self._color_source_rgb,
+            color_active_provider=lambda: self._color_display_active,
+            image_item=self._image_item,
+            invalidate_edge_map=self._invalidate_edge_map_cache,
+        )
 
         # The whole transport lives in one widget so the focus view (UI-6) can
         # hide it and show its floating cine plate instead — without touching
@@ -2036,14 +2011,14 @@ class ViewerWidget(QWidget):
     def _apply_window_level_preferences(self, preferences: UserPreferences) -> None:
         window, level, dr = resolve_wl_values(preferences)
         for slider, value in (
-            (self._window_slider, window),
-            (self._level_slider, level),
-            (self._dr_slider, dr),
+            (self.display.window_slider, window),
+            (self.display.level_slider, level),
+            (self.display.dr_slider, dr),
         ):
             slider.blockSignals(True)
             slider.setValue(value)
             slider.blockSignals(False)
-        self._update_levels()
+        self.display.update_levels()
 
     def _clear_panel_frame_graphics(self) -> None:
         for item in self._panel_frame_items:
@@ -2466,11 +2441,7 @@ class ViewerWidget(QWidget):
             )
             self._display_mode_cache_key = instance_key
             # Invalidate cached levels when switching to a new file/instance
-            self._cached_display_low = None
-            self._cached_display_high = None
-            self._cached_levels_key = None
-            self._cached_lut = None
-            self._cached_lut_key = None
+            self.display.invalidate_cached_levels()
             self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
@@ -2483,7 +2454,7 @@ class ViewerWidget(QWidget):
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
-                self._update_levels()
+                self.display.update_levels()
             else:
                 self._image_item.setLevels((0, 255))
         else:
@@ -2491,7 +2462,7 @@ class ViewerWidget(QWidget):
             gray = self._current_frame
             self._image_item.setImage(gray, autoLevels=False)
             if self._window_level_enabled:
-                self._update_levels()
+                self.display.update_levels()
             else:
                 vmin = float(gray.min()) if gray.size else 0.0
                 vmax = float(gray.max()) if gray.size else 255.0
@@ -2503,20 +2474,8 @@ class ViewerWidget(QWidget):
                 if self._current_state and self._current_state.instance and self._current_state.instance.path
                 else None
             )
-            if new_path != self._current_instance_path:
-                self._save_current_wl_dr()
-                self._current_instance_path = new_path
-                saved = self._per_file_wl_dr.get(new_path)
-                if saved is not None:
-                    self._set_wl_dr_sliders(*saved)
-                else:
-                    self._set_wl_dr_sliders(100, 50, 50)
-        self._window_slider.setEnabled(self._window_level_enabled)
-        self._level_slider.setEnabled(self._window_level_enabled)
-        self._dr_slider.setEnabled(self._window_level_enabled)
-        sync_enabled = getattr(self, "_sync_display_control_enabled", None)
-        if callable(sync_enabled):
-            sync_enabled()
+            self.display.set_current_path(new_path)
+        self.display.set_enabled(self._window_level_enabled)
         if self._current_frame is not None:
             height, width = self._current_frame.shape[:2]
             self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
@@ -2614,16 +2573,12 @@ class ViewerWidget(QWidget):
             )
             self._display_mode_cache_key = instance_key
             # Invalidate cached levels when switching to a new file
-            self._cached_display_low = None
-            self._cached_display_high = None
-            self._cached_levels_key = None
-            self._cached_lut = None
-            self._cached_lut_key = None
+            self.display.invalidate_cached_levels()
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
         # NOTE: _cached_levels_key is deliberately NOT written here. It records the slider
-        # values the cached display levels belong to, so only _update_levels() may set it.
-        # Stamping it per frame made the freshness check inside _update_levels() trivially
+        # values the cached display levels belong to, so only the display owner may set it.
+        # Stamping it per frame made the freshness check inside the display owner trivially
         # true (and, with the key order the two methods used to disagree on, permanently
         # false), so the W/L window was either frozen or recomputed on every frame.
 
@@ -2637,7 +2592,7 @@ class ViewerWidget(QWidget):
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
-                self._update_levels()
+                self.display.update_levels()
             else:
                 self._image_item.setLevels((0, 255))
         else:
@@ -2659,9 +2614,9 @@ class ViewerWidget(QWidget):
 
                 self._current_frame = despeckle_frame(self._current_frame)
             if self._window_level_enabled:
-                # W/L path: _update_levels() will call setImage with LUT result.
+                # W/L path: the display owner will call setImage with the LUT result.
                 # Skip redundant 1st setImage to avoid double GPU texture upload.
-                self._update_levels()
+                self.display.update_levels()
             else:
                 self._image_item.setImage(self._current_frame, autoLevels=False)
                 vmin = float(self._current_frame.min()) if self._current_frame.size else 0.0
@@ -2669,9 +2624,7 @@ class ViewerWidget(QWidget):
                 if vmin == vmax:
                     vmax = vmin + 1.0
                 self._image_item.setLevels((vmin, vmax))
-        sync_enabled = getattr(self, "_sync_display_control_enabled", None)
-        if callable(sync_enabled):
-            sync_enabled()
+        self.display.sync_external_enabled()
         if self._current_frame is not None and self.mmode.line_item is not None and self.mmode.line_item.is_complete:
             start, end = self.mmode.line_item.get_endpoints()
             # Convert view coords (invertY=True) to image coords (Y=0 at top)
@@ -2693,7 +2646,7 @@ class ViewerWidget(QWidget):
             else:
                 self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
             if self._window_level_enabled:
-                self._update_levels()
+                self.display.update_levels()
             self._refresh_frame_panel_layout()
             self.doppler.configure_axis_for_frame()
             self._invalidate_edge_map_cache()
@@ -2799,17 +2752,7 @@ class ViewerWidget(QWidget):
         if previous_instance != viewer_state.instance:
             # Save WL/DR for the old instance
             if previous_instance is not None:
-                old_uid = previous_instance.sop_instance_uid
-                if old_uid in self._instance_wl_dr_cache:
-                    self._instance_wl_dr_cache.move_to_end(old_uid)
-                else:
-                    if len(self._instance_wl_dr_cache) >= _WL_DR_CACHE_MAX:
-                        self._instance_wl_dr_cache.popitem(last=False)
-                self._instance_wl_dr_cache[old_uid] = (
-                    self._dr_slider.value(),
-                    self._window_slider.value(),
-                    self._level_slider.value(),
-                )
+                self.display.remember_instance(previous_instance.sop_instance_uid)
             self.clear_armed_next()
             self._clear_linear_caliper()
             self.dismiss_label_picker()
@@ -2830,18 +2773,7 @@ class ViewerWidget(QWidget):
             self.doppler.on_instance_changed()
             # Restore WL/DR for the new instance if cached
             new_uid = viewer_state.instance.sop_instance_uid if viewer_state.instance else None
-            if new_uid and new_uid in self._instance_wl_dr_cache:
-                self._instance_wl_dr_cache.move_to_end(new_uid)
-                dr, window, level = self._instance_wl_dr_cache[new_uid]
-                self._dr_slider.blockSignals(True)
-                self._dr_slider.setValue(dr)
-                self._dr_slider.blockSignals(False)
-                self._window_slider.blockSignals(True)
-                self._window_slider.setValue(window)
-                self._window_slider.blockSignals(False)
-                self._level_slider.blockSignals(True)
-                self._level_slider.setValue(level)
-                self._level_slider.blockSignals(False)
+            self.display.restore_instance(new_uid)
         elif frame_changed:
             self.dismiss_label_picker()
             self.doppler.on_frame_changed(previous_frame, viewer_state.current_frame_index)
@@ -4164,7 +4096,7 @@ class ViewerWidget(QWidget):
             refined, mode = refine_open_arc_contour(
                 self._current_frame,
                 contour,
-                display_levels=self._effective_display_levels(),
+                display_levels=self.display.effective_levels(),
             )
             self._contours[contour_index] = refined
             self._upsert_stored_contour(refined)
@@ -8282,243 +8214,12 @@ class ViewerWidget(QWidget):
         level_slider: object,
         dr_slider: object,
     ) -> None:
-        """Wire external sliders to internal window/level/DR logic."""
-        from echo_personal_tool.presentation.ge_labeled_slider import (
-            GeLabeledSlider,
-            TopLabeledSlider,
-        )
-
-        sliders: list[tuple[object, object]] = []
-        for external, internal in (
-            (window_slider, self._window_slider),
-            (level_slider, self._level_slider),
-            (dr_slider, self._dr_slider),
-        ):
-            if not isinstance(external, (GeLabeledSlider, TopLabeledSlider)):
-                continue
-            ext = external.slider()
-            sliders.append((external, internal))
-            ext.setRange(internal.minimum(), internal.maximum())
-            ext.setValue(internal.value())
-
-        def sync_enabled() -> None:
-            enabled = self._window_level_enabled
-            for external, internal in sliders:
-                external.setEnabled(enabled)
-                internal.setEnabled(enabled)
-
-        self._sync_display_control_enabled = sync_enabled
-        self._external_wl_dr_sliders = (window_slider, level_slider, dr_slider)
-        self._external_wl_dr_slider_exts: list = []
-        for external, internal in sliders:
-            ext = external.slider()
-            self._external_wl_dr_slider_exts.append(ext)
-            ext.setRange(internal.minimum(), internal.maximum())
-            ext.setValue(internal.value())
-            ext.valueChanged.connect(internal.setValue)
-            internal.valueChanged.connect(ext.setValue)
-            ext.valueChanged.connect(self._update_levels)
-        sync_enabled()
+        """Wire external sliders to the display projection owner."""
+        self.display.bind_external(window_slider, level_slider, dr_slider)
 
     def disconnect_display_controls(self) -> None:
         """Block external slider signals to prevent dangling references."""
-        for ext in getattr(self, "_external_wl_dr_slider_exts", []):
-            try:
-                ext.blockSignals(True)
-            except RuntimeError:
-                pass
-
-    def _set_wl_dr_sliders(
-        self,
-        window: int,
-        level: int,
-        dr: int,
-        *,
-        update_display: bool = True,
-    ) -> None:
-        """Set window/level/DR on internal + external sliders with signals blocked."""
-        ext = self._external_wl_dr_sliders
-        for slider in (self._window_slider, self._level_slider, self._dr_slider):
-            slider.blockSignals(True)
-        if ext is not None:
-            for slider in ext:
-                if hasattr(slider, "blockSignals"):
-                    slider.blockSignals(True)
-        self._window_slider.setValue(window)
-        self._level_slider.setValue(level)
-        self._dr_slider.setValue(dr)
-        if ext is not None:
-            ext_win, ext_lev, ext_dr = ext
-            if hasattr(ext_win, "setValue"):
-                ext_win.setValue(window)
-            if hasattr(ext_lev, "setValue"):
-                ext_lev.setValue(level)
-            if hasattr(ext_dr, "setValue"):
-                ext_dr.setValue(dr)
-        for slider in (self._window_slider, self._level_slider, self._dr_slider):
-            slider.blockSignals(False)
-        if ext is not None:
-            for slider in ext:
-                if hasattr(slider, "blockSignals"):
-                    slider.blockSignals(False)
-        if update_display:
-            self._update_levels()
-
-    def _save_current_wl_dr(self) -> None:
-        """Save current slider values for the active file."""
-        if self._current_instance_path is not None:
-            self._per_file_wl_dr[self._current_instance_path] = (
-                self._window_slider.value(),
-                self._level_slider.value(),
-                self._dr_slider.value(),
-            )
-
-    @_prof
-    def _levels_sliders_key(self) -> tuple[int, int, int]:
-        """Canonical cache key for the display levels: (window, level, dynamic range).
-
-        Single source of truth for the key order: the levels cache never hit while the
-        writer and the reader disagreed about it, and `compute_display_levels()` (a
-        full-frame percentile pass, 12.7-19.7 ms at 720p) ran on every single frame.
-        """
-        return (
-            self._window_slider.value(),
-            self._level_slider.value(),
-            self._dr_slider.value(),
-        )
-
-    def _update_levels(self) -> None:
-        if self._current_frame is None or not self._window_level_enabled:
-            return
-        frame = np.asarray(self._current_frame)
-        if frame.size == 0:
-            return
-
-        # Cache key: slider values
-        sliders_key = self._levels_sliders_key()
-
-        # Use cached levels if sliders haven't changed
-        if (
-            self._cached_display_low is not None
-            and self._cached_display_high is not None
-            and self._cached_levels_key == sliders_key
-        ):
-            low, high = self._cached_display_low, self._cached_display_high
-        else:
-            # Compute new levels from current frame
-            dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
-            window_scale = self._window_slider.value() / 100.0
-            level_offset = (self._level_slider.value() - 50) / 50.0
-            low, high = compute_display_levels(
-                np.asarray(frame, dtype=float),
-                dr_low_pct=dr_low,
-                dr_high_pct=dr_high,
-                window_scale=window_scale,
-                level_offset=level_offset,
-            )
-
-            # Check if this is an outlier frame (too dark, too bright, too flat)
-            is_outlier = self._is_levels_outlier(low, high, frame)
-
-            if not is_outlier:
-                # Cache good levels
-                self._cached_display_low = low
-                self._cached_display_high = high
-                self._cached_levels_key = sliders_key
-            elif self._cached_display_low is not None:
-                # Use previously cached levels instead of outlier
-                low, high = self._cached_display_low, self._cached_display_high
-
-        # Apply levels to current frame
-        if self._color_display_active and self._color_source_rgb is not None:
-            display = apply_window_level_rgb(self._color_source_rgb, low, high)
-            self._image_item.setImage(display, autoLevels=False)
-        else:
-            from echo_personal_tool.imaging.display import grayscale_source_array
-
-            src = grayscale_source_array(frame)  # MAY BE READ-ONLY (SPEC-001)
-            span = max(high - low, 1.0)
-            lut_key = (low, span, str(src.dtype))
-            if self._cached_lut_key == lut_key and self._cached_lut is not None:
-                lut = self._cached_lut
-            elif src.dtype == np.uint16:
-                lut = np.clip(
-                    (np.arange(65536, dtype=np.float32) - low) / span * 255.0,
-                    0.0,
-                    255.0,
-                ).astype(np.uint8)
-                self._cached_lut = lut
-                self._cached_lut_key = lut_key
-            else:
-                lut = np.clip(
-                    (np.arange(256, dtype=np.float32) - low) / span * 255.0,
-                    0.0,
-                    255.0,
-                ).astype(np.uint8)
-                self._cached_lut = lut
-                self._cached_lut_key = lut_key
-
-            # ZERO-COPY RENDER: write into reusable double buffer
-            dst = self._ensure_display_buffer(src.shape)  # WRITABLE
-            if src.dtype == np.uint16:
-                np.take(lut, src, out=dst)  # src can be read-only
-            else:
-                src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
-                cv2.LUT(src_u8, lut, dst=dst)  # dst is writable
-
-            self._image_item.setImage(dst, autoLevels=False)
-            # Switch buffer
-            self._display_buf_idx = (self._display_buf_idx + 1) % len(self._display_buffers)
-        self._invalidate_edge_map_cache()
-
-    def _ensure_display_buffer(self, shape: tuple[int, ...]) -> np.ndarray:
-        """Return pre-allocated WRITABLE uint8 buffer from double buffer pool."""
-        for buf in self._display_buffers:
-            if buf.shape == shape:
-                return self._display_buffers[self._display_buf_idx]
-        self._display_buffers = [
-            np.empty(shape, dtype=np.uint8),
-            np.empty(shape, dtype=np.uint8),
-        ]
-        self._display_buf_idx = 0
-        return self._display_buffers[0]
-
-    def _is_levels_outlier(self, low: float, high: float, frame: np.ndarray) -> bool:
-        """Check if computed levels indicate an outlier frame (too dark/bright/flat).
-
-        The thresholds are defined on the 8-bit display scale and normalised to the
-        frame's dtype. MONOCHROME2 cine arrives as uint16 (mean ~15000 in fixtures,
-        600-3000 in real ultrasound), so comparing raw values against 5/250 classified
-        every 16-bit frame as an outlier: the levels were never cached and the W/L window
-        was recomputed - and visibly drifted - on every frame.
-        """
-        arr = np.asarray(frame)
-        if arr.size == 0:
-            return True
-        if arr.dtype.kind in "iu":
-            info = np.iinfo(arr.dtype)
-            low_bound = float(info.min)
-            full_scale = float(info.max) - low_bound
-        else:
-            low_bound = 0.0
-            full_scale = 255.0
-        to_8bit = 255.0 / max(full_scale, 1.0)
-
-        # Check 1: Range too narrow (likely a near-empty or saturated frame)
-        pixel_range = (high - low) * to_8bit
-        if pixel_range < 10.0:
-            return True
-        # float32 halves the bandwidth of the two full-frame passes below
-        flat = arr.astype(np.float32, copy=False).ravel()
-        # Check 2: Mean brightness too extreme
-        mean_val = (float(flat.mean()) - low_bound) * to_8bit
-        if mean_val < 5.0 or mean_val > 250.0:
-            return True
-        # Check 3: Too little variation (flat image)
-        std_val = float(flat.std()) * to_8bit
-        if std_val < 3.0:
-            return True
-        return False
+        self.display.disconnect_external()
 
     def set_magnetic_snap_enabled(self, enabled: bool) -> None:
         self._magnetic_snap_enabled = bool(enabled)
@@ -8551,31 +8252,10 @@ class ViewerWidget(QWidget):
         self._despeckle_enabled = bool(enabled)
         # Re-render current frame with updated filter
         if self._current_frame is not None:
-            self._update_levels()
+            self.display.update_levels()
 
     def despeckle_enabled(self) -> bool:
         return self._despeckle_enabled
-
-    def _grayscale_frame_for_edges(self) -> np.ndarray | None:
-        if self._current_frame is None:
-            return None
-        frame = np.asarray(self._current_frame)
-        if frame.ndim == 3:
-            return np.mean(frame[..., :3], axis=2, dtype=np.float64)
-        return frame.astype(np.float64, copy=False)
-
-    def _effective_display_levels(self) -> tuple[float, float] | None:
-        frame = self._grayscale_frame_for_edges()
-        if frame is None or frame.size == 0:
-            return None
-        dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
-        return compute_display_levels(
-            frame,
-            dr_low_pct=dr_low,
-            dr_high_pct=dr_high,
-            window_scale=self._window_slider.value() / 100.0,
-            level_offset=(self._level_slider.value() - 50) / 50.0,
-        )
 
     def _invalidate_edge_map_cache(self) -> None:
         self._edge_map_cache = None
@@ -8585,7 +8265,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return None
         frame_id = id(self._current_frame)
-        levels = self._effective_display_levels()
+        levels = self.display.effective_levels()
         cache_key = (frame_id, levels, self._is_color_frame)
         if self._edge_map_cache is not None and self._edge_map_cache_key == cache_key:
             return self._edge_map_cache

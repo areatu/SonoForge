@@ -25,7 +25,7 @@ pytestmark = pytest.mark.gui
 pytest.importorskip("pytestqt")
 
 from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
-from echo_personal_tool.presentation import viewer_widget as vw
+from echo_personal_tool.presentation.viewer import display as display_module
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
@@ -74,13 +74,13 @@ def _color_frame(seed: int) -> np.ndarray:
 def levels_spy(monkeypatch):
     """Record every `compute_display_levels()` call made by the viewer."""
     calls: list[dict] = []
-    real = vw.compute_display_levels
+    real = display_module.compute_display_levels
 
     def _spy(frame, **kwargs):
         calls.append(kwargs)
         return real(frame, **kwargs)
 
-    monkeypatch.setattr(vw, "compute_display_levels", _spy)
+    monkeypatch.setattr(display_module, "compute_display_levels", _spy)
     return calls
 
 
