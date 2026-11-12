@@ -95,6 +95,14 @@ def test_zoom_cycle_is_fit_100_200_and_leaves_transport_alone(qtbot) -> None:
     assert viewer.zoom_mode == "fit"
 
 
+def test_viewbox_keeps_pan_and_menu_disabled(qtbot) -> None:
+    viewer = make_viewer(qtbot)
+    view = viewer.contract.view
+
+    assert view.state["mouseEnabled"] == [False, False]
+    assert view.menuEnabled() is False
+
+
 def test_zoom_around_changes_only_the_factor(qtbot) -> None:
     viewer = _loaded_viewer(qtbot, total=10, frame=4)
     before = instance_snapshot(viewer)
