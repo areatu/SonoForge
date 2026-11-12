@@ -252,7 +252,7 @@ class DownloadCoordinator:
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         disk_path = dialog.completed_disk_download_path()
-        background_requested = dialog._background_requested
+        background_requested = dialog.batch_snapshot().background_requested
         dialog.deleteLater()
         logger.info(
             "[MW] dialog closed: has_result=%s has_disk_path=%s downloaded_count=%d total_instances=%d",
@@ -302,10 +302,10 @@ class DownloadCoordinator:
         return True
 
     def has_active_download(self) -> bool:
-        return self._dialog is not None and self._dialog._downloading
+        return self._dialog is not None and self._dialog.batch_snapshot().active
 
     def close_idle_dialog(self) -> None:
-        if self._dialog is not None and not self._dialog._downloading:
+        if self._dialog is not None and not self._dialog.batch_snapshot().active:
             self._dialog.reject()
 
     def show_active_dialog(self) -> None:
