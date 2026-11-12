@@ -309,12 +309,12 @@ def _build_catalog_options() -> tuple[tuple[LabelOption, ...], Mapping[str, Labe
     for spec in CATALOG.values():
         if spec.id in by_id:
             continue
-        option = _option_from_spec(spec)
-        if option is None:
+        candidate = _option_from_spec(spec)
+        if candidate is None:
             continue
-        items.append(option)
-        by_id[option.tool_id] = option
-        by_target.setdefault(option.target_label, option)
+        items.append(candidate)
+        by_id[candidate.tool_id] = candidate
+        by_target.setdefault(candidate.target_label, candidate)
     return tuple(items), MappingProxyType(by_id), MappingProxyType(by_target)
 
 

@@ -363,6 +363,21 @@ class TestViewerLabelPickerIntegration:
         assert w.is_linear_caliper_active
         assert w._current_caliper_label() == "Dist2"
 
+    def test_a_second_free_caliper_opens_the_picker_for_its_own_measurement(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (10.0, 10.0), (51.0, 10.0))
+        assert w.accept_label_picker() is True
+        assert _stored_labels(w) == ["IVSd"]
+
+        _place_caliper(w, (10.0, 20.0), (60.0, 20.0))
+        assert w.is_label_picker_visible()
+        assert "50" in w.label_picker().title_text()
+        ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_2, Qt.KeyboardModifier.NoModifier, "2")
+        assert w.handle_label_picker_key(ev) is True
+
+        assert _stored_labels(w) == ["IVSd", "LVEDD"]
+
     def test_tab_cycles_picker_and_enter_applies_label(self, qtbot) -> None:
         w = self._make_viewer(qtbot)
         w.activate_generic_dist_caliper()

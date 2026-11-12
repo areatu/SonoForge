@@ -81,6 +81,15 @@ _DISPLAY_ZOOM_MEMBERS = {
 }
 
 
+#: Members whose owner moved from ``ViewerWidget`` to ``ViewerLabelPicker`` (A4).
+_LABEL_PICKER_MEMBERS = {
+    "caliper_labels": "labels",
+    "caliper_label_index": "label_index",
+    "current_caliper_label": "current_label",
+    "set_caliper_label": "set_label",
+}
+
+
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
 EXPOSED_PRIVATE_NAMES = frozenset(
@@ -304,6 +313,9 @@ class ViewerContract:
             zoom = getattr(self._viewer, "zoom", None)
             if zoom is not None and name in _DISPLAY_ZOOM_MEMBERS:
                 return getattr(zoom, _DISPLAY_ZOOM_MEMBERS[name])
+            label_picker = getattr(self._viewer, "label_picker_owner", None)
+            if label_picker is not None and name in _LABEL_PICKER_MEMBERS:
+                return getattr(label_picker, _LABEL_PICKER_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -324,6 +336,10 @@ class ViewerContract:
             zoom = getattr(self._viewer, "zoom", None)
             if zoom is not None and name in _DISPLAY_ZOOM_MEMBERS:
                 setattr(zoom, _DISPLAY_ZOOM_MEMBERS[name], value)
+                return
+            label_picker = getattr(self._viewer, "label_picker_owner", None)
+            if label_picker is not None and name in _LABEL_PICKER_MEMBERS:
+                setattr(label_picker, _LABEL_PICKER_MEMBERS[name], value)
                 return
             setattr(self._viewer, private, value)
             return
