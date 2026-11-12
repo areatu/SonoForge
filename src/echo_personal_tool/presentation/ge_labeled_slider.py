@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
@@ -21,7 +21,7 @@ class _SliderTrack(QWidget):
         slider.valueChanged.connect(self.update)
         slider.rangeChanged.connect(self.update)
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         del event
         p = get_theme_tokens()
         painter = QPainter(self)
@@ -174,7 +174,7 @@ class GeLabeledSlider(QWidget):
         layout.addWidget(track_container, stretch=1)
         layout.addWidget(self._increment)
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         track = self._track
         if track is not None:

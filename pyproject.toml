@@ -206,6 +206,7 @@ files = [
     "src/echo_personal_tool/presentation/ecg_strip_loader.py",
     "src/echo_personal_tool/presentation/focus_mode.py",
     "src/echo_personal_tool/presentation/frame_range_export_dialog.py",
+    "src/echo_personal_tool/presentation/ge_labeled_slider.py",
     "src/echo_personal_tool/presentation/help_dialog.py",
     "src/echo_personal_tool/presentation/icon_loader.py",
     "src/echo_personal_tool/presentation/layout/__init__.py",
