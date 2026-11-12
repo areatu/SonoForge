@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 pytestmark = pytest.mark.gui
@@ -24,7 +25,8 @@ pytestmark = pytest.mark.gui
 from echo_personal_tool.application.app_controller import AppController  # noqa: E402
 from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory  # noqa: E402
 from echo_personal_tool.domain.models.contour import Contour  # noqa: E402
-from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata  # noqa: E402
+from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
+from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy  # noqa: E402
 
 _MODULE = "echo_personal_tool.application.app_controller"
 _BSA_INPUT = "bsa"
@@ -44,7 +46,16 @@ class _FakeSignal:
 
 class _FakeWorker:
     def __init__(self, *args, **kwargs) -> None:
-        names = ("first_frame_ready", "progress", "finished", "failed", "batch_finished", "batch_decoded", "timed_out")
+        names = (
+            "first_frame_ready",
+            "progress",
+            "finished",
+            "failed",
+            "error",
+            "batch_finished",
+            "batch_decoded",
+            "timed_out",
+        )
         self.signals = SimpleNamespace(**{name: _FakeSignal() for name in names})
         self.setAutoDelete = lambda _value: None
 
@@ -61,7 +72,11 @@ class _RecordingThreadPool:
 def controller(qapp, monkeypatch) -> AppController:  # qapp: the controller needs a live QApplication
     for name in ("DicomDecodeWorker", "VideoDecodeWorker", "FrameLoaderWorker", "ThumbnailLoaderWorker", "ScanWorker"):
         monkeypatch.setattr(f"{_MODULE}.{name}", _FakeWorker)
-    return AppController(thread_pool=_RecordingThreadPool())
+    monkeypatch.setattr("echo_personal_tool.application.workers.speckle_worker.SpeckleTrackingWorker", _FakeWorker)
+    pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=pool)
+    controller.test_thread_pool = pool
+    return controller
 
 
 def _studies(prefix: str, root) -> list[StudyMetadata]:
@@ -107,6 +122,15 @@ def _manual_bsa(controller: AppController) -> float | None:
 
 def _contour() -> Contour:
     return Contour(phase="ED", view="A4C", chamber="LV", points=[(0.0, 0.0), (10.0, 0.0), (5.0, 10.0)])
+
+
+def _finish_strain(controller: AppController, gls: float = -18.5) -> None:
+    """Run the public speckle path and deliver the fake worker's result."""
+    from echo_personal_tool.domain.models.speckle import StrainResult
+
+    controller.run_speckle_tracking(_contour())
+    worker = controller.test_thread_pool.started[-1]
+    worker.signals.finished.emit(StrainResult(longitudinal=np.zeros(2), radial=np.zeros(2), gls=gls))
 
 
 def test_a_fresh_tab_does_not_receive_the_other_tab_values(controller, tmp_path) -> None:
@@ -198,6 +222,55 @@ def test_cine_heart_rate_estimate_returns_with_its_tab(controller, tmp_path) -> 
     heart_rate = calculations.input("hr") if calculations is not None else None
     assert heart_rate is not None
     assert heart_rate.value == 72
+
+
+def test_strain_results_are_parked_with_the_tab(controller, tmp_path) -> None:
+    studies = _studies("a", tmp_path)
+    _switch_to(controller, studies, TabClinicalMemory())
+    _finish_strain(controller)
+    assert controller.strain_study("a.study") is not None
+    parked = controller.snapshot_tab_clinical_memory()
+    assert parked is not None
+    assert set(parked.strain_studies) == {"a.study"}
+
+    _switch_to(controller, _studies("b", tmp_path), TabClinicalMemory())
+    assert controller.strain_study("a.study") is None, "another tab does not inherit the analyses"
+
+    _switch_to(controller, studies, parked)
+    restored = controller.strain_study("a.study")
+    assert restored is not None
+    assert restored.view_gls("A4C") == pytest.approx(-18.5)
+
+
+def test_the_playback_fps_returns_with_its_tab_and_does_not_leak(controller, tmp_path) -> None:
+    studies = _studies("a", tmp_path)
+    _switch_to(controller, studies, TabClinicalMemory())
+    controller.set_frame_time_override(40.0)
+    parked = controller.snapshot_tab_clinical_memory()
+    assert parked is not None
+    assert parked.frame_time_overrides == {"a.0": 40.0}
+
+    _switch_to(controller, studies, TabClinicalMemory())
+    assert controller.state_manager.snapshot.frame_time_ms != 40.0, "another tab keeps the file timing"
+
+    _switch_to(controller, studies, parked)
+    assert controller.state_manager.snapshot.frame_time_ms == 40.0
+    assert controller.state_manager.snapshot.instance.frame_time_ms == 33.3, "the file timebase is untouched"
+
+    _switch_to(controller, _studies("c", tmp_path), None)
+    assert controller.state_manager.snapshot.frame_time_ms != 40.0, "a new source in the tab starts clean"
+
+
+def test_strain_analyses_return_with_their_tab(controller, tmp_path) -> None:
+    studies = _studies("a", tmp_path)
+    analysis = StrainAnalysis(view="A4C", gls=-18.5)
+    memory = TabClinicalMemory(strain_studies={"a.study": StrainStudy(analyses={"A4C": analysis})})
+
+    _switch_to(controller, studies, memory)
+    restored = controller.strain_study("a.study")
+
+    assert restored is not None
+    assert restored.view_gls("A4C") == pytest.approx(-18.5)
 
 
 def test_a_refused_flush_reports_that_the_load_never_started(controller, monkeypatch, tmp_path) -> None:

@@ -1,6 +1,6 @@
 """Session FPS override from the transport's «FPS» label (double-click).
 
-The value is per SOP Instance UID for the run of the application and is a
+The value is per SOP Instance UID and is parked with its tab, and it is a
 *viewing* retiming («скорость прокрутки»): it moves the playback interval and
 the transport's FPS label through the state, while the instance keeps the
 file's own timebase — Auto-HR, the D/S phase timeline and MP4 export must
