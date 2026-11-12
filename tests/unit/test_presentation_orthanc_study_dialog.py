@@ -310,6 +310,27 @@ class TestSelectionSummary:
         assert "1" in text and "2" in text
 
 
+class TestSelectionOwner:
+    def test_dialog_keeps_no_private_selection_copy(self, dialog):
+        assert not hasattr(dialog, "_selected_all")
+        assert not hasattr(dialog, "_selected_series")
+        assert dialog.selection is dialog.selection
+
+    def test_tree_checkbox_is_a_mirror_of_the_owner(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._on_series_loaded(("u1", _series("u1", 2), None))
+        dialog._set_study_selected("u1", True)
+        item = dialog._studies_list.topLevelItem(0)
+
+        assert bool(item.data(0, ROLE_CHECKED)) is True
+        assert dialog.selection.is_whole("u1") is True
+
+        dialog._on_clear_selection()
+
+        assert bool(item.data(0, ROLE_CHECKED)) is False
+        assert not dialog.selection
+
+
 class TestOnItemChanged:
     def test_non_study_item_ignored(self, dialog):
         """A row without a UID must not raise when toggled."""
@@ -319,18 +340,19 @@ class TestOnItemChanged:
             dialog._on_study_check_toggled(QTreeWidgetItem())
 
         set_selected.assert_not_called()
-        assert dialog._selected_all == set()
+        assert dialog.selection.whole_studies() == set()
+        assert not dialog.selection
 
     def test_row_without_uid_is_ignored_by_series_toggle(self, dialog):
         from PySide6.QtWidgets import QTreeWidgetItem
 
         dialog._current_study_uid = "1.2.3"  # a study is open, only the row has no UID
-        selected_before = {uid: set(series) for uid, series in dialog._selected_series.items()}
+        selected_before = {uid: dialog.selection.selected_series(uid) for uid in dialog.selection.study_uids()}
         with patch.object(dialog, "_update_load_button") as update_button:
             dialog._on_series_check_toggled(QTreeWidgetItem())
 
         update_button.assert_not_called()
-        assert dialog._selected_series == selected_before
+        assert {uid: dialog.selection.selected_series(uid) for uid in dialog.selection.study_uids()} == selected_before
 
 
 class TestUpdateLoadButton:
@@ -339,7 +361,7 @@ class TestUpdateLoadButton:
         assert not dialog._load_btn.isEnabled()
 
     def test_disabled_when_downloading(self, dialog):
-        dialog._selected_all.add("1.2.3")  # a selection that would enable the buttons
+        dialog.selection.select_study("1.2.3")  # a selection that would enable the buttons
         dialog._downloading = True
         dialog._update_load_button()
 
@@ -793,7 +815,7 @@ class TestDeferredLoad:
     def test_load_waits_for_unknown_series_list(self, dialog):
         """Selecting a study whose series are unknown must fetch them first."""
         dialog._on_studies_loaded([_study(uid="u1")], None)
-        dialog._selected_all.add("u1")
+        dialog.selection.select_study("u1")
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
             dialog._on_load()
             mock_pool.globalInstance().start.assert_called()
@@ -803,7 +825,7 @@ class TestDeferredLoad:
     def test_load_waits_for_inflight_series_query(self, dialog):
         """Regression: an in-flight series query is not "ready" yet."""
         dialog._on_studies_loaded([_study(uid="u1")], None)
-        dialog._selected_all.add("u1")
+        dialog.selection.select_study("u1")
         dialog._series_loading.add("u1")
         # The query is already in flight, so it must not be started twice.
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
@@ -814,7 +836,7 @@ class TestDeferredLoad:
 
     def test_pending_action_runs_when_series_arrive(self, dialog):
         dialog._on_studies_loaded([_study(uid="u1")], None)
-        dialog._selected_all.add("u1")
+        dialog.selection.select_study("u1")
         dialog._pending_action = "load"
         dialog._cache.create_session.return_value = "session-1"
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
@@ -927,7 +949,7 @@ class TestPatientHistory:
         dialog._current_study_uid = "u1"
         self._show(dialog, [self._prior("u2", "20260614")])
         dialog._history_chips_layout.itemAt(0).widget().click()
-        assert "u2" in dialog._selected_all
+        assert dialog.selection.is_whole("u2")
         assert "14.06.2026" in dialog._status_label.text()
 
     def test_chip_click_selects_a_listed_study(self, dialog):
@@ -936,13 +958,13 @@ class TestPatientHistory:
         self._show(dialog, [self._prior("u2", "20260614")])
         dialog._history_chips_layout.itemAt(0).widget().click()
         assert dialog._current_study_uid == "u2"
-        assert "u2" in dialog._selected_all
+        assert dialog.selection.is_whole("u2")
 
     def test_chip_click_ignores_unknown_uids(self, dialog):
         dialog._current_study_uid = "u1"
         self._show(dialog, [self._prior("u2", "20260614")])
         dialog._on_history_chip_clicked("nope")
-        assert "nope" not in dialog._selected_all  # a stale chip must not create a selection
+        assert not dialog.selection.is_whole("nope")  # a stale chip must not create a selection
 
     def test_header_counts_studies_ticked_outside_the_list(self, dialog):
         dialog._on_studies_loaded([_study(uid="u1")], None)
