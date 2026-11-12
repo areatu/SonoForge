@@ -70,6 +70,7 @@ from echo_personal_tool.application.server_io import (
     save_server_settings,
     settings_requires_confirmation,
 )
+from echo_personal_tool.application.study_selection import StudySelection
 from echo_personal_tool.application.workers.orthanc_download_worker import OrthancDownloadWorker
 from echo_personal_tool.application.workers.orthanc_enrichment_worker import (
     EnrichmentSignals,
@@ -460,6 +461,11 @@ class _StudyDetailWorker(QRunnable):
             log.debug("[DLG] study detail worker: signal already deleted, skipping emit")
 
 
+def _known_series_uids(series_cache: dict[str, list[SeriesInfo]], study_uid: str) -> list[str]:
+    """Cached series UIDs of one study, in the order the server returned them."""
+    return [entry.series_uid for entry in series_cache.get(study_uid, []) if entry.series_uid]
+
+
 class OrthancStudyDialog(QDialog):
     """Browse studies with a master–detail layout and download the selection."""
 
@@ -565,8 +571,9 @@ class OrthancStudyDialog(QDialog):
         self._series_cache: dict[str, list[SeriesInfo]] = {}
         self._series_errors: dict[str, str] = {}
         self._series_loaded: set[str] = set()
-        self._selected_all: set[str] = set()  # study marked as "whole study"
-        self._selected_series: dict[str, set[str]] = {}
+        #: The only owner of the study/series selection.  Tree item
+        #: ``ROLE_CHECKED``/``ROLE_PARTIAL`` data mirrors it, never replaces it.
+        self._selection = StudySelection()
         self._study_thumbnails: dict[str, tuple[str, str]] = {}  # study -> (study, series)
         self._study_stats: dict[str, StudyStatistics] = {}
         self._study_states: dict[str, tuple[str, str]] = {}
@@ -1273,8 +1280,7 @@ class OrthancStudyDialog(QDialog):
         self._series_loaded.clear()
         self._study_stats.clear()
         self._study_thumbnails.clear()
-        self._selected_all.clear()
-        self._selected_series.clear()
+        self._selection.clear()
         self._study_states.clear()
         self._prefetch_queue = [s.study_uid for s in self._studies if s.study_uid]
         self._prefetching.clear()
@@ -1306,7 +1312,7 @@ class OrthancStudyDialog(QDialog):
             item = _StudyItem()
             item.setData(0, ROLE_ROW, self._make_study_row(study))
             item.setData(0, ROLE_UID, study.study_uid)
-            item.setData(0, ROLE_CHECKED, study.study_uid in self._selected_all)
+            item.setData(0, ROLE_CHECKED, self._selection.is_whole(study.study_uid))
             item.setData(0, ROLE_COMPLETED, self._is_study_completed(study.study_uid))
             item.setSizeHint(0, QSize(0, STUDY_ROW_HEIGHT))
             item.setData(0, _SORT_ROLE, self._study_sort_key(study))
@@ -1589,8 +1595,10 @@ class OrthancStudyDialog(QDialog):
         self._series_cache[study_uid] = list(series_list)
         if error:
             self._series_errors[study_uid] = str(error)
-        if study_uid in self._selected_all:
-            self._selected_series[study_uid] = {s.series_uid for s in series_list if s.series_uid}
+        self._selection.sync_known_series(
+            study_uid,
+            [series.series_uid for series in series_list if series.series_uid],
+        )
 
         self._refresh_study_row(study_uid)
         if study_uid == self._current_study_uid:
@@ -1709,7 +1717,7 @@ class OrthancStudyDialog(QDialog):
             self._series_actions.setVisible(False)
             self._update_empty_states()
             return
-        selected = self._selected_series.get(study_uid, set())
+        selected = self._selection.selected_series(study_uid)
         self._series_list.blockSignals(True)
         self._series_list.clear()
         for entry in series:
@@ -1754,17 +1762,20 @@ class OrthancStudyDialog(QDialog):
         currently_checked = bool(item.data(0, ROLE_CHECKED))
         self._set_study_selected(study_uid, not currently_checked)
 
+    @property
+    def selection(self) -> StudySelection:
+        """Single owner of the study/series selection; tests read it here."""
+        return self._selection
+
     def _set_study_selected(self, study_uid: str, selected: bool) -> None:
         series = self._series_cache.get(study_uid)
         if selected:
-            self._selected_all.add(study_uid)
-            if series is not None:
-                self._selected_series[study_uid] = {s.series_uid for s in series if s.series_uid}
-            elif study_uid not in self._series_loaded:
+            known = _known_series_uids(self._series_cache, study_uid) if series is not None else None
+            self._selection.select_study(study_uid, known)
+            if series is None and study_uid not in self._series_loaded:
                 self._prefetch_series(study_uid, force=True)
         else:
-            self._selected_all.discard(study_uid)
-            self._selected_series.pop(study_uid, None)
+            self._selection.deselect_study(study_uid)
         self._sync_study_item_state_by_uid(study_uid)
         if study_uid == self._current_study_uid:
             self._sync_series_items()
@@ -1778,17 +1789,12 @@ class OrthancStudyDialog(QDialog):
         series_uid = item.data(0, ROLE_UID)
         if not series_uid:
             return
-        selected = set(self._selected_series.get(self._current_study_uid, set()))
-        if bool(item.data(0, ROLE_CHECKED)):
-            selected.discard(str(series_uid))
-        else:
-            selected.add(str(series_uid))
-        self._selected_series[self._current_study_uid] = selected
-        known = {s.series_uid for s in self._series_cache.get(self._current_study_uid, [])}
-        if known and selected >= known:
-            self._selected_all.add(self._current_study_uid)
-        else:
-            self._selected_all.discard(self._current_study_uid)
+        selected = self._selection.set_series_selected(
+            self._current_study_uid,
+            str(series_uid),
+            selected=not bool(item.data(0, ROLE_CHECKED)),
+            known_series_uids=_known_series_uids(self._series_cache, self._current_study_uid),
+        )
         item.setData(0, ROLE_CHECKED, str(series_uid) in selected)
         self._sync_study_item_state_by_uid(self._current_study_uid)
         self._update_load_button()
@@ -1800,7 +1806,7 @@ class OrthancStudyDialog(QDialog):
         self._set_study_selected(self._current_study_uid, checked)
 
     def _sync_series_items(self) -> None:
-        selected = self._selected_series.get(self._current_study_uid, set())
+        selected = self._selection.selected_series(self._current_study_uid)
         self._series_list.blockSignals(True)
         for index in range(self._series_list.topLevelItemCount()):
             item = self._series_list.topLevelItem(index)
@@ -1822,18 +1828,7 @@ class OrthancStudyDialog(QDialog):
         item.setData(0, ROLE_PARTIAL, partial)
 
     def _study_check_state(self, study_uid: str) -> tuple[bool, bool]:
-        selected = self._selected_series.get(study_uid)
-        known = {s.series_uid for s in self._series_cache.get(study_uid, [])}
-        if known:
-            selected = selected or set()
-            if selected >= known:
-                return True, False
-            if selected:
-                return False, True
-            return False, False
-        if study_uid in self._selected_all:
-            return True, False
-        return False, False
+        return self._selection.check_state(study_uid, _known_series_uids(self._series_cache, study_uid))
 
     def _on_select_all_studies(self) -> None:
         for index in range(self._studies_list.topLevelItemCount()):
@@ -1843,8 +1838,7 @@ class OrthancStudyDialog(QDialog):
                 self._set_study_selected(study_uid, True)
 
     def _on_clear_selection(self) -> None:
-        self._selected_all.clear()
-        self._selected_series.clear()
+        self._selection.clear()
         for index in range(self._studies_list.topLevelItemCount()):
             self._sync_study_item_state(self._studies_list.topLevelItem(index))
         self._sync_series_items()
@@ -1864,24 +1858,9 @@ class OrthancStudyDialog(QDialog):
         Studies hidden by the date filter are skipped: their checked series
         are invisible to the user and must not be silently downloaded.
         """
-        hidden = self._hidden_study_uids()
-        result: list[tuple[str, list[str]]] = []
-        ordered = list(dict.fromkeys([*self._selected_all, *self._selected_series]))
-        for study_uid in ordered:
-            if not study_uid or study_uid in hidden:
-                continue
-            known = [entry.series_uid for entry in self._series_cache.get(study_uid, []) if entry.series_uid]
-            if study_uid in self._selected_all:
-                # "Whole study": every series we know about.  While the series
-                # list is still loading the entry carries an empty list — the
-                # selection is real, and ``_ensure_selection_ready`` fetches the
-                # list before anything is downloaded.
-                uids = known or sorted(self._selected_series.get(study_uid, set()))
-            else:
-                selected = self._selected_series.get(study_uid, set())
-                uids = [uid for uid in known if uid in selected] if known else sorted(selected)
-            result.append((study_uid, uids))
-        return result
+        selected_uids = self._selection.study_uids()
+        known = {uid: _known_series_uids(self._series_cache, uid) for uid in selected_uids}
+        return self._selection.download_plan(known, excluded=self._hidden_study_uids())
 
     def _hidden_study_uids(self) -> set[str]:
         hidden: set[str] = set()
@@ -1892,9 +1871,6 @@ class OrthancStudyDialog(QDialog):
                 if uid:
                     hidden.add(uid)
         return hidden
-
-    def _selected_study_uids(self) -> list[str]:
-        return [uid for uid, _series in self._collect_all_checked_series()]
 
     def _update_selection_summary(self) -> None:
         pairs = self._collect_all_checked_series()
@@ -1940,7 +1916,7 @@ class OrthancStudyDialog(QDialog):
             str(self._studies_list.topLevelItem(i).data(0, ROLE_UID))
             for i in range(self._studies_list.topLevelItemCount())
         }
-        return sum(1 for uid in self._selected_all if uid and uid not in listed)
+        return sum(1 for uid in self._selection.whole_studies() if uid and uid not in listed)
 
     def _update_empty_states(self) -> None:
         self._studies_stack.setCurrentIndex(0 if self._studies_list.topLevelItemCount() else 1)
@@ -2299,7 +2275,7 @@ class OrthancStudyDialog(QDialog):
         action is queued and resumed from ``_on_series_loaded``.
         """
         hidden = self._hidden_study_uids()
-        candidates = dict.fromkeys([*self._selected_all, *self._selected_series])
+        candidates = self._selection.study_uids()
         # A study whose series list is *in flight* is not ready either: without
         # its UIDs the download would silently fetch nothing.
         missing = [
@@ -2320,7 +2296,7 @@ class OrthancStudyDialog(QDialog):
         action = self._pending_action
         if action is None or self._downloading or not self._is_alive():
             return
-        pending = dict.fromkeys([*self._selected_all, *self._selected_series])
+        pending = self._selection.study_uids()
         if any(uid in self._series_loading for uid in pending if uid not in self._series_cache):
             return
         self._pending_action = None

@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 69,
-  "total_errors": 833,
+  "total_errors": 832,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -109,7 +109,7 @@
     "src/echo_personal_tool/presentation/orthanc_study_dialog.py": {
       "arg-type": 7,
       "attr-defined": 2,
-      "has-type": 16,
+      "has-type": 15,
       "misc": 1,
       "no-any-return": 3,
       "no-untyped-def": 10,

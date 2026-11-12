@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(arch)`: S-03 — выбор исследований в Orthanc-диалоге перешёл к одному владельцу `StudySelection` ([полностью](changelog.d/027-refactor-arch-s03-518.md))
+
 - `test(viewer)`: QH-0 — characterization harness зафиксировал наблюдаемое поведение `ViewerWidget` перед экстракцией кластеров ([полностью](changelog.d/026-test-viewer-qh0-516.md))
 
 - `refactor(arch)`: S-02b — FPS-правка и посчитанный strain теперь принадлежат вкладке ([полностью](changelog.d/025-refactor-tab-state-514.md))
