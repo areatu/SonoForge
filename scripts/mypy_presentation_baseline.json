@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 68,
-  "total_errors": 820,
+  "total_errors": 818,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -304,7 +304,7 @@
       "no-any-return": 5,
       "no-redef": 1,
       "no-untyped-call": 17,
-      "no-untyped-def": 55
+      "no-untyped-def": 53
     },
     "src/echo_personal_tool/presentation/web_reference/web_reference_bridge.py": {
       "attr-defined": 2
