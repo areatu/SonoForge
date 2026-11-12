@@ -71,7 +71,7 @@
         "controller",
         "ctrl"
       ],
-      "total": 539,
+      "total": 530,
       "files": {
         "tests/unit/test_app_controller_critical.py": 61,
         "tests/unit/test_app_controller_dicom_cache.py": 16,
@@ -90,7 +90,6 @@
         "tests/unit/test_playback_cine_roi_probe.py": 14,
         "tests/unit/test_playback_prefetch.py": 269,
         "tests/unit/test_playback_state.py": 2,
-        "tests/unit/test_s02_tab_isolation.py": 9,
         "tests/unit/test_scan_signal_delivery.py": 5,
         "tests/unit/test_scroll_min_buffer.py": 13,
         "tests/unit/test_scroll_two_phase_load.py": 23,

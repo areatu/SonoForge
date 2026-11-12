@@ -63,7 +63,9 @@ def window(qtbot, make_main_window, monkeypatch):
     controller = AppController()
     calls: dict[str, list] = {"folder": [], "studies": []}
     monkeypatch.setattr(controller, "open_folder", lambda root, error_log_path=None: calls["folder"].append(root))
-    monkeypatch.setattr(controller, "load_pre_scanned_studies", lambda studies: calls["studies"].append(studies))
+    monkeypatch.setattr(
+        controller, "load_pre_scanned_studies", lambda studies, clinical_memory=None: calls["studies"].append(studies)
+    )
     win = make_main_window(controller=controller)
     win.resize(1200, 800)
     win.show()
@@ -846,7 +848,7 @@ def test_abort_removes_loading_veil_and_restores_previous_tab(window):
 def test_synchronous_loader_exception_restores_updates_and_input(window, monkeypatch):
     first, second = _two_loaded_tabs(window)
 
-    def fail(_studies):
+    def fail(_studies, clinical_memory=None):
         raise RuntimeError("loader failed")
 
     monkeypatch.setattr(window._controller, "load_pre_scanned_studies", fail)
@@ -879,7 +881,9 @@ def test_second_flush_refusal_does_not_leave_loading_veil(window, monkeypatch):
     first, second = _two_loaded_tabs(window)
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
     monkeypatch.setattr(
-        window._controller, "load_pre_scanned_studies", lambda studies: window._on_persistence_blocked()
+        window._controller,
+        "load_pre_scanned_studies",
+        lambda studies, clinical_memory=None: window._on_persistence_blocked(),
     )
     assert not window._switch_to_tab(first)
     assert window._tabs.active_tab_id == second
@@ -923,14 +927,18 @@ def test_special_layout_exit_runs_only_when_a_special_layout_is_active(window, m
 def test_synchronous_completion_and_empty_result_both_release_busy_state(window, monkeypatch):
     first, second = _two_loaded_tabs(window)
     monkeypatch.setattr(
-        window._controller, "load_pre_scanned_studies", lambda studies: window._controller.studies_loaded.emit(studies)
+        window._controller,
+        "load_pre_scanned_studies",
+        lambda studies, clinical_memory=None: window._controller.studies_loaded.emit(studies),
     )
     window._switch_to_tab(first)
     assert window._tab_loading_id is None
     assert window._study_loading_overlay.isHidden()
     assert window._viewer_stack.updatesEnabled()
     monkeypatch.setattr(
-        window._controller, "load_pre_scanned_studies", lambda studies: window._controller.studies_loaded.emit([])
+        window._controller,
+        "load_pre_scanned_studies",
+        lambda studies, clinical_memory=None: window._controller.studies_loaded.emit([]),
     )
     window._switch_to_tab(second)
     assert window._main_stack.currentWidget() is window._content_widget

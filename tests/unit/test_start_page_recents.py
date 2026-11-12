@@ -65,7 +65,7 @@ def window(qtbot, make_main_window, monkeypatch):
 
     controller = AppController()
     monkeypatch.setattr(controller, "open_folder", lambda root, error_log_path=None: None)
-    monkeypatch.setattr(controller, "load_pre_scanned_studies", lambda studies: None)
+    monkeypatch.setattr(controller, "load_pre_scanned_studies", lambda studies, clinical_memory=None: None)
     win = make_main_window(controller=controller)
     win.resize(1200, 800)
     win.show()

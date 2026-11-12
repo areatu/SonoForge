@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 
 # Proposal from spec §4 (open question §10.1): 8 open tabs. Kept as a constant
@@ -95,6 +96,12 @@ class TabSession:
     #: — ``retarget_empty`` / ``replace_active`` — clears it, so the next file
     #: gets its own decision; a tab switch does not.
     focus_decided: bool = False
+    #: Values the clinician typed in this tab: the measurement session of its
+    #: studies (contours, calipers, Doppler, manual pixel spacing) and the
+    #: calculator overrides.  Parked here while the tab is inactive and adopted
+    #: back on return; the tab is the owner, never a global cache keyed by a
+    #: study UID — two tabs may hold the same study.  In memory only.
+    clinical_memory: TabClinicalMemory = field(default_factory=TabClinicalMemory)
 
     @property
     def clip_count(self) -> int:

@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox
 
 from echo_personal_tool.application.download_history import DownloadHistory
+from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory
 from echo_personal_tool.application.tab_session import (
     MAX_OPEN_TABS,
     TAB_ORIGIN_EMPTY,
@@ -147,6 +148,7 @@ class FakeWindow:
             ),
             measurement_persistence=SimpleNamespace(store=self._store),
             load_pre_scanned_studies=self.load_studies,
+            snapshot_tab_clinical_memory=self.snapshot_memory,
         )
         self._viewer = _FakeViewer()
         self._tool_panel = _FakeToolPanel()
@@ -166,6 +168,8 @@ class FakeWindow:
         self.left_layouts = 0
         self.doppler_resets = 0
         self.loaded: list[list[StudyMetadata]] = []
+        self.loaded_memory: list[TabClinicalMemory | None] = []
+        self.memory: TabClinicalMemory | None = None
         self.selected: list[str] = []
         self.has_loaded_study = True
         self.start_page_visible = 0
@@ -215,8 +219,12 @@ class FakeWindow:
         self.clip_counts.append(int(clip_count))
 
     # recorder for the controller ------------------------------------
-    def load_studies(self, studies) -> None:  # noqa: ANN001 - controller signature
+    def load_studies(self, studies, *, clinical_memory=None) -> None:  # noqa: ANN001 - controller signature
         self.loaded.append(list(studies))
+        self.loaded_memory.append(clinical_memory)
+
+    def snapshot_memory(self) -> TabClinicalMemory | None:
+        return self.memory
 
 
 def _instance(uid: str) -> InstanceMetadata:
@@ -361,6 +369,51 @@ def test_switching_back_reloads_the_parked_studies_and_restores_the_clip() -> No
 
     assert coordinator.after_loaded(first, _studies("a")) is True
     assert window.selected == ["a.0"], "the clip the tab was showing comes back"
+
+
+def test_parking_a_tab_keeps_its_clinical_memory_and_the_return_adopts_it() -> None:
+    coordinator, window = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    parked = TabClinicalMemory(manual_inputs={"a.study": {"bsa": 1.9}})
+    window.memory = parked
+
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    _finish(coordinator, _studies("b"))
+    window.memory = None
+    assert coordinator.switch_to(first) is True
+    _finish(coordinator, _studies("a"))
+
+    assert coordinator.tabs.get(first).clinical_memory is parked
+    assert window.loaded_memory[-1] is parked, "the returning tab hands its values back"
+
+
+def test_a_new_source_in_the_same_tab_drops_the_parked_memory() -> None:
+    coordinator, _ = _coordinator()
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    tab = coordinator.tabs.active
+    tab.clinical_memory = TabClinicalMemory(manual_inputs={"a.study": {"bsa": 1.9}})
+
+    coordinator.loading_tab_id = tab.tab_id
+    coordinator.previous_tab_id = None  # a new source, not a tab switch
+    coordinator.finish_load(_studies("b"))
+
+    assert not tab.clinical_memory
+
+
+def test_parking_without_a_snapshot_drops_the_previous_memory() -> None:
+    coordinator, window = _coordinator()
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    tab = coordinator.tabs.active
+    tab.clinical_memory = TabClinicalMemory(manual_inputs={"a.study": {"bsa": 1.9}})
+
+    window.memory = None
+    coordinator.park_active()
+
+    assert not tab.clinical_memory, "a no-memory park cannot resurrect an old snapshot"
 
 
 def test_switch_is_refused_while_loading() -> None:
