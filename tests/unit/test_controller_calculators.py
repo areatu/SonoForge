@@ -11,6 +11,7 @@ pytestmark = pytest.mark.gui
 from dataclasses import replace
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.tab_clinical_memory import adopt_loaded_bsa
 from echo_personal_tool.domain.calculators.models import SOURCE_DICOM, SOURCE_ESTIMATE, SOURCE_MANUAL
 from echo_personal_tool.domain.models import InstanceMetadata, LinearMeasurement
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerTrace
@@ -206,7 +207,7 @@ def test_loaded_manual_bsa_seeds_the_calculators(synthetic_dicom_path: Path) -> 
     """Opening a record restores the value the clinician typed (QH-1d, first slice)."""
     controller = AppController()
     _build_study(controller, synthetic_dicom_path)
-    uid = controller._resolve_study_uid()
+    uid = controller.resolve_study_uid()
     controller.measurement_persistence.loaded.add(uid)
     controller._measurement_session.restore(
         uid,
@@ -220,7 +221,11 @@ def test_loaded_manual_bsa_seeds_the_calculators(synthetic_dicom_path: Path) -> 
         ),
     )
 
-    controller._adopt_loaded_manual_bsa()
+    adopt_loaded_bsa(
+        controller.measurement_persistence.loaded,
+        controller._measurement_session,
+        controller._calculator_inputs,
+    )
 
     assert controller._calculator_inputs.manual(uid)["bsa"] == pytest.approx(1.55)
     assert controller.compute_study_snapshot().indexed.bsa_m2 == pytest.approx(1.55)

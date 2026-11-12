@@ -32,6 +32,7 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -120,6 +121,9 @@ class TabCoordinator:
         self.keep_content_visible = False
         #: Tab the viewer came from; used to roll back a refused switch.
         self.previous_tab_id: str | None = None
+        #: True while ``load_content`` returns a parked tab's own study set: its
+        #: clinical memory must survive the resulting ``finish_load``.
+        self.restoring_parked_tab = False
         #: ``(tab_id, instance_uid, frame_index)`` to restore after the load.
         self.restore_target: tuple[str, str, int] | None = None
         #: ``(tab_id, instance_uid, frame_index, viewer_state)`` applied once the
@@ -176,6 +180,7 @@ class TabCoordinator:
             window._leave_special_layouts()
         self.keep_content_visible = False
         self.previous_tab_id = None
+        self.restoring_parked_tab = False
         self.loading_tab_id = self._tabs.active_tab_id
         self.restore_target = None
         self.refresh_strip()
@@ -270,7 +275,11 @@ class TabCoordinator:
         tab = self._tabs.active
         if tab is None or not tab.studies:
             return
-        tab.has_measurements = self.has_live_measurements(tab)
+        memory = window._controller.snapshot_tab_clinical_memory()
+        tab.clinical_memory = memory if memory is not None else TabClinicalMemory()
+        # With local storage off the parked values are the only evidence that the
+        # tab holds unsaved measurements; the close prompt must still see them.
+        tab.has_measurements = self.has_live_measurements(tab) or tab.clinical_memory.has_measurements()
         snapshot = window._controller.state_manager.snapshot
         instance = snapshot.instance
         park_tab(
@@ -346,7 +355,11 @@ class TabCoordinator:
                 )
                 self.refresh_strip()
                 self.update_main_stack()
-                window._controller.load_pre_scanned_studies(list(tab.studies))
+                self.restoring_parked_tab = True
+                window._controller.load_pre_scanned_studies(
+                    list(tab.studies),
+                    clinical_memory=tab.clinical_memory,
+                )
         except Exception:
             self.abort_load()
             raise
@@ -588,11 +601,17 @@ class TabCoordinator:
         # ``finish_background_load`` when it completes (D-29 parallel tabs).
         loading_id = self._tabs.active_tab_id
         is_switch = self.previous_tab_id is not None
+        returning = self.restoring_parked_tab
+        self.restoring_parked_tab = False
         if self.loading_tab_id == loading_id:
             self.loading_tab_id = None
         self.previous_tab_id = None
         if loading_id is not None and loading_id in self._tabs:
             self._tabs.set_studies(loading_id, studies)
+            if not returning:
+                # A new source in the same tab is not the source those values
+                # belonged to; the tab starts empty and the next park overwrites.
+                self._tabs.get(loading_id).clinical_memory = TabClinicalMemory()
         if not is_switch and loading_id is not None and loading_id in self._tabs:
             tab = self._tabs.get(loading_id)
             if tab.origin == TAB_ORIGIN_FOLDER and tab.root:
@@ -619,6 +638,7 @@ class TabCoordinator:
         if loading_id is not None and loading_id in self._tabs:
             self._tabs.set_studies(loading_id, studies)
             tab = self._tabs.get(loading_id)
+            tab.clinical_memory = TabClinicalMemory()
             if tab.origin == TAB_ORIGIN_FOLDER and tab.root:
                 for study in studies:
                     self.folder_history.record(study)
@@ -630,6 +650,7 @@ class TabCoordinator:
     def fail_background_load(self) -> None:
         """A background download failed: drop the «loading» mark, keep the view."""
         self.loading_tab_id = None
+        self.restoring_parked_tab = False
         self.refresh_strip()
         self.update_main_stack()
 
@@ -637,6 +658,7 @@ class TabCoordinator:
         self.loading_tab_id = None
         self.restore_target = None
         self.pending_view = None
+        self.restoring_parked_tab = False
         previous = self.previous_tab_id
         self.previous_tab_id = None
         self.keep_content_visible = False

@@ -34,6 +34,7 @@ from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
     contours_for_instance,
 )
+from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory, adopt_loaded_bsa
 from echo_personal_tool.application.thumbnail_scheduler import (
     ThumbnailPriority,
     ThumbnailScheduler,
@@ -483,7 +484,12 @@ class AppController(QObject):
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
-    def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
+    def load_pre_scanned_studies(
+        self,
+        studies: list[StudyMetadata],
+        *,
+        clinical_memory: TabClinicalMemory | None = None,
+    ) -> None:
         """Load studies already built by the download worker (skip ScanWorker)."""
         if not self.measurement_persistence.flush():
             self.status_message.emit(tr("persistence.blocked_navigation"))
@@ -500,7 +506,15 @@ class AppController(QObject):
         count = len(self._studies)
         logger.info("pre_scanned_load studies=%d", count)
         self.status_message.emit(tr_plural("status.studies_loaded", count))
-        self._restore_measurement_studies()
+        self._restore_measurement_studies(clinical_memory)
+
+    def snapshot_tab_clinical_memory(self) -> TabClinicalMemory | None:
+        """Park the active tab's typed values; ``None`` when disk is the authority."""
+        if self.measurement_persistence.enabled:
+            return None
+        return TabClinicalMemory.capture(
+            self._measurement_session, self._calculator_inputs, (study.study_uid for study in self._studies)
+        )
 
     def _begin_study_switch(self) -> None:
         self._cache_retained_studies = tuple(self._studies)
@@ -514,15 +528,17 @@ class AppController(QObject):
         if self.measurement_persistence.enabled:
             self.persistence_status.emit("loading")
 
-    def _restore_measurement_studies(self) -> None:
+    def _restore_measurement_studies(self, clinical_memory: TabClinicalMemory | None = None) -> None:
         self._measurement_session.clear()
+        if clinical_memory is not None and not self.measurement_persistence.enabled:
+            clinical_memory.restore_into(self._measurement_session, self._calculator_inputs)
         generation = self._study_load_generation
         studies = list(self._studies)
 
         def ready() -> None:
             if generation != self._study_load_generation:
                 return
-            self._adopt_loaded_manual_bsa()
+            adopt_loaded_bsa(self.measurement_persistence.loaded, self._measurement_session, self._calculator_inputs)
             # The gallery's first selection must not flush the previous viewer's
             # annotations into the new store (or under a fallback Series UID).
             self._state_manager.clear_instance(emit=False)
@@ -2268,23 +2284,6 @@ class AppController(QObject):
         if study_uid not in self.measurement_persistence.loaded:
             return None
         return evaluate_derived_record_status(session.derived_snapshot, current)
-
-    def _adopt_loaded_manual_bsa(self) -> None:
-        """Seed the manual BSA of the calculators from the loaded records.
-
-        The manual value is persisted with the study (QH-1b.2, slice 2), so an
-        opened record keeps the body surface area the clinician typed instead of
-        silently falling back to the Du Bois estimate. The value already passed
-        the document validator; a range failure is logged, never fatal.
-        """
-        for study_uid in tuple(self.measurement_persistence.loaded):
-            data = self._measurement_session.get(study_uid)
-            if data.manual_bsa_m2 is None:
-                continue
-            try:
-                self._calculator_inputs.set_manual(study_uid, "bsa", data.manual_bsa_m2)
-            except (KeyError, ValueError) as exc:
-                log_boundary_failure(logger, "measurement.load", exc, code="invalid", level=logging.WARNING)
 
     def _on_record_saved(self, study_uid: str, basis: object) -> None:
         """Adopt the bases the write froze, so RAM and disk agree (no reload needed)."""

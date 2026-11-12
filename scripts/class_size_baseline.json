@@ -5,7 +5,7 @@
   "module_limit": 2000,
   "classes": {
     "application/app_controller.py::AppController": {
-      "lines": 4339,
+      "lines": 4337,
       "methods": 167
     },
     "presentation/doppler_overlay.py::DopplerOverlayTools": {
@@ -30,7 +30,7 @@
     }
   },
   "modules": {
-    "application/app_controller.py": 4525,
+    "application/app_controller.py": 4524,
     "presentation/main_window.py": 6708,
     "presentation/orthanc_study_dialog.py": 3063,
     "presentation/tool_panel_v2/panel.py": 2080,
