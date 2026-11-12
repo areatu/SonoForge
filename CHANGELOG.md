@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `refactor(arch)`: A1 — транспорт просмотра перешёл к одному владельцу `ViewerTransport`, `set_state`/`set_transport_state` больше не дублируют проекцию ([полностью](changelog.d/028-refactor-a1-viewer-transport-520.md))
+
 - `refactor(arch)`: S-03 — выбор исследований в Orthanc-диалоге перешёл к одному владельцу `StudySelection` ([полностью](changelog.d/027-refactor-arch-s03-518.md))
 
 - `test(viewer)`: QH-0 — characterization harness зафиксировал наблюдаемое поведение `ViewerWidget` перед экстракцией кластеров ([полностью](changelog.d/026-test-viewer-qh0-516.md))

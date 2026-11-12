@@ -81,20 +81,20 @@ def test_cine_transport_has_stable_round_play_button_and_endpoint_navigation(qtb
 
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
-    viewer._timeline_slider.setRange(0, 9)
-    viewer._timeline_slider.setValue(4)
+    viewer.transport.timeline_slider.setRange(0, 9)
+    viewer.transport.timeline_slider.setValue(4)
     frames = []
     viewer.frame_selected.connect(frames.append)
-    viewer._first_frame_button.click()
-    viewer._last_frame_button.click()
+    viewer.transport.first_frame_button.click()
+    viewer.transport.last_frame_button.click()
     assert frames == [0, 9]
-    viewer._sync_play_button(False)
-    size = viewer._play_button.size()
-    assert viewer._play_button.text() == ""
-    assert not viewer._play_button.icon().isNull()
-    viewer._sync_play_button(True)
-    assert viewer._play_button.size() == size
-    assert viewer._play_button.property("cinePlaying") is True
+    viewer.transport.sync_play_button(False)
+    size = viewer.transport.play_button.size()
+    assert viewer.transport.play_button.text() == ""
+    assert not viewer.transport.play_button.icon().isNull()
+    viewer.transport.sync_play_button(True)
+    assert viewer.transport.play_button.size() == size
+    assert viewer.transport.play_button.property("cinePlaying") is True
 
     # «Первый кадр» / «Кадр назад» (and their forward counterparts) used to
     # be the same bar+triangle glyph shifted by 2 px.  Jump-to-end buttons now
@@ -110,7 +110,7 @@ def test_cine_transport_has_stable_round_play_button_and_endpoint_navigation(qtb
 
     # The 36 px round play button shares the centre line of its 32 px
     # neighbours instead of being pinned to the row's top/bottom edge.
-    row = viewer._transport_bar.layout().itemAt(0)
+    row = viewer.transport.bar.layout().itemAt(0)
     for index in range(5):
         assert row.itemAt(index).alignment() & Qt.AlignmentFlag.AlignVCenter
 

@@ -36,6 +36,25 @@ from __future__ import annotations
 
 from typing import Any
 
+#: Members whose owner moved from ``ViewerWidget`` to ``ViewerTransport`` (A1).
+#: The frozen private names below stay valid for callers; the adapter routes
+#: them to the new owner when it exists, and falls back to the old private
+#: attribute for the adapter's own ``SimpleNamespace`` unit test.
+_TRANSPORT_MEMBERS = {
+    "timeline_slider": "timeline_slider",
+    "play_button": "play_button",
+    "fps_label": "fps_label",
+    "source_label": "source_label",
+    "step_back": "step_back",
+    "step_forward": "step_forward",
+    "on_timeline_changed": "on_timeline_changed",
+    "pending_scroll_index": "pending_scroll_index",
+    "scroll_debounce_ms": "scroll_debounce_ms",
+    "emit_pending_scroll": "emit_pending_scroll",
+    "update_timeline_indicator": "update_timeline_indicator",
+}
+
+
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
 EXPOSED_PRIVATE_NAMES = frozenset(
@@ -250,6 +269,9 @@ class ViewerContract:
     def __getattr__(self, name: str) -> Any:
         private = "_" + name
         if private in EXPOSED_PRIVATE_NAMES:
+            transport = getattr(self._viewer, "transport", None)
+            if transport is not None and name in _TRANSPORT_MEMBERS:
+                return getattr(transport, _TRANSPORT_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -259,6 +281,10 @@ class ViewerContract:
             return
         private = "_" + name
         if private in EXPOSED_PRIVATE_NAMES:
+            transport = getattr(self._viewer, "transport", None)
+            if transport is not None and name in _TRANSPORT_MEMBERS:
+                setattr(transport, _TRANSPORT_MEMBERS[name], value)
+                return
             setattr(self._viewer, private, value)
             return
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")

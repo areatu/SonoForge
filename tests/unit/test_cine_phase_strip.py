@@ -146,9 +146,9 @@ class TestViewerIntegration:
         viewer.show()
         qtbot.waitExposed(viewer)
         assert viewer._phase_strip is not None
-        assert viewer._phase_strip.width() == viewer._timeline_slider.width()
+        assert viewer._phase_strip.width() == viewer.transport.timeline_slider.width()
         bar_y = viewer._phase_strip.mapTo(viewer, viewer._phase_strip.rect().topLeft()).y()
-        slider_y = viewer._timeline_slider.mapTo(viewer, viewer._timeline_slider.rect().topLeft()).y()
+        slider_y = viewer.transport.timeline_slider.mapTo(viewer, viewer.transport.timeline_slider.rect().topLeft()).y()
         assert bar_y < slider_y
 
     def test_viewer_phase_label_follows_the_playhead(self, qtbot) -> None:

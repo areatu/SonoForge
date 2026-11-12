@@ -29,6 +29,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     TagsOverlayController,
 )
 from echo_personal_tool.presentation.viewer.target_boundary import BOUNDARY
+from echo_personal_tool.presentation.viewer.transport import ViewerTransport
 
 __all__ = [
     # boundary doc
@@ -55,4 +56,5 @@ __all__ = [
     "MModeViewerPort",
     "DopplerController",
     "DopplerViewerPort",
+    "ViewerTransport",
 ]

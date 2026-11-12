@@ -373,20 +373,12 @@ class PresenterWindow(QWidget):
     @staticmethod
     def _hide_speaker_controls(viewer: ViewerWidget) -> None:
         """Hide the playback controls row — that is speaker UI."""
-        for attr in (
-            "_timeline_slider",
-            "_play_button",
-            "_step_back_button",
-            "_step_forward_button",
-            "_fps_label",
-            "_source_label",
-        ):
-            widget = getattr(viewer, attr, None)
-            if widget is not None:
-                try:
-                    widget.hide()
-                except RuntimeError:
-                    pass
+        transport = getattr(viewer, "transport", None)
+        if transport is not None:
+            try:
+                transport.hide_playback_controls()
+            except RuntimeError:
+                pass
 
     # ── accessors ───────────────────────────────────────────────────
 
