@@ -310,6 +310,74 @@ def test_closed_contour_round_trip_keeps_its_payload(qtbot) -> None:
     assert viewer.contours() == []
 
 
+def test_open_model_contour_keeps_phase_view_and_completion_order(qtbot) -> None:
+    viewer = _loaded_viewer(qtbot, total=10, frame=3)
+    recorder = SignalRecorder(viewer)
+
+    assert viewer.start_model_contour(phase="ED", view="A4C", chamber="LV") is True
+    for point in ((10.0, 40.0), (50.0, 40.0), (30.0, 10.0)):
+        assert viewer.handle_contour_click(point) is True
+
+    assert viewer.is_contour_mode_active is False
+    payloads = recorder.args_of("contour_completed")
+    assert len(payloads) == 1
+    contour = payloads[0][0]
+    assert contour_snapshot(contour) == {
+        "chamber": "LV",
+        "phase": "ED",
+        "view": "A4C",
+        "frame_index": 3,
+        "points": 32,
+    }
+    assert contour.is_open_arc is True
+    assert [name for name in recorder.names() if name in {"contours_changed", "contour_completed"}] == [
+        "contours_changed",
+        "contour_completed",
+    ]
+
+
+def test_rejected_landmarks_do_not_commit_a_contour(qtbot) -> None:
+    viewer = _loaded_viewer(qtbot, total=10)
+    recorder = SignalRecorder(viewer)
+
+    assert viewer.start_model_contour(phase="ED", view="A4C", chamber="LV") is True
+    for _ in range(3):
+        assert viewer.handle_contour_click((10.0, 40.0)) is True
+
+    assert recorder.args_of("contour_landmark_rejected") == [("invalid",)]
+    assert recorder.args_of("contour_completed") == []
+    assert "contours_changed" not in recorder.names()
+    assert viewer.contours() == []
+    assert viewer.is_contour_mode_active is True
+
+
+def test_refine_without_an_open_contour_commits_nothing(qtbot) -> None:
+    viewer = _loaded_viewer(qtbot, total=10)
+    recorder = SignalRecorder(viewer)
+
+    assert viewer.refine_active_open_contour() == (False, "")
+    assert recorder.names() == []
+    assert viewer.contours() == []
+
+
+def test_a_frame_switch_discards_the_running_freehand_stroke(qtbot) -> None:
+    viewer = _loaded_viewer(qtbot, total=10)
+    viewer.set_area_tool_mode("freehand")
+    assert viewer.start_generic_area_contour() is True
+    assert viewer.contract.freehand_recording is True
+    viewer.contract.freehand_points = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]
+    recorder = SignalRecorder(viewer)
+
+    viewer.set_state(make_state(frame=1, total=10))
+
+    assert viewer.contract.freehand_recording is False
+    assert viewer.contract.freehand_points == []
+    assert viewer.contract.freehand_open_arc is False
+    assert viewer.is_contour_mode_active is False
+    assert viewer.contours() == []
+    assert recorder.names() == []
+
+
 def test_tool_switch_keeps_one_active_tool_and_clears_the_hint(qtbot) -> None:
     viewer = _loaded_viewer(qtbot, total=10)
     recorder = SignalRecorder(viewer)
