@@ -132,6 +132,77 @@ def test_ctrl_wheel_zooms_and_never_steals_the_frame(qtbot) -> None:
         assert after[field] == before[field]
 
 
+def test_label_picker_is_ui_only_and_dismisses_silently(qtbot) -> None:
+    viewer = make_viewer(qtbot)
+    picker = viewer.label_picker()
+    recorder = SignalRecorder(viewer)
+    before = instance_snapshot(viewer)
+
+    picker.open_for(value_text="12 mm", context="2d")
+    assert viewer.is_label_picker_visible() is True
+
+    assert viewer.dismiss_label_picker() is True
+    assert viewer.is_label_picker_visible() is False
+    assert recorder.names() == []
+    assert instance_snapshot(viewer) == before
+
+
+def test_accepting_a_picker_without_a_measurement_target_is_silent(qtbot) -> None:
+    viewer = make_viewer(qtbot)
+    viewer.label_picker().open_for(value_text="12 mm", context="2d")
+    recorder = SignalRecorder(viewer)
+    before = instance_snapshot(viewer)
+
+    assert viewer.accept_label_picker() is True
+    assert viewer.is_label_picker_visible() is False
+    assert recorder.names() == []
+    assert instance_snapshot(viewer) == before
+
+
+def test_hidden_picker_accept_is_a_noop(qtbot) -> None:
+    viewer = make_viewer(qtbot)
+    recorder = SignalRecorder(viewer)
+
+    assert viewer.accept_label_picker() is False
+    assert viewer.dismiss_label_picker() is False
+    assert recorder.names() == []
+
+
+def test_instance_and_frame_switches_dismiss_the_picker(qtbot) -> None:
+    first = make_instance(sop_instance_uid="1.2.3.qh0.picker.a")
+    second = make_instance(sop_instance_uid="1.2.3.qh0.picker.b")
+    viewer = make_viewer(qtbot)
+    viewer.set_state(make_state(total=10, instance=first))
+    viewer.show_frame(make_frame())
+
+    viewer.label_picker().open_for(value_text="12 mm", context="2d")
+    assert viewer.is_label_picker_visible() is True
+    viewer.set_state(make_state(frame=1, total=10, instance=first))
+    assert viewer.is_label_picker_visible() is False
+
+    viewer.label_picker().open_for(value_text="12 mm", context="2d")
+    viewer.set_state(make_state(total=10, instance=second))
+    assert viewer.is_label_picker_visible() is False
+
+
+def test_picker_context_override_is_ui_state_only(qtbot) -> None:
+    viewer = make_viewer(qtbot)
+    recorder = SignalRecorder(viewer)
+    before = instance_snapshot(viewer)
+    picker = viewer.label_picker()
+
+    picker.open_for(value_text="VTI", context="2d")
+    viewer.set_label_picker_context("doppler")
+    assert picker.context() == "doppler"
+
+    viewer.set_label_picker_context(None)
+    assert picker.context() == "doppler"  # applied on the next open, not retroactively
+    picker.open_for(value_text="VTI", context="2d")
+    assert picker.context() == "2d"
+    assert recorder.names() == []
+    assert instance_snapshot(viewer) == before
+
+
 def test_display_levels_follow_the_sliders_not_the_document(qtbot) -> None:
     viewer = _loaded_viewer(qtbot, total=10, frame=2)
     contract = viewer.contract
