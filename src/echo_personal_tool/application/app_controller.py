@@ -489,12 +489,12 @@ class AppController(QObject):
         studies: list[StudyMetadata],
         *,
         clinical_memory: TabClinicalMemory | None = None,
-    ) -> None:
-        """Load studies already built by the download worker (skip ScanWorker)."""
+    ) -> bool:
+        """Load pre-scanned studies (skip ScanWorker); ``False`` means the flush refused it."""
         if not self.measurement_persistence.flush():
             self.status_message.emit(tr("persistence.blocked_navigation"))
             self.persistence_blocked.emit()
-            return
+            return False
         self._begin_study_switch()
         self._reset_thumbnail_queue()
         n_inst = sum(len(s.instances) for st in studies for s in st.series)
@@ -504,9 +504,9 @@ class AppController(QObject):
         self._study_metrics_auto_filled = False
         self._studies = studies
         count = len(self._studies)
-        logger.info("pre_scanned_load studies=%d", count)
         self.status_message.emit(tr_plural("status.studies_loaded", count))
         self._restore_measurement_studies(clinical_memory)
+        return True
 
     def snapshot_tab_clinical_memory(self) -> TabClinicalMemory | None:
         """Park the active tab's typed values; ``None`` when disk is the authority."""
