@@ -90,6 +90,35 @@ _LABEL_PICKER_MEMBERS = {
 }
 
 
+#: Members whose owner moved from ``ViewerWidget`` to ``ViewerContours`` (A5).
+_CONTOUR_STATE_MEMBERS = {
+    "stored_contours": "stored",
+    "contours": "visible",
+    "active_arc_points": "active_arc_points",
+    "freehand_recording": "freehand_recording",
+    "freehand_points": "freehand_points",
+    "freehand_open_arc": "freehand_open_arc",
+    "contour_mode_active": "mode_active",
+    "contour_mode_kind": "mode_kind",
+    "contour_stage": "stage",
+    "active_contour_phase": "active_phase",
+    "active_contour_view": "active_view",
+    "active_contour_chamber": "active_chamber",
+    "active_mitral_septal": "active_mitral_septal",
+    "active_mitral_annulus": "active_mitral_annulus",
+    "active_apex_landmark": "active_apex_landmark",
+    "last_contour_click_ms": "last_click_ms",
+    "last_contour_click_screen": "last_click_screen",
+    "last_contour_point_screen": "last_point_screen",
+    "first_contour_point_screen": "first_point_screen",
+    "area_tool_mode": "area_tool_mode",
+    "lv_contour_input": "lv_input",
+    "atrial_contour_input": "atrial_input",
+    "find_stored_contour_index": "find_index",
+    "upsert_stored_contour": "upsert",
+}
+
+
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
 EXPOSED_PRIVATE_NAMES = frozenset(
@@ -316,6 +345,9 @@ class ViewerContract:
             label_picker = getattr(self._viewer, "label_picker_owner", None)
             if label_picker is not None and name in _LABEL_PICKER_MEMBERS:
                 return getattr(label_picker, _LABEL_PICKER_MEMBERS[name])
+            contour_state = getattr(self._viewer, "contour_state", None)
+            if contour_state is not None and name in _CONTOUR_STATE_MEMBERS:
+                return getattr(contour_state, _CONTOUR_STATE_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -340,6 +372,10 @@ class ViewerContract:
             label_picker = getattr(self._viewer, "label_picker_owner", None)
             if label_picker is not None and name in _LABEL_PICKER_MEMBERS:
                 setattr(label_picker, _LABEL_PICKER_MEMBERS[name], value)
+                return
+            contour_state = getattr(self._viewer, "contour_state", None)
+            if contour_state is not None and name in _CONTOUR_STATE_MEMBERS:
+                setattr(contour_state, _CONTOUR_STATE_MEMBERS[name], value)
                 return
             setattr(self._viewer, private, value)
             return

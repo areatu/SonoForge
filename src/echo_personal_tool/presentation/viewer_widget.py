@@ -141,6 +141,7 @@ from echo_personal_tool.presentation.viewer.compare_tools import (
     stored_widths,
 )
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
+from echo_personal_tool.presentation.viewer.contours import ContourStateAttribute, ViewerContours
 from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
@@ -926,6 +927,32 @@ class ViewerWidget(QWidget):
     loop_toggle_requested = Signal()
     loop_bound_changed = Signal(str, int)
 
+    # A5: contour drawing/storage state lives in ``contour_state``.  These
+    # descriptors keep the reviewed private names readable for ViewerContract
+    # and tests without storing a second copy on the widget.
+    _stored_contours = ContourStateAttribute("stored")
+    _contours = ContourStateAttribute("visible")
+    _active_arc_points = ContourStateAttribute("active_arc_points")
+    _freehand_recording = ContourStateAttribute("freehand_recording")
+    _freehand_points = ContourStateAttribute("freehand_points")
+    _freehand_open_arc = ContourStateAttribute("freehand_open_arc")
+    _contour_mode_active = ContourStateAttribute("mode_active")
+    _contour_mode_kind = ContourStateAttribute("mode_kind")
+    _contour_stage = ContourStateAttribute("stage")
+    _active_contour_phase = ContourStateAttribute("active_phase")
+    _active_contour_view = ContourStateAttribute("active_view")
+    _active_contour_chamber = ContourStateAttribute("active_chamber")
+    _active_mitral_septal = ContourStateAttribute("active_mitral_septal")
+    _active_mitral_annulus = ContourStateAttribute("active_mitral_annulus")
+    _active_apex_landmark = ContourStateAttribute("active_apex_landmark")
+    _last_contour_click_ms = ContourStateAttribute("last_click_ms")
+    _last_contour_click_screen = ContourStateAttribute("last_click_screen")
+    _last_contour_point_screen = ContourStateAttribute("last_point_screen")
+    _first_contour_point_screen = ContourStateAttribute("first_point_screen")
+    _area_tool_mode = ContourStateAttribute("area_tool_mode")
+    _lv_contour_input = ContourStateAttribute("lv_input")
+    _atrial_contour_input = ContourStateAttribute("atrial_input")
+
     def __init__(self, parent: QWidget | None = None, *, loop_controls: bool = True) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -1009,39 +1036,16 @@ class ViewerWidget(QWidget):
         self._calibration_tick_snap_radius_px: float = 8.0
         self._auto_calibration_succeeded: bool = False
         self._calibration_ok_timer: QTimer | None = None
-        self._stored_contours: list[Contour] = []
-        self._contours: list[Contour] = []
+        # A5: one owner for drawing/storage state; only graphics items stay here.
+        self.contour_state = ViewerContours()
         self._contour_items: list[pg.PlotDataItem] = []
         self._contour_nodes: list[list[_ContourNodeItem]] = []
         self._dist_serial = 1
-        self._contour_mode_active = False
         # the radial-menu controller the window attaches; the viewer
         # only forwards the three gesture entry points (QH-3 rule).
         self.radial_controller = None
-        # Last accepted contour click (screen px + monotonic ms) — the state the
-        # finish-gesture detector below is built on.
-        self._last_contour_click_ms: float | None = None
-        self._last_contour_click_screen: tuple[float, float] | None = None
-        self._last_contour_point_screen: tuple[float, float] | None = None
-        self._first_contour_point_screen: tuple[float, float] | None = None
-        self._contour_mode_kind: Literal["manual", "model", "closed"] | None = None
-        self._active_contour_chamber: str = "LV"
-        self._contour_stage: Literal["ma_septal", "ma_lateral", "arc", "apex", "polygon", "trace"] | None = None
-        self._active_mitral_septal: tuple[float, float] | None = None
-        self._active_mitral_annulus: tuple[tuple[float, float], tuple[float, float]] | None = None
-        self._active_apex_landmark: tuple[float, float] | None = None
-        self._active_arc_points: list[tuple[float, float]] = []
-        self._freehand_recording = False
-        self._freehand_points: list[tuple[float, float]] = []
-        #: True while the freehand stroke belongs to an open LV arc (trace mode)
-        #: rather than the closed area tool; release then pauses instead of finishing.
-        self._freehand_open_arc = False
-        self._area_tool_mode: str = "click"
-        self._lv_contour_input: str = "landmarks"
-        self._atrial_contour_input: str = "landmarks"
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
-        self._active_contour_phase: str | None = None
         self._contour_pen_manual = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.manual"], width=2)
         self._contour_pen_ai = pg.mkPen(dark_theme.get_theme_tokens()["overlay.contour.auto"], width=2)
         self._contour_pen_ai_pending = pg.mkPen(
@@ -1070,7 +1074,6 @@ class ViewerWidget(QWidget):
         self._contour_pen_simpson = pg.mkPen(
             dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
         )
-        self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
         self._initialize_measurement_state()
@@ -1322,16 +1325,19 @@ class ViewerWidget(QWidget):
                 self._apply_caliper_node_drag(float(mapped.x()), float(mapped.y()))
             return
         if (
-            self._freehand_recording
-            and self._contour_mode_active
+            self.contour_state.freehand_recording
+            and self.contour_state.mode_active
             and QApplication.mouseButtons() & Qt.MouseButton.LeftButton
         ):
             if mapped is not None:
                 pt = (float(mapped.x()), float(mapped.y()))
-                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 8.0:
-                    self._freehand_points.append(pt)
-                    if len(self._freehand_points) > 200:
-                        self._freehand_points = self._freehand_points[::2]
+                if (
+                    not self.contour_state.freehand_points
+                    or self._distance(self.contour_state.freehand_points[-1], pt) > 8.0
+                ):
+                    self.contour_state.freehand_points.append(pt)
+                    if len(self.contour_state.freehand_points) > 200:
+                        self.contour_state.freehand_points = self.contour_state.freehand_points[::2]
                     self._update_freehand_preview()
             return
         if self._contour_editing_blocked():
@@ -1476,8 +1482,8 @@ class ViewerWidget(QWidget):
                     # (three controller entry points; the window owns it).
                     if (
                         self.radial_controller is not None
-                        and not self._contour_mode_active
-                        and not self._freehand_recording
+                        and not self.contour_state.mode_active
+                        and not self.contour_state.freehand_recording
                         and self.radial_controller.on_right_press(event.globalPosition())
                     ):
                         return True
@@ -1956,7 +1962,7 @@ class ViewerWidget(QWidget):
             self._active_contour_item.setPen(self._contour_pen_manual)
         if self._active_ma_chord_item is not None:
             self._active_ma_chord_item.setPen(self._contour_pen_ma)
-        for contour_index, contour in enumerate(self._contours):
+        for contour_index, contour in enumerate(self.contour_state.visible):
             if contour_index >= len(self._contour_items):
                 continue
             pen = self._contour_pen_for(contour)
@@ -2215,7 +2221,7 @@ class ViewerWidget(QWidget):
             return
 
         frame_index = self._current_state.current_frame_index
-        for contour in self._stored_contours:
+        for contour in self.contour_state.stored:
             if (
                 contour.chamber in ("LV", "LA")
                 and contour.view == "A4C"
@@ -2754,9 +2760,9 @@ class ViewerWidget(QWidget):
                 loop.set_current_frame(viewer_state.current_frame_index)
             self._update_phase_label(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
-            contours_updated = tuple(self._stored_contours) != viewer_state.contours
+            contours_updated = tuple(self.contour_state.stored) != viewer_state.contours
             if contours_updated:
-                self._stored_contours = list(viewer_state.contours)
+                self.contour_state.stored = list(viewer_state.contours)
             if frame_changed or contours_updated:
                 self._render_contours_for_current_frame()
             self._render_persistent_linear_calipers()
@@ -3763,9 +3769,9 @@ class ViewerWidget(QWidget):
     def _trace_enabled_for(self, chamber: str) -> bool:
         key = chamber.upper()
         if key == "LV":
-            return self._lv_contour_input == "trace"
+            return self.contour_state.lv_input == "trace"
         if key in {"LA", "RA"}:
-            return self._atrial_contour_input == "trace"
+            return self.contour_state.atrial_input == "trace"
         return False
 
     def start_contour(
@@ -3800,20 +3806,20 @@ class ViewerWidget(QWidget):
             return False
 
         self.cancel_active_tool()
-        self._active_contour_view = view
-        self._active_contour_phase = phase or self._resolve_contour_phase()
-        self._active_contour_chamber = chamber
-        self._contour_mode_active = True
-        self._reset_contour_click_tracking()
-        self._contour_mode_kind = "manual"
-        self._contour_stage = "trace"
-        self._active_mitral_septal = None
-        self._active_mitral_annulus = None
-        self._active_apex_landmark = None
-        self._active_arc_points = []
-        self._freehand_points = []
-        self._freehand_recording = True
-        self._freehand_open_arc = True
+        self.contour_state.active_view = view
+        self.contour_state.active_phase = phase or self._resolve_contour_phase()
+        self.contour_state.active_chamber = chamber
+        self.contour_state.mode_active = True
+        self.contour_state.reset_clicks()
+        self.contour_state.mode_kind = "manual"
+        self.contour_state.stage = "trace"
+        self.contour_state.active_mitral_septal = None
+        self.contour_state.active_mitral_annulus = None
+        self.contour_state.active_apex_landmark = None
+        self.contour_state.active_arc_points = []
+        self.contour_state.freehand_points = []
+        self.contour_state.freehand_recording = True
+        self.contour_state.freehand_open_arc = True
         pen = self._contour_pen_manual
         # No per-sample marker: a continuous stroke reads as one line while
         # tracing; only the finished, decimated nodes become draggable handles.
@@ -3866,9 +3872,9 @@ class ViewerWidget(QWidget):
             chamber=GENERIC_AREA_CHAMBER,
         ):
             return False
-        if self._area_tool_mode == "freehand":
-            self._freehand_recording = True
-            self._freehand_points = []
+        if self.contour_state.area_tool_mode == "freehand":
+            self.contour_state.freehand_recording = True
+            self.contour_state.freehand_points = []
             self._measurement_label.setText(tr("viewer.area_freehand_prompt"))
         else:
             self._measurement_label.setText(tr("viewer.area_contour_prompt"))
@@ -3884,9 +3890,9 @@ class ViewerWidget(QWidget):
             chamber=GENERIC_VOLUME_CHAMBER,
         ):
             return False
-        if self._area_tool_mode == "freehand":
-            self._freehand_recording = True
-            self._freehand_points = []
+        if self.contour_state.area_tool_mode == "freehand":
+            self.contour_state.freehand_recording = True
+            self.contour_state.freehand_points = []
             self._measurement_label.setText(tr("viewer.volume_freehand_prompt"))
         else:
             self._measurement_label.setText(tr("viewer.volume_contour_prompt"))
@@ -3907,18 +3913,18 @@ class ViewerWidget(QWidget):
             return False
 
         self.cancel_active_tool()
-        self._active_contour_view = view
-        self._active_contour_phase = phase or self._resolve_contour_phase()
-        self._active_contour_chamber = chamber
-        self._contour_mode_active = True
-        self._reset_contour_click_tracking()
-        self._contour_mode_kind = mode_kind
-        self._freehand_open_arc = False
-        self._contour_stage = "polygon" if mode_kind == "closed" else "ma_septal"
-        self._active_mitral_septal = None
-        self._active_mitral_annulus = None
-        self._active_apex_landmark = None
-        self._active_arc_points = []
+        self.contour_state.active_view = view
+        self.contour_state.active_phase = phase or self._resolve_contour_phase()
+        self.contour_state.active_chamber = chamber
+        self.contour_state.mode_active = True
+        self.contour_state.reset_clicks()
+        self.contour_state.mode_kind = mode_kind
+        self.contour_state.freehand_open_arc = False
+        self.contour_state.stage = "polygon" if mode_kind == "closed" else "ma_septal"
+        self.contour_state.active_mitral_septal = None
+        self.contour_state.active_mitral_annulus = None
+        self.contour_state.active_apex_landmark = None
+        self.contour_state.active_arc_points = []
         active_pen = self._contour_pen_manual
         self._active_contour_item = pg.PlotDataItem(
             pen=active_pen,
@@ -3933,48 +3939,48 @@ class ViewerWidget(QWidget):
         return True
 
     def set_contour_from_domain(self, contour: Contour) -> None:
-        self._upsert_stored_contour(self._tag_contour_instance(contour))
+        self.contour_state.upsert(self._tag_contour_instance(contour))
         self._render_contours_for_current_frame()
         self._refresh_frame_overlays()
         if not self._syncing_state:
             self.contours_changed.emit(self.contours())
 
     def apply_contours(self, contours: list[Contour]) -> None:
-        self._stored_contours = list(contours)
+        self.contour_state.stored = list(contours)
         self._render_contours_for_current_frame()
 
     def handle_contour_click(self, point: tuple[float, float]) -> bool:
-        if not self._contour_mode_active or self._active_contour_item is None:
+        if not self.contour_state.mode_active or self._active_contour_item is None:
             return False
 
         click = (float(point[0]), float(point[1]))
-        if self._contour_stage == "ma_septal":
-            self._active_mitral_septal = click
-            self._contour_stage = "ma_lateral"
-        elif self._contour_stage == "ma_lateral":
-            if self._active_mitral_septal is None:
+        if self.contour_state.stage == "ma_septal":
+            self.contour_state.active_mitral_septal = click
+            self.contour_state.stage = "ma_lateral"
+        elif self.contour_state.stage == "ma_lateral":
+            if self.contour_state.active_mitral_septal is None:
                 return False
-            self._active_mitral_annulus = (self._active_mitral_septal, click)
+            self.contour_state.active_mitral_annulus = (self.contour_state.active_mitral_septal, click)
             self._show_active_ma_chord()
-            self._contour_stage = "apex"
-        elif self._contour_stage == "apex":
-            self._active_apex_landmark = click
+            self.contour_state.stage = "apex"
+        elif self.contour_state.stage == "apex":
+            self.contour_state.active_apex_landmark = click
             self._update_active_contour_item()
-            if self._contour_mode_kind == "model":
+            if self.contour_state.mode_kind == "model":
                 finished = self._finish_model_contour(apex=click)
             else:
                 finished = self._finish_manual_contour(apex=click)
             if not finished:
-                self._contour_stage = "apex"
+                self.contour_state.stage = "apex"
             return True
-        elif self._contour_stage == "arc":
-            self._active_arc_points.append(click)
-        elif self._contour_stage == "polygon":
-            self._active_arc_points.append(click)
+        elif self.contour_state.stage == "arc":
+            self.contour_state.active_arc_points.append(click)
+        elif self.contour_state.stage == "polygon":
+            self.contour_state.active_arc_points.append(click)
             if (
                 self._magnetic_snap_enabled
                 and not self._is_unassisted_freehand_trace()
-                and len(self._active_arc_points) >= 5
+                and len(self.contour_state.active_arc_points) >= 5
             ):
                 edge_map = self.get_edge_map()
                 if edge_map is not None:
@@ -3983,31 +3989,31 @@ class ViewerWidget(QWidget):
                         snap_magnetic_point,
                     )
 
-                    idx = len(self._active_arc_points) - 1
-                    normal = outward_normal_at_index_closed(self._active_arc_points, idx)
+                    idx = len(self.contour_state.active_arc_points) - 1
+                    normal = outward_normal_at_index_closed(self.contour_state.active_arc_points, idx)
                     snapped = snap_magnetic_point(
                         edge_map,
-                        self._active_arc_points[idx][0],
-                        self._active_arc_points[idx][1],
+                        self.contour_state.active_arc_points[idx][0],
+                        self.contour_state.active_arc_points[idx][1],
                         normal,
                     )
                     if snapped is not None:
-                        self._active_arc_points[idx] = snapped
+                        self.contour_state.active_arc_points[idx] = snapped
         self._update_active_contour_item()
         return True
 
     def _finish_model_contour(self, *, apex: tuple[float, float]) -> bool:
-        if self._active_mitral_annulus is None:
+        if self.contour_state.active_mitral_annulus is None:
             return False
-        septal, lateral = self._active_mitral_annulus
+        septal, lateral = self.contour_state.active_mitral_annulus
         try:
             contour = fit_contour_from_landmarks(
                 septal=septal,
                 lateral=lateral,
                 apex=apex,
-                phase=self._active_contour_phase or "ED",
-                view=self._active_contour_view,
-                chamber=self._active_contour_chamber,
+                phase=self.contour_state.active_phase or "ED",
+                view=self.contour_state.active_view,
+                chamber=self.contour_state.active_chamber,
             )
             contour = replace(contour, frame_index=self._contour_frame_index())
         except ValueError:
@@ -4025,7 +4031,7 @@ class ViewerWidget(QWidget):
             return False, ""
         frame_index = self._contour_frame_index()
         instance_uid = self.current_instance_uid()
-        for contour_index, contour in enumerate(self._contours):
+        for contour_index, contour in enumerate(self.contour_state.visible):
             if (
                 contour.source not in {"manual", "model", "ai"}
                 or not contour.is_open_arc
@@ -4043,8 +4049,8 @@ class ViewerWidget(QWidget):
                 contour,
                 display_levels=self.display.effective_levels(),
             )
-            self._contours[contour_index] = refined
-            self._upsert_stored_contour(refined)
+            self.contour_state.visible[contour_index] = refined
+            self.contour_state.upsert(refined)
             self._render_contours_for_current_frame()
             self._refresh_frame_overlays()
             if not self._syncing_state:
@@ -4057,17 +4063,17 @@ class ViewerWidget(QWidget):
         return self.refine_active_open_contour()
 
     def _finish_manual_contour(self, *, apex: tuple[float, float]) -> bool:
-        if self._active_mitral_annulus is None:
+        if self.contour_state.active_mitral_annulus is None:
             return False
 
-        septal, lateral = self._active_mitral_annulus
-        chamber = self._active_contour_chamber.upper()
+        septal, lateral = self.contour_state.active_mitral_annulus
+        chamber = self.contour_state.active_chamber.upper()
         # Captured before `_clear_active_contour_drawing()` resets `_active_contour_phase`
         # to None below — reading the instance attribute after that point always sees
         # None, which silently defeats the "ES" check in the LA-assist trigger further
         # down (issue 420 follow-up, slice 1: found while testing the refactor).
-        phase = self._active_contour_phase or "ED"
-        view = self._active_contour_view
+        phase = self.contour_state.active_phase or "ED"
+        view = self.contour_state.active_view
         if chamber in {"LV", "LA", "RA", "RV"}:
             try:
                 contour = fit_contour_from_landmarks(
@@ -4093,8 +4099,8 @@ class ViewerWidget(QWidget):
             contour = Contour(
                 phase=phase,
                 view=view,
-                chamber=self._active_contour_chamber,
-                mitral_annulus=self._active_mitral_annulus,
+                chamber=self.contour_state.active_chamber,
+                mitral_annulus=self.contour_state.active_mitral_annulus,
                 points=resampled,
                 num_nodes=DEFAULT_NODE_COUNT,
                 frame_index=self._contour_frame_index(),
@@ -4149,13 +4155,13 @@ class ViewerWidget(QWidget):
         if contour.frame_index is not None and current_frame is not None and contour.frame_index != current_frame:
             return
         # Find and replace the existing LA contour
-        for i, c in enumerate(self._contours):
+        for i, c in enumerate(self.contour_state.visible):
             if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
                 if c.unassisted:
                     return
-                self._contours[i] = contour
+                self.contour_state.visible[i] = contour
                 # Update stored contour too
-                self._upsert_stored_contour(contour)
+                self.contour_state.upsert(contour)
                 # Re-render all contours for current frame
                 self._render_contours_for_current_frame()
                 # Apply magnetic snap to refine edges
@@ -4171,9 +4177,9 @@ class ViewerWidget(QWidget):
 
     def _apply_optical_flow_refinement(self, contour_index: int) -> None:
         """Launch optical flow refinement for a contour in a background thread."""
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if contour.unassisted:
             return
         if self._current_state is None or self._current_state.instance is None:
@@ -4207,37 +4213,41 @@ class ViewerWidget(QWidget):
 
     def _on_optical_flow_refined(self, contour_index: int, refined_points: list) -> None:
         """Apply optical flow refined points to the contour."""
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if len(refined_points) != len(contour.points):
             return
         # Update contour points
         contour.points[:] = refined_points
-        self._upsert_stored_contour(contour)
+        self.contour_state.upsert(contour)
         # Re-render
         self._render_contours_for_current_frame()
         self.contours_changed.emit(self.contours())
 
     def finish_contour(self) -> bool:
-        if not self._contour_mode_active or self._active_contour_item is None:
+        if not self.contour_state.mode_active or self._active_contour_item is None:
             return False
-        if self._contour_stage == "trace":
+        if self.contour_state.stage == "trace":
             return self._finish_freehand_open_arc()
-        if self._contour_stage == "polygon":
+        if self.contour_state.stage == "polygon":
             return self._finish_closed_contour()
-        if self._contour_stage != "arc" or self._active_mitral_annulus is None or len(self._active_arc_points) < 1:
+        if (
+            self.contour_state.stage != "arc"
+            or self.contour_state.active_mitral_annulus is None
+            or len(self.contour_state.active_arc_points) < 1
+        ):
             return False
 
-        septal, lateral = self._active_mitral_annulus
-        raw_arc = [septal, *self._active_arc_points, lateral]
+        septal, lateral = self.contour_state.active_mitral_annulus
+        raw_arc = [septal, *self.contour_state.active_arc_points, lateral]
         resampled = resample_open_arc(raw_arc, num_nodes=DEFAULT_NODE_COUNT)
-        apex_landmark = self._active_arc_points[0] if self._active_arc_points else None
+        apex_landmark = self.contour_state.active_arc_points[0] if self.contour_state.active_arc_points else None
         contour = Contour(
-            phase=self._active_contour_phase or "GEN",
-            view=self._active_contour_view,
-            chamber=self._active_contour_chamber,
-            mitral_annulus=self._active_mitral_annulus,
+            phase=self.contour_state.active_phase or "GEN",
+            view=self.contour_state.active_view,
+            chamber=self.contour_state.active_chamber,
+            mitral_annulus=self.contour_state.active_mitral_annulus,
             apex_landmark=apex_landmark,
             points=resampled,
             num_nodes=DEFAULT_NODE_COUNT,
@@ -4273,7 +4283,7 @@ class ViewerWidget(QWidget):
     def _finish_closed_contour(self) -> bool:
         from echo_personal_tool.domain.services.contour_edge_snap import snap_closed_polygon
 
-        points = self._dedupe_closed_polygon(list(self._active_arc_points))
+        points = self._dedupe_closed_polygon(list(self.contour_state.active_arc_points))
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             # Not enough distinct points: keep the drawing so the operator can
             # add the missing point instead of losing the whole contour.
@@ -4286,9 +4296,9 @@ class ViewerWidget(QWidget):
                 points = snap_closed_polygon(points, edge_map)
 
         probe = Contour(
-            phase=self._active_contour_phase or "GEN",
-            view=self._active_contour_view,
-            chamber=self._active_contour_chamber,
+            phase=self.contour_state.active_phase or "GEN",
+            view=self.contour_state.active_view,
+            chamber=self.contour_state.active_chamber,
             points=list(points),
             frame_index=self._contour_frame_index(),
         )
@@ -4297,17 +4307,17 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.area_degenerate_polygon"))
             return False
 
-        chamber = self._active_contour_chamber
+        chamber = self.contour_state.active_chamber
         chamber_key = chamber.upper()
         measurement_label = None
         if chamber_key == GENERIC_AREA_CHAMBER:
-            measurement_label = next_area_label(tuple(self._stored_contours))
+            measurement_label = next_area_label(tuple(self.contour_state.stored))
         elif chamber_key == GENERIC_VOLUME_CHAMBER:
-            measurement_label = next_volume_label(tuple(self._stored_contours))
+            measurement_label = next_volume_label(tuple(self.contour_state.stored))
 
         contour = Contour(
-            phase=self._active_contour_phase or "GEN",
-            view=self._active_contour_view,
+            phase=self.contour_state.active_phase or "GEN",
+            view=self.contour_state.active_view,
             chamber=chamber,
             points=points,
             frame_index=self._contour_frame_index(),
@@ -4327,21 +4337,21 @@ class ViewerWidget(QWidget):
         recorded (A+B). Returns False when no freehand stroke is active so the
         key/button can fall through to its normal handler.
         """
-        if not self._freehand_recording or not self._contour_mode_active:
+        if not self.contour_state.freehand_recording or not self.contour_state.mode_active:
             return False
-        if len(self._freehand_points) <= 3:
+        if len(self.contour_state.freehand_points) <= 3:
             # Nothing meaningful left: cancel the whole stroke.
-            self._freehand_points = []
-            self._freehand_recording = False
-            self._freehand_open_arc = False
+            self.contour_state.freehand_points = []
+            self.contour_state.freehand_recording = False
+            self.contour_state.freehand_open_arc = False
             self.cancel_active_tool()
             return True
-        del self._freehand_points[-_FREEHAND_ROLLBACK_POINTS:]
+        del self.contour_state.freehand_points[-_FREEHAND_ROLLBACK_POINTS:]
         self._update_freehand_preview()
         return True
 
     def _finish_freehand_contour(self) -> bool:
-        if len(self._freehand_points) < 3:
+        if len(self.contour_state.freehand_points) < 3:
             self._clear_active_contour_drawing()
             return False
 
@@ -4351,7 +4361,7 @@ class ViewerWidget(QWidget):
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
         unassisted = self._is_unassisted_freehand_trace()
-        reduced = reduce_polygon_points(self._freehand_points, epsilon=3.0, closed=False)
+        reduced = reduce_polygon_points(self.contour_state.freehand_points, epsilon=3.0, closed=False)
         if len(reduced) > 30:
             reduced = reduce_polygon_points(reduced, epsilon=5.0, closed=False)
         if len(reduced) > 30:
@@ -4367,25 +4377,25 @@ class ViewerWidget(QWidget):
             if edge_map is not None:
                 reduced = snap_closed_polygon(reduced, edge_map)
 
-        chamber = self._active_contour_chamber
+        chamber = self.contour_state.active_chamber
         chamber_key = chamber.upper()
         measurement_label = None
         if chamber_key == GENERIC_AREA_CHAMBER:
-            measurement_label = next_area_label(tuple(self._stored_contours))
+            measurement_label = next_area_label(tuple(self.contour_state.stored))
         elif chamber_key == GENERIC_VOLUME_CHAMBER:
-            measurement_label = next_volume_label(tuple(self._stored_contours))
+            measurement_label = next_volume_label(tuple(self.contour_state.stored))
 
         contour = Contour(
-            phase=self._active_contour_phase or "GEN",
-            view=self._active_contour_view,
+            phase=self.contour_state.active_phase or "GEN",
+            view=self.contour_state.active_view,
             chamber=chamber,
             points=reduced,
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
             unassisted=unassisted,
         )
-        self._freehand_recording = False
-        self._freehand_points = []
+        self.contour_state.freehand_recording = False
+        self.contour_state.freehand_points = []
         contour = self._with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
@@ -4395,7 +4405,7 @@ class ViewerWidget(QWidget):
 
     def _finish_active_freehand_contour(self) -> bool:
         """Finish the running freehand stroke for whichever contour kind is active."""
-        if self._freehand_open_arc:
+        if self.contour_state.freehand_open_arc:
             return self._finish_freehand_open_arc()
         return self._finish_freehand_contour()
 
@@ -4410,7 +4420,7 @@ class ViewerWidget(QWidget):
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
         unassisted = self._is_unassisted_freehand_trace()
-        points = self._dedupe_closed_polygon(list(self._freehand_points))
+        points = self._dedupe_closed_polygon(list(self.contour_state.freehand_points))
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return False
@@ -4424,9 +4434,9 @@ class ViewerWidget(QWidget):
 
         resampled = resample_open_arc(reduced, num_nodes=DEFAULT_NODE_COUNT)
         contour = Contour(
-            phase=self._active_contour_phase or "ED",
-            view=self._active_contour_view,
-            chamber=self._active_contour_chamber,
+            phase=self.contour_state.active_phase or "ED",
+            view=self.contour_state.active_view,
+            chamber=self.contour_state.active_chamber,
             source="manual",
             mitral_annulus=(septal, lateral),
             apex_landmark=apex,
@@ -4544,7 +4554,7 @@ class ViewerWidget(QWidget):
             return
         if self.doppler.cancel_active_tool():
             return
-        if self._active_contour_item is not None or self._contour_mode_active:
+        if self._active_contour_item is not None or self.contour_state.mode_active:
             # A contour mode armed but *not yet drawn* (no node placed) used to
             # survive Esc: the drawing item was None, so every branch fell
             # through and the mode stayed on, leaving the «Контур» button lit
@@ -4560,7 +4570,7 @@ class ViewerWidget(QWidget):
         self._comparison_state = _ComparisonState()
 
     def contours(self) -> list[Contour]:
-        return list(self._stored_contours)
+        return list(self.contour_state.stored)
 
     def get_lv_contour(self, *, phase: str | None = None, view: str | None = None) -> Contour | None:
         """Return an LV contour, preferring the requested phase/view.
@@ -4568,7 +4578,7 @@ class ViewerWidget(QWidget):
         With no filters this matches the historical behaviour (first LV
         contour), so existing callers keep working.
         """
-        for contour in self._stored_contours:
+        for contour in self.contour_state.stored:
             if contour.chamber != "LV":
                 continue
             if phase is not None and (contour.phase or "").upper() != phase.upper():
@@ -4580,7 +4590,7 @@ class ViewerWidget(QWidget):
 
     def get_lv_epicardial_contour(self, *, phase: str, view: str = "A4C") -> Contour | None:
         """Return the editable STE epicardial contour for a phase/view."""
-        for contour in self._stored_contours:
+        for contour in self.contour_state.stored:
             if (
                 contour.chamber == "LV_EPI"
                 and (contour.phase or "").upper() == phase.upper()
@@ -4613,7 +4623,7 @@ class ViewerWidget(QWidget):
 
         spacing = self._pixel_spacing() or (1.0, 1.0)
         thickness_px = max(float(thickness_mm), 0.1) / max(float(np.mean(spacing)), 1e-6)
-        updated = list(self._stored_contours)
+        updated = list(self.contour_state.stored)
         created: list[Contour] = []
         for phase in ("ED", "ES"):
             endo = self.get_lv_contour(phase=phase, view=view)
@@ -4888,7 +4898,7 @@ class ViewerWidget(QWidget):
         instance_uid = self.current_instance_uid()
         if frame_index is None:
             return None
-        for contour in self._stored_contours:
+        for contour in self.contour_state.stored:
             if (
                 contour.source == "ai"
                 and contour.review_pending
@@ -4905,9 +4915,9 @@ class ViewerWidget(QWidget):
         if pending is None:
             return False
         instance_uid = self.current_instance_uid()
-        self._stored_contours = [
+        self.contour_state.stored = [
             c
-            for c in self._stored_contours
+            for c in self.contour_state.stored
             if not (
                 c.source == "ai"
                 and c.review_pending
@@ -4931,15 +4941,15 @@ class ViewerWidget(QWidget):
         frame_index = self._current_state.current_frame_index
         # Find the last matching contour (LIFO — most recently added)
         last_idx: int | None = None
-        for idx in reversed(range(len(self._stored_contours))):
-            c = self._stored_contours[idx]
+        for idx in reversed(range(len(self.contour_state.stored))):
+            c = self.contour_state.stored[idx]
             if c.view.casefold() == view.casefold() and c.frame_index == frame_index:
                 last_idx = idx
                 break
         if last_idx is None:
             return False
-        deleted = self._stored_contours[last_idx]
-        del self._stored_contours[last_idx]
+        deleted = self.contour_state.stored[last_idx]
+        del self.contour_state.stored[last_idx]
         self._undo_redo.push(
             UndoEntry(
                 kind="contour",
@@ -4973,10 +4983,10 @@ class ViewerWidget(QWidget):
         if entry.kind == "contour":
             contour = entry.payload["contour"]
             idx = entry.payload.get("index")
-            if idx is not None and 0 <= idx <= len(self._stored_contours):
-                self._stored_contours.insert(idx, contour)
+            if idx is not None and 0 <= idx <= len(self.contour_state.stored):
+                self.contour_state.stored.insert(idx, contour)
             else:
-                self._stored_contours.append(contour)
+                self.contour_state.stored.append(contour)
             self._render_contours_for_current_frame()
             if not self._syncing_state:
                 self.contours_changed.emit(self.contours())
@@ -5001,14 +5011,14 @@ class ViewerWidget(QWidget):
         if entry.kind == "contour":
             contour = entry.payload["contour"]
             # Remove the first matching contour (same identity by points/view/frame).
-            for i, c in enumerate(self._stored_contours):
+            for i, c in enumerate(self.contour_state.stored):
                 if (
                     c.points == contour.points
                     and c.view == contour.view
                     and c.frame_index == contour.frame_index
                     and c.phase == contour.phase
                 ):
-                    del self._stored_contours[i]
+                    del self.contour_state.stored[i]
                     break
             self._render_contours_for_current_frame()
             if not self._syncing_state:
@@ -5031,7 +5041,7 @@ class ViewerWidget(QWidget):
 
     @property
     def is_contour_mode_active(self) -> bool:
-        return self._contour_mode_active
+        return self.contour_state.mode_active
 
     def set_scroll_debounce_ms(self, ms: int) -> None:
         self.transport.set_scroll_debounce_ms(ms)
@@ -5233,10 +5243,10 @@ class ViewerWidget(QWidget):
         self._contour_nodes.clear()
         self._contour_ma_items.clear()
         self._contour_simpson_items.clear()
-        self._contours.clear()
+        self.contour_state.visible.clear()
 
     def _clear_contours(self) -> None:
-        self._stored_contours.clear()
+        self.contour_state.stored.clear()
         self._clear_rendered_contours()
         self._clear_active_contour_drawing()
         if not self._syncing_state:
@@ -5328,13 +5338,13 @@ class ViewerWidget(QWidget):
 
     def _render_contours_for_current_frame(self) -> None:
         if self._current_state is None:
-            visible = list(self._stored_contours)
+            visible = list(self.contour_state.stored)
         else:
             frame_index = self._current_state.current_frame_index
             instance_uid = self.current_instance_uid()
             visible = [
                 contour
-                for contour in self._stored_contours
+                for contour in self.contour_state.stored
                 if contour.frame_index == frame_index
                 and (
                     instance_uid is None or contour.sop_instance_uid is None or contour.sop_instance_uid == instance_uid
@@ -5344,37 +5354,14 @@ class ViewerWidget(QWidget):
         for contour in visible:
             self._append_rendered_contour(contour)
 
-    def _upsert_stored_contour(self, contour: Contour) -> None:
-        contour_index = self._find_stored_contour_index(contour)
-        if contour_index is None:
-            self._stored_contours.append(contour)
-        else:
-            self._stored_contours[contour_index] = contour
-
     def _append_rendered_contour(self, contour: Contour) -> None:
-        contour_index = len(self._contours)
-        self._contours.append(contour)
+        contour_index = len(self.contour_state.visible)
+        self.contour_state.visible.append(contour)
         line_item, ma_item, node_items = self._create_contour_render(contour, contour_index)
         self._contour_items.append(line_item)
         self._contour_ma_items.append(ma_item)
         self._contour_nodes.append(node_items)
         self._reindex_contour_nodes()
-
-    def _find_stored_contour_index(self, contour: Contour) -> int | None:
-        instance_uid = contour.sop_instance_uid
-        is_planimeter = contour.chamber.upper() in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}
-        for index, existing in enumerate(self._stored_contours):
-            if (
-                existing.phase.casefold() == contour.phase.casefold()
-                and existing.view.casefold() == contour.view.casefold()
-                and existing.chamber.casefold() == contour.chamber.casefold()
-                and existing.frame_index == contour.frame_index
-                and existing.sop_instance_uid == instance_uid
-            ):
-                if is_planimeter and existing.measurement_label != contour.measurement_label:
-                    continue
-                return index
-        return None
 
     def _tag_contour_instance(self, contour: Contour) -> Contour:
         instance_uid = self.current_instance_uid()
@@ -5394,28 +5381,10 @@ class ViewerWidget(QWidget):
         if self._active_ma_chord_item is not None:
             self._view.removeItem(self._active_ma_chord_item)
             self._active_ma_chord_item = None
-        self._active_mitral_septal = None
-        self._active_mitral_annulus = None
-        self._active_apex_landmark = None
-        self._active_arc_points = []
-        self._freehand_recording = False
-        self._freehand_open_arc = False
-        self._freehand_points = []
-        self._active_contour_phase = None
-        self._contour_stage = None
-        self._contour_mode_kind = None
-        self._contour_mode_active = False
-        self._reset_contour_click_tracking()
+        self.contour_state.clear_active()
         self._set_contour_nodes_pickable(True)
 
     # ── Contour click tracking / finish gesture ────────────────────
-
-    def _reset_contour_click_tracking(self) -> None:
-        """Forget previous clicks so a new contour starts with a clean gesture state."""
-        self._last_contour_click_ms = None
-        self._last_contour_click_screen = None
-        self._last_contour_point_screen = None
-        self._first_contour_point_screen = None
 
     @staticmethod
     def _event_screen_point(ev) -> tuple[float, float] | None:
@@ -5427,10 +5396,6 @@ class ViewerWidget(QWidget):
         if pos is None:
             return None
         return float(pos.x()), float(pos.y())
-
-    def _remember_contour_click(self, screen_point: tuple[float, float] | None) -> None:
-        self._last_contour_click_ms = time.monotonic() * 1000.0
-        self._last_contour_click_screen = screen_point
 
     def _is_repeat_click(
         self,
@@ -5445,8 +5410,8 @@ class ViewerWidget(QWidget):
         be within :data:`_CONTOUR_FINISH_MAX_SCREEN_PX` of each other is what
         separates "close the contour" from "next point, fast".
         """
-        previous = self._last_contour_click_screen
-        previous_ms = self._last_contour_click_ms
+        previous = self.contour_state.last_click_screen
+        previous_ms = self.contour_state.last_click_ms
         if previous is None or previous_ms is None or screen_point is None:
             # Without a reference click the gesture cannot be verified — never
             # close a contour on a guess.
@@ -5459,17 +5424,13 @@ class ViewerWidget(QWidget):
 
     def _is_close_first_point_click(self, screen_point: tuple[float, float] | None) -> bool:
         """True when the click lands on the first polygon point (click-to-close)."""
-        if screen_point is None or self._first_contour_point_screen is None:
+        if screen_point is None or self.contour_state.first_point_screen is None:
             return False
-        if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+        if len(self.contour_state.active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             return False
-        first = self._first_contour_point_screen
+        first = self.contour_state.first_point_screen
         distance = math.hypot(screen_point[0] - first[0], screen_point[1] - first[1])
         return distance <= _CONTOUR_CLOSE_FIRST_POINT_PX
-
-    def _forget_contour_point_screens(self) -> None:
-        self._first_contour_point_screen = None
-        self._last_contour_point_screen = None
 
     def _set_contour_nodes_pickable(self, enabled: bool) -> None:
         buttons = Qt.MouseButton.LeftButton if enabled else Qt.MouseButton.NoButton
@@ -5641,11 +5602,14 @@ class ViewerWidget(QWidget):
         last_index = len(contour.points) - 1
         if self._drag_session is not None:
             contour_index, _, _, grab_index, _ = self._drag_session
-            if 0 <= contour_index < len(self._contours) and self._contours[contour_index] is contour:
+            if (
+                0 <= contour_index < len(self.contour_state.visible)
+                and self.contour_state.visible[contour_index] is contour
+            ):
                 if grab_index == 0:
                     septal = (float(contour.points[0][0]), float(contour.points[0][1]))
                     lateral = contour.mitral_annulus[1]
-                    self._contours[contour_index] = replace(contour, mitral_annulus=(septal, lateral))
+                    self.contour_state.visible[contour_index] = replace(contour, mitral_annulus=(septal, lateral))
                     self._refresh_mitral_annulus_line(contour_index)
                     return
                 if grab_index == last_index:
@@ -5654,7 +5618,7 @@ class ViewerWidget(QWidget):
                         float(contour.points[last_index][0]),
                         float(contour.points[last_index][1]),
                     )
-                    self._contours[contour_index] = replace(contour, mitral_annulus=(septal, lateral))
+                    self.contour_state.visible[contour_index] = replace(contour, mitral_annulus=(septal, lateral))
                     self._refresh_mitral_annulus_line(contour_index)
                     return
 
@@ -5666,9 +5630,9 @@ class ViewerWidget(QWidget):
         if contour_index < 0 or contour_index >= len(self._contour_ma_items):
             return
         ma_item = self._contour_ma_items[contour_index]
-        if ma_item is None or contour_index >= len(self._contours):
+        if ma_item is None or contour_index >= len(self.contour_state.visible):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if contour.mitral_annulus is None:
             return
         septal, lateral = contour.mitral_annulus
@@ -5732,7 +5696,7 @@ class ViewerWidget(QWidget):
         ):
             return self._hover_tier
 
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         pinned = self._pinned_indices_for_contour(contour)
         range_width, viewport_w = self._view_metrics_for_rbf()
         _weights, _arc_distance, tier = rbf_influence_weights(
@@ -5765,7 +5729,7 @@ class ViewerWidget(QWidget):
         self._last_drag_apply_pos = None
 
     def _contour_editing_blocked(self) -> bool:
-        return self._contour_mode_active or self._linear_caliper_active or self._calibration_active
+        return self.contour_state.mode_active or self._linear_caliper_active or self._calibration_active
 
     def _map_view_event(self, ev) -> tuple[float, float] | None:
         if hasattr(ev, "globalPosition"):
@@ -5816,7 +5780,7 @@ class ViewerWidget(QWidget):
         self._hover_contour_index = contour_index
         self._hover_grab_index = _grab_index
         self._hover_tier = tier
-        color = self._rbf_highlight_color(self._contours[contour_index])
+        color = self._rbf_highlight_color(self.contour_state.visible[contour_index])
         self._update_contour_node_highlights(contour_index, weights, color=color)
         return True
 
@@ -5824,12 +5788,12 @@ class ViewerWidget(QWidget):
         self,
         cursor: tuple[float, float],
     ) -> tuple[int, int, np.ndarray, float] | None:
-        if self._contour_editing_blocked() or not self._contours:
+        if self._contour_editing_blocked() or not self.contour_state.visible:
             return None
 
         range_width, viewport_w = self._view_metrics_for_rbf()
         best: tuple[float, int, int, np.ndarray, float] | None = None
-        for contour_index, contour in enumerate(self._contours):
+        for contour_index, contour in enumerate(self.contour_state.visible):
             if len(contour.points) < 2:
                 continue
             pinned = self._pinned_indices_for_contour(contour)
@@ -5932,9 +5896,9 @@ class ViewerWidget(QWidget):
         force: bool = False,
     ) -> bool:
         """Return True if displacement was applied."""
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return False
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
 
         if self._drag_session is None or self._drag_session[0] != contour_index:
             locked_tier = self._resolve_locked_tier(contour_index, grab_index, (x, y))
@@ -5997,9 +5961,9 @@ class ViewerWidget(QWidget):
     ) -> None:
         if self._contour_editing_blocked():
             return
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if point_index < 0 or point_index >= len(contour.points):
             return
         locked_tier = self._resolve_locked_tier(contour_index, point_index, (x, y))
@@ -6010,10 +5974,10 @@ class ViewerWidget(QWidget):
 
     def _begin_drag_overlay(self, contour_index: int) -> None:
         """Mark contour as actively dragged; geometry updates hit visible items."""
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
         self._drag_overlay_contour_index = contour_index
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if self._drag_session is None:
             return
         weights = self._locked_drag_weights(
@@ -6093,10 +6057,10 @@ class ViewerWidget(QWidget):
     ) -> None:
         if self._drag_session is None:
             return
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             self._cancel_contour_drag()
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         grab_index = point_index
         if self._drag_session is not None and self._drag_session[0] == contour_index:
             grab_index = self._drag_session[3]
@@ -6115,7 +6079,7 @@ class ViewerWidget(QWidget):
             grab_index=grab_index,
             force=True,
         )
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         locked_tier = self._drag_session[4] if self._drag_session is not None else 1
         contour = replace(contour, refine_step=0, refine_locked_indices=())
         if contour.is_open_arc:
@@ -6140,7 +6104,7 @@ class ViewerWidget(QWidget):
             else:
                 resampled = resample_open_arc(contour.points, num_nodes=num_nodes)
                 contour.points[:] = resampled
-            self._contours[contour_index] = contour
+            self.contour_state.visible[contour_index] = contour
             weights = self._locked_drag_weights(contour, grab_index, locked_tier)
             self._apply_magnetic_snap_to_contour(
                 contour_index,
@@ -6155,7 +6119,7 @@ class ViewerWidget(QWidget):
         self._clear_contour_node_highlights(contour_index)
         self._clear_drag_session()
         self._clear_contour_hover()
-        self._upsert_stored_contour(contour)
+        self.contour_state.upsert(contour)
         self.contours_changed.emit(self.contours())
         current_frame = self._contour_frame_index()
         if contour.is_open_arc and contour.frame_index == current_frame:
@@ -6172,11 +6136,11 @@ class ViewerWidget(QWidget):
         *,
         during_drag: bool = False,
     ) -> None:
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
         if contour_index >= len(self._contour_items):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         closed = not contour.is_open_arc
         if during_drag:
             if not contour.is_open_arc and is_planimeter_polygon(contour) and contour.points:
@@ -6243,7 +6207,7 @@ class ViewerWidget(QWidget):
         frame_index = self._contour_frame_index()
         spacing, spacing_calibrated = self._effective_pixel_spacing()
         if frame_index is not None:
-            for contour in self._stored_contours:
+            for contour in self.contour_state.stored:
                 if contour.frame_index != frame_index:
                     continue
                 chamber = contour.chamber.upper()
@@ -6413,7 +6377,7 @@ class ViewerWidget(QWidget):
         return spacing
 
     def _handle_contour_mouse_click(self, ev) -> bool:
-        if not self._contour_mode_active:
+        if not self.contour_state.mode_active:
             return False
 
         if ev.button() == Qt.MouseButton.RightButton:
@@ -6432,27 +6396,30 @@ class ViewerWidget(QWidget):
         screen_point = self._event_screen_point(ev)
         repeat_click = self._is_repeat_click(screen_point, qt_double=qt_double)
 
-        if self._freehand_recording and (self._area_tool_mode == "freehand" or self._freehand_open_arc):
+        if self.contour_state.freehand_recording and (
+            self.contour_state.area_tool_mode == "freehand" or self.contour_state.freehand_open_arc
+        ):
             # A repeat click in place is the finish gesture. Otherwise an
             # open-arc trace also lets a plain click drop a single node.
-            self._remember_contour_click(screen_point)
-            if repeat_click and len(self._freehand_points) >= _CONTOUR_MIN_POINTS_TO_CLOSE:
+            self.contour_state.remember_click(screen_point)
+            if repeat_click and len(self.contour_state.freehand_points) >= _CONTOUR_MIN_POINTS_TO_CLOSE:
                 self._finish_active_freehand_contour()
                 return True
-            if self._freehand_open_arc:
+            if self.contour_state.freehand_open_arc:
                 point = self._view.mapSceneToView(ev.scenePos())
                 view_point = (float(point.x()), float(point.y()))
                 if (
-                    not self._freehand_points
-                    or self._distance(self._freehand_points[-1], view_point) > _CONTOUR_MIN_POINT_SPACING_PX
+                    not self.contour_state.freehand_points
+                    or self._distance(self.contour_state.freehand_points[-1], view_point)
+                    > _CONTOUR_MIN_POINT_SPACING_PX
                 ):
-                    self._freehand_points.append(view_point)
+                    self.contour_state.freehand_points.append(view_point)
                     self._update_freehand_preview()
             return True
 
         point = self._view.mapSceneToView(ev.scenePos())
         view_point = (float(point.x()), float(point.y()))
-        placed_points = self._active_arc_points if self._contour_stage == "polygon" else None
+        placed_points = self.contour_state.active_arc_points if self.contour_state.stage == "polygon" else None
 
         if placed_points is not None:
             if self._is_close_first_point_click(screen_point):
@@ -6467,12 +6434,12 @@ class ViewerWidget(QWidget):
             if self._is_duplicate_point(view_point, screen_point):
                 # Same spot twice — keep the polygon clean, but remember the
                 # click so a following one still counts as a finish gesture.
-                self._remember_contour_click(screen_point)
+                self.contour_state.remember_click(screen_point)
                 return True
             if len(placed_points) == 0:
-                self._first_contour_point_screen = screen_point
-            self._last_contour_point_screen = screen_point
-            self._remember_contour_click(screen_point)
+                self.contour_state.first_point_screen = screen_point
+            self.contour_state.last_point_screen = screen_point
+            self.contour_state.remember_click(screen_point)
             self.handle_contour_click(view_point)
             return True
 
@@ -6482,7 +6449,7 @@ class ViewerWidget(QWidget):
         if repeat_click:
             self.finish_contour()
             return True
-        self._remember_contour_click(screen_point)
+        self.contour_state.remember_click(screen_point)
         self.handle_contour_click(view_point)
         return True
 
@@ -6492,28 +6459,28 @@ class ViewerWidget(QWidget):
         screen_point: tuple[float, float] | None,
     ) -> bool:
         """True when the click repeats the previous point (trembling hand)."""
-        if not self._active_arc_points:
+        if not self.contour_state.active_arc_points:
             return False
-        last = self._active_arc_points[-1]
+        last = self.contour_state.active_arc_points[-1]
         if math.hypot(view_point[0] - last[0], view_point[1] - last[1]) <= _CONTOUR_MIN_POINT_SPACING_PX:
             return True
-        if screen_point is None or self._last_contour_point_screen is None:
+        if screen_point is None or self.contour_state.last_point_screen is None:
             return False
-        previous = self._last_contour_point_screen
+        previous = self.contour_state.last_point_screen
         return math.hypot(screen_point[0] - previous[0], screen_point[1] - previous[1]) <= _CONTOUR_MIN_POINT_SPACING_PX
 
     def _undo_last_contour_point(self) -> bool:
         """Remove the most recently placed point of the active contour."""
-        if self._freehand_recording and self._freehand_points:
-            self._freehand_points.pop()
+        if self.contour_state.freehand_recording and self.contour_state.freehand_points:
+            self.contour_state.freehand_points.pop()
             self._update_freehand_preview()
             return True
-        if not self._active_arc_points:
+        if not self.contour_state.active_arc_points:
             return False
-        self._active_arc_points.pop()
-        self._last_contour_point_screen = None
-        if self._contour_stage == "polygon" and not self._active_arc_points:
-            self._first_contour_point_screen = None
+        self.contour_state.active_arc_points.pop()
+        self.contour_state.last_point_screen = None
+        if self.contour_state.stage == "polygon" and not self.contour_state.active_arc_points:
+            self.contour_state.first_point_screen = None
         self._update_active_contour_item()
         self._update_planimeter_progress_label()
         return True
@@ -6523,20 +6490,20 @@ class ViewerWidget(QWidget):
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
     def _update_freehand_preview(self) -> None:
-        if self._active_contour_item is None or not self._freehand_points:
+        if self._active_contour_item is None or not self.contour_state.freehand_points:
             return
-        xs = [p[0] for p in self._freehand_points]
-        ys = [p[1] for p in self._freehand_points]
+        xs = [p[0] for p in self.contour_state.freehand_points]
+        ys = [p[1] for p in self.contour_state.freehand_points]
         self._active_contour_item.setData(xs, ys)
 
     def _show_active_ma_chord(self) -> None:
-        if self._active_mitral_annulus is None:
+        if self.contour_state.active_mitral_annulus is None:
             return
         if self._active_ma_chord_item is None:
             self._active_ma_chord_item = pg.PlotDataItem(pen=self._contour_pen_ma)
             self._active_ma_chord_item.setZValue(19)
             self._view.addItem(self._active_ma_chord_item)
-        septal, lateral = self._active_mitral_annulus
+        septal, lateral = self.contour_state.active_mitral_annulus
         self._active_ma_chord_item.setData([septal[0], lateral[0]], [septal[1], lateral[1]])
 
     def _preview_open_arc_points(
@@ -6552,9 +6519,9 @@ class ViewerWidget(QWidget):
                 septal=septal,
                 lateral=lateral,
                 apex=apex,
-                phase=self._active_contour_phase or "ED",
-                view=self._active_contour_view,
-                chamber=self._active_contour_chamber,
+                phase=self.contour_state.active_phase or "ED",
+                view=self.contour_state.active_view,
+                chamber=self.contour_state.active_chamber,
             )
         except ValueError:
             return []
@@ -6565,28 +6532,28 @@ class ViewerWidget(QWidget):
             return
         markers: list[tuple[float, float]] = []
         spline_points: list[tuple[float, float]] = []
-        if self._contour_stage == "ma_septal" and self._active_mitral_septal is not None:
-            markers = [self._active_mitral_septal]
-        elif self._contour_stage == "ma_lateral":
-            if self._active_mitral_septal is not None:
-                markers = [self._active_mitral_septal]
-        elif self._contour_stage == "apex" and self._active_mitral_annulus is not None:
-            septal, lateral = self._active_mitral_annulus
+        if self.contour_state.stage == "ma_septal" and self.contour_state.active_mitral_septal is not None:
+            markers = [self.contour_state.active_mitral_septal]
+        elif self.contour_state.stage == "ma_lateral":
+            if self.contour_state.active_mitral_septal is not None:
+                markers = [self.contour_state.active_mitral_septal]
+        elif self.contour_state.stage == "apex" and self.contour_state.active_mitral_annulus is not None:
+            septal, lateral = self.contour_state.active_mitral_annulus
             markers = [septal, lateral]
-            if self._active_apex_landmark is not None:
-                markers.append(self._active_apex_landmark)
+            if self.contour_state.active_apex_landmark is not None:
+                markers.append(self.contour_state.active_apex_landmark)
                 spline_points = self._preview_open_arc_points(
                     septal,
                     lateral,
-                    self._active_apex_landmark,
+                    self.contour_state.active_apex_landmark,
                 )
-        elif self._contour_stage == "arc" and self._active_mitral_annulus is not None:
-            septal, lateral = self._active_mitral_annulus
-            markers = [septal, *self._active_arc_points, lateral]
+        elif self.contour_state.stage == "arc" and self.contour_state.active_mitral_annulus is not None:
+            septal, lateral = self.contour_state.active_mitral_annulus
+            markers = [septal, *self.contour_state.active_arc_points, lateral]
             if len(markers) >= 2:
                 spline_points = sample_spline(markers, num_samples=64) if len(markers) >= 3 else markers
-        elif self._contour_stage == "polygon" and self._active_arc_points:
-            markers = list(self._active_arc_points)
+        elif self.contour_state.stage == "polygon" and self.contour_state.active_arc_points:
+            markers = list(self.contour_state.active_arc_points)
             spline_points = markers
         if spline_points:
             x_values = [point[0] for point in spline_points]
@@ -6607,20 +6574,20 @@ class ViewerWidget(QWidget):
         so the operator needs the number *while* drawing — not only after the
         contour is closed and can no longer be corrected cheaply.
         """
-        if self._contour_stage != "polygon" or not self._active_arc_points:
+        if self.contour_state.stage != "polygon" or not self.contour_state.active_arc_points:
             return
-        chamber = (self._active_contour_chamber or "").upper()
+        chamber = (self.contour_state.active_chamber or "").upper()
         if chamber not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
             return
-        if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+        if len(self.contour_state.active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return
         spacing, calibrated = self._effective_pixel_spacing()
         probe = Contour(
-            phase=self._active_contour_phase or "GEN",
-            view=self._active_contour_view,
+            phase=self.contour_state.active_phase or "GEN",
+            view=self.contour_state.active_view,
             chamber=chamber,
-            points=list(self._active_arc_points),
+            points=list(self.contour_state.active_arc_points),
             frame_index=self._contour_frame_index(),
         )
         if chamber == GENERIC_VOLUME_CHAMBER:
@@ -6957,7 +6924,7 @@ class ViewerWidget(QWidget):
         first_label, second_label, pct_label = compare_labels(state.kind)
         area1: float | None = None
         area2: float | None = None
-        for c in self._stored_contours:
+        for c in self.contour_state.stored:
             if c.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
                 continue
             if c.frame_index != frame:
@@ -7043,7 +7010,7 @@ class ViewerWidget(QWidget):
 
         area1: float | None = None
         area2: float | None = None
-        for c in self._stored_contours:
+        for c in self.contour_state.stored:
             if c.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
                 continue
             if c.frame_index != frame:
@@ -7568,13 +7535,13 @@ class ViewerWidget(QWidget):
         if not label:
             return False
         target = str(reference or "")
-        for index, contour in enumerate(self._stored_contours):
+        for index, contour in enumerate(self.contour_state.stored):
             if _contour_picker_reference(contour) != target:
                 continue
             if contour.measurement_label == label:
                 return True
             renamed = replace(contour, measurement_label=label, revision=contour.revision + 1)
-            self._stored_contours[index] = renamed
+            self.contour_state.stored[index] = renamed
             self._render_contours_for_current_frame()
             self._refresh_frame_overlays()
             if not self._syncing_state:
@@ -7946,7 +7913,7 @@ class ViewerWidget(QWidget):
                 self.accept_vessel_measurement()
                 event.accept()
                 return
-            if self._freehand_recording and self._contour_mode_active:
+            if self.contour_state.freehand_recording and self.contour_state.mode_active:
                 if self._finish_active_freehand_contour():
                     event.accept()
                     return
@@ -8043,24 +8010,24 @@ class ViewerWidget(QWidget):
 
     def set_area_tool_mode(self, mode: str) -> None:
         if mode in ("click", "freehand"):
-            self._area_tool_mode = mode
+            self.contour_state.area_tool_mode = mode
 
     def area_tool_mode(self) -> str:
-        return self._area_tool_mode
+        return self.contour_state.area_tool_mode
 
     def set_lv_contour_input(self, mode: str) -> None:
         if mode in ("landmarks", "trace"):
-            self._lv_contour_input = mode
+            self.contour_state.lv_input = mode
 
     def lv_contour_input(self) -> str:
-        return self._lv_contour_input
+        return self.contour_state.lv_input
 
     def set_atrial_contour_input(self, mode: str) -> None:
         if mode in ("landmarks", "trace"):
-            self._atrial_contour_input = mode
+            self.contour_state.atrial_input = mode
 
     def atrial_contour_input(self) -> str:
-        return self._atrial_contour_input
+        return self.contour_state.atrial_input
 
     def set_despeckle_enabled(self, enabled: bool) -> None:
         self._despeckle_enabled = bool(enabled)
@@ -8092,7 +8059,10 @@ class ViewerWidget(QWidget):
 
     def _is_unassisted_freehand_trace(self) -> bool:
         """True while a freehand LV/atrial trace or freehand area stroke is being finished."""
-        return bool(self._freehand_recording and (self._freehand_open_arc or self._area_tool_mode == "freehand"))
+        return bool(
+            self.contour_state.freehand_recording
+            and (self.contour_state.freehand_open_arc or self.contour_state.area_tool_mode == "freehand")
+        )
 
     def _apply_magnetic_snap_to_contour(
         self,
@@ -8103,14 +8073,17 @@ class ViewerWidget(QWidget):
     ) -> None:
         if not self._magnetic_snap_enabled:
             return
-        if 0 <= contour_index < len(self._contours) and self._contours[contour_index].unassisted:
+        if (
+            0 <= contour_index < len(self.contour_state.visible)
+            and self.contour_state.visible[contour_index].unassisted
+        ):
             return
         edge_map = self.get_edge_map()
         if edge_map is None:
             return
-        if contour_index < 0 or contour_index >= len(self._contours):
+        if contour_index < 0 or contour_index >= len(self.contour_state.visible):
             return
-        contour = self._contours[contour_index]
+        contour = self.contour_state.visible[contour_index]
         if contour.is_open_arc:
             snap_cfg = magnetic_edge_snap_config_for_source(contour.source, chamber=contour.chamber)
             pinned = self._pinned_indices_for_contour(contour)
@@ -8141,7 +8114,7 @@ class ViewerWidget(QWidget):
             return
         frame_index = self._contour_frame_index()
         instance_uid = self.current_instance_uid()
-        for i, c in enumerate(self._contours):
+        for i, c in enumerate(self.contour_state.visible):
             if c.unassisted:
                 continue
             if (c is contour or (c.frame_index == frame_index and c.chamber == contour.chamber)) and (
