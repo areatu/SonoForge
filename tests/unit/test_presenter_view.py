@@ -337,8 +337,13 @@ class TestPresenterWindow:
         window, _ = self._make(qapp_session, qtbot)
         viewer = window.viewer()
         assert isinstance(viewer, ViewerWidget)
-        for attr in ("_timeline_slider", "_play_button", "_step_forward_button", "_source_label"):
-            assert getattr(viewer, attr).isVisibleTo(viewer) is False
+        for widget in (
+            viewer.transport.timeline_slider,
+            viewer.transport.play_button,
+            viewer.transport.step_forward_button,
+            viewer.transport.source_label,
+        ):
+            assert widget.isVisibleTo(viewer) is False
         window.stop()
 
     def test_input_is_swallowed_read_only_audience(self, qapp_session, qtbot):

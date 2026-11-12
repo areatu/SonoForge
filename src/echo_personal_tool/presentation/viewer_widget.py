@@ -21,12 +21,10 @@ from PySide6.QtGui import QCursor, QKeyEvent, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsView,
-    QHBoxLayout,
     QInputDialog,
     QLabel,
     QMenu,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSlider,
     QVBoxLayout,
@@ -132,11 +130,10 @@ from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
-from echo_personal_tool.presentation.display_formats import format_dpr, format_fps, format_scale_factor
+from echo_personal_tool.presentation.display_formats import format_dpr, format_scale_factor
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
-from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.presentation.viewer.compare_tools import (
     AREA_HINTS,
     DIAMETER_HINTS,
@@ -163,6 +160,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
 )
+from echo_personal_tool.presentation.viewer.transport import ViewerTransport
 from echo_personal_tool.presentation.viewer_contract import ViewerContract
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
@@ -899,17 +897,6 @@ class _LoupeKeyRelay(QObject):
             return False
 
 
-class _FpsLabel(QLabel):
-    """«FPS: 30.0» of the transport: a double-click asks to retime the clip."""
-
-    double_clicked = Signal()
-
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.double_clicked.emit()
-        super().mouseDoubleClickEvent(event)
-
-
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -1235,32 +1222,7 @@ class ViewerWidget(QWidget):
             self._magnifier_controller,
         ]
 
-        self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
-        self._timeline_slider.setSingleStep(1)
-        self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
         attach_loop_controls(self, enabled=loop_controls)
-        self._scroll_debounce_ms = 70
-        self._pending_scroll_index: int | None = None
-        self._scroll_debounce_timer = QTimer(self)
-        self._scroll_debounce_timer.setSingleShot(True)
-        self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
-        self._step_back_button = QPushButton("|<")
-        self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
-        self._step_back_button.setToolTip("Step back (Previous frame)")
-        self._step_back_button.clicked.connect(self._step_back)
-
-        self._play_button = QPushButton()
-        self._fix_play_button_width()
-        self._play_button.clicked.connect(self.play_pause_requested.emit)
-
-        self._step_forward_button = QPushButton(">|")
-        self._step_forward_button.setMinimumWidth(text_width(self, ">|", padding=18, minimum=24))
-        self._step_forward_button.setToolTip("Step forward (Next frame)")
-        self._step_forward_button.clicked.connect(self._step_forward)
-
-        self._fps_label = self._make_fps_label()
-        self._source_label = QLabel(tr("viewer.frame_none"))
-        self._phase_label = QLabel("")
         self._measurement_label = QLabel(f"{self._current_caliper_label()}: —", self)
         self._measurement_label.hide()
 
@@ -1313,7 +1275,7 @@ class ViewerWidget(QWidget):
         self._hint_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._hint_bar.hide()
 
-        layout.addWidget(self._transport_bar)
+        layout.addWidget(self.transport.bar)
         self._graphics.setMouseTracking(True)
         self._graphics.setViewportUpdateMode(
             QGraphicsView.ViewportUpdateMode.SmartViewportUpdate,
@@ -1834,6 +1796,11 @@ class ViewerWidget(QWidget):
                 doppler.dispose()
             except RuntimeError:
                 pass
+        # The transport is not generation-scoped, so it is not in the
+        # controller inventory; it still owns a debounce timer that must stop.
+        transport = getattr(self, "transport", None)
+        if transport is not None:
+            transport.dispose()
         # Break the relay cycle that segfaults on Linux if not deleted before GC
         relay = getattr(self, "_loupe_key_relay", None)
         if relay is not None:
@@ -1841,7 +1808,7 @@ class ViewerWidget(QWidget):
         # Timers that accumulate if not stopped (50/500-cycle budget)
         import warnings
 
-        for attr in ("_scroll_debounce_timer", "_calibration_ok_timer"):
+        for attr in ("_calibration_ok_timer",):
             t = getattr(self, attr, None)
             if t is not None:
                 try:
@@ -1946,99 +1913,48 @@ class ViewerWidget(QWidget):
         self._position_overlay_labels()
 
     def reload_text(self) -> None:
-        for button, key, desc_key in (
-            (self._step_back_button, "viewer.step_back", "a11y.viewer_prev_desc"),
-            (self._step_forward_button, "viewer.step_forward", "a11y.viewer_next_desc"),
-            (self._first_frame_button, "viewer.first_frame", "a11y.viewer_first_desc"),
-            (self._last_frame_button, "viewer.last_frame", "a11y.viewer_last_desc"),
-        ):
-            button.setToolTip(tr(key))
-            button.setAccessibleName(tr(key))
-            button.setAccessibleDescription(tr(desc_key))
+        self.transport.retranslate()
         self._results_overlay_label.setAccessibleName(tr("a11y.results_overlay"))
         self._results_overlay_label.setAccessibleDescription(tr("a11y.results_overlay_desc"))
-        self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if (loop := self.findChild(LoopControls)) is not None:
             loop.reload_text()
         if self._current_state is not None:
-            self._sync_play_button(self._current_state.is_playing)
             total = self._current_state.total_frames
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
-            self._set_frame_counter_label(current=current, total=total)
-        self._fix_play_button_width()
+            self.transport.refresh_labels(current=current, total=total, is_playing=self._current_state.is_playing)
+        else:
+            self.transport.fix_play_button_width()
         self._fix_phase_label_width()
         self.doppler.reload_text()
         self._ste_sensitivity.reload_text()
 
-    def _make_fps_label(self) -> _FpsLabel:
-        """The transport's «FPS» as a control: cursor, hint and the retiming request.
-
-        Built outside ``__init__`` — the grandfathered function-length budget
-        of the constructor may only shrink.
-        """
-        label = _FpsLabel("FPS: —")
-        label.setCursor(Qt.CursorShape.PointingHandCursor)
-        label.setToolTip(tr("viewer.fps_override_tooltip"))
-        label.double_clicked.connect(self.fps_override_requested)
-        return label
-
     def _build_cine_transport(self) -> None:
-        """Build the shared cine timeline and graphical navigation controls."""
-        self._transport_bar = QWidget(self)
-        self._transport_bar.setObjectName("viewerTransport")
-        controls = QVBoxLayout(self._transport_bar)
-        timeline_row = QHBoxLayout()
-        from echo_personal_tool.presentation.icon_loader import load_svg_icon
-
-        self._first_frame_button = QPushButton()
-        self._last_frame_button = QPushButton()
-        self._first_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(0))
-        self._last_frame_button.clicked.connect(lambda: self._timeline_slider.setValue(self._timeline_slider.maximum()))
-        for button, icon, title_key, desc_key in (
-            (self._first_frame_button, "cine_first", "viewer.first_frame", "a11y.viewer_first_desc"),
-            (self._step_back_button, "cine_previous", "viewer.step_back", "a11y.viewer_prev_desc"),
-            (self._step_forward_button, "cine_next", "viewer.step_forward", "a11y.viewer_next_desc"),
-            (self._last_frame_button, "cine_last", "viewer.last_frame", "a11y.viewer_last_desc"),
-        ):
-            button.setText("")
-            button.setIcon(load_svg_icon(icon))
-            button.setFixedSize(32, 32)
-            button.setFlat(True)
-            button.setAccessibleName(tr(title_key))
-            button.setAccessibleDescription(tr(desc_key))
-            button.setToolTip(tr(title_key))
-        loop = self.findChild(LoopControls)
-        transport_btns = (
-            self._first_frame_button,
-            self._step_back_button,
-            self._play_button,
-            self._step_forward_button,
-            self._last_frame_button,
-        )
-        for button in (*transport_btns, *(loop.buttons() if loop is not None else ())):
-            timeline_row.addWidget(button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        """Build the shared cine timeline through its transport owner."""
         self._phase_strip = CinePhaseStrip(translate=tr)
         self._phase_strip.hide()
         self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
         self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
         self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
         self._phase_timeline: PhaseTimeline | None = None
-        slider_column = QWidget(self._transport_bar)
-        slider_column_layout = QVBoxLayout(slider_column)
-        slider_column_layout.setContentsMargins(0, 0, 0, 0)
-        slider_column_layout.setSpacing(0)
-        slider_column_layout.addWidget(self._phase_strip)
-        if loop is not None:
-            slider_column_layout.addWidget(loop.strip)
-        slider_column_layout.addWidget(self._timeline_slider)
-        timeline_row.addWidget(slider_column, stretch=1)
-        timeline_row.addWidget(self._source_label)
+        self._phase_label = QLabel("")
+        self.transport = ViewerTransport(
+            parent=self,
+            loop=self.findChild(LoopControls),
+            phase_strip=self._phase_strip,
+            phase_label=self._phase_label,
+        )
+        self.transport.play_pause_requested.connect(self.play_pause_requested.emit)
+        self.transport.frame_selected.connect(self._relay_frame_selected)
+        self.transport.scroll_frame_selected.connect(self.scroll_frame_selected.emit)
+        self.transport.fps_override_requested.connect(self.fps_override_requested.emit)
         # Reserve the width of the longest phase caption so the label never
         # appears/disappears and pushes the «Frame: …» counter sideways.
         self._fix_phase_label_width()
-        timeline_row.addWidget(self._phase_label)
-        timeline_row.addWidget(self._fps_label)
-        controls.addLayout(timeline_row)
+
+    def _relay_frame_selected(self, value: int) -> None:
+        """Keep the historical guard: programmatic state sync is silent."""
+        if not self._syncing_state:
+            self.frame_selected.emit(value)
 
     def _fix_phase_label_width(self) -> None:
         """Pin the phase caption to the widest localized phase name (fixed phase text)."""
@@ -2059,30 +1975,6 @@ class ViewerWidget(QWidget):
             + 2
         )
         self._phase_label.setFixedWidth(width)
-
-    def _fix_play_button_width(self) -> None:
-        self._play_button.setFixedSize(36, 36)
-        self._sync_play_button(bool(getattr(getattr(self, "_current_state", None), "is_playing", False)))
-
-    def _sync_play_button(self, playing: bool) -> None:
-        from echo_personal_tool.presentation.icon_loader import load_svg_icon
-
-        caption = tr("viewer.pause") if playing else tr("viewer.play")
-        self._play_button.setText("")
-        self._play_button.setAccessibleName(caption)
-        self._play_button.setAccessibleDescription(tr("a11y.viewer_play_desc"))
-        self._play_button.setToolTip(caption)
-        if self._play_button.property("cinePlaying") != playing or self._play_button.icon().isNull():
-            self._play_button.setProperty("cinePlaying", playing)
-            tokens = dark_theme.get_theme_tokens()
-            self._play_button.setIcon(
-                load_svg_icon("cine_pause" if playing else "cine_play", color=tokens["accent.on"])
-            )
-            self._play_button.setStyleSheet(
-                f"QPushButton {{ border: none; border-radius: 18px; background: {tokens['accent']}; }}"
-                f"QPushButton:hover {{ background: {tokens['accent.text']}; }}"
-                f"QPushButton:disabled {{ background: {tokens['surface.3']}; }}"
-            )
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -2185,10 +2077,10 @@ class ViewerWidget(QWidget):
     @_prof
     def set_transport_visible(self, visible: bool) -> None:
         """Show or hide the built-in cine strip (UI-6 uses the floating plate)."""
-        self._transport_bar.setVisible(bool(visible))
+        self.transport.bar.setVisible(bool(visible))
 
     def transport_visible(self) -> bool:
-        return self._transport_bar.isVisible()
+        return self.transport.bar.isVisible()
 
     def set_results_overlay_suppressed(self, suppressed: bool) -> None:
         """Hide the on-image results box while the focus card shows the same values.
@@ -2814,30 +2706,6 @@ class ViewerWidget(QWidget):
         self._clear_persistent_linear_calipers()
         self._clear_ghost_overlay()
 
-    def _set_frame_counter_label(self, *, current: int, total: int) -> None:
-        """Update the counter while reserving enough width for its largest value."""
-        if total > 0:
-            total = int(total)
-            current = min(max(1, int(current)), total)
-            source_text = tr("viewer.frame_counter", current=str(current), total=str(total))
-            width_text = tr("viewer.frame_counter", current=str(total), total=str(total))
-        else:
-            source_text = tr("viewer.frame_none")
-            width_text = source_text
-
-        margins = self._source_label.contentsMargins()
-        width = (
-            self._source_label.fontMetrics().horizontalAdvance(width_text)
-            + margins.left()
-            + margins.right()
-            + 2 * self._source_label.margin()
-            + 2
-        )
-        if self._source_label.minimumWidth() != width or self._source_label.maximumWidth() != width:
-            self._source_label.setFixedWidth(width)
-        if self._source_label.text() != source_text:
-            self._source_label.setText(source_text)
-
     def set_phase_timeline(self, timeline: PhaseTimeline | None) -> None:
         """Show a detected phase annotation on the playback bar."""
         self._phase_timeline = timeline
@@ -2847,7 +2715,7 @@ class ViewerWidget(QWidget):
 
     def _update_phase_label(self, *, frame: int | None = None) -> None:
         if frame is None:
-            frame = self._timeline_slider.value()
+            frame = self.transport.timeline_slider.value()
         phase = self._phase_strip.phase_at(frame)
         tokens = dark_theme.get_theme_tokens()
         if phase == PHASE_SYSTOLE:
@@ -2863,8 +2731,7 @@ class ViewerWidget(QWidget):
         self._phase_label.setStyleSheet(f"color: {color}; font-size: 10px;")
 
     def _on_phase_frame_selected(self, frame: int) -> None:
-        if self._timeline_slider.minimum() <= frame <= self._timeline_slider.maximum():
-            self._timeline_slider.setValue(frame)
+        self.transport.select_frame(frame)
 
     def _on_phase_marker_moved(self, cycle_index: int, kind: str, frame: int) -> None:
         timeline = self._phase_timeline
@@ -2896,33 +2763,16 @@ class ViewerWidget(QWidget):
         """
         try:
             total = max(0, int(total_frames))
-            maximum = max(0, total - 1)
-            if self._timeline_slider.maximum() != maximum:
-                self._timeline_slider.setRange(0, maximum)
-            controls_enabled = total > 1
-            self._timeline_slider.setEnabled(controls_enabled)
-            loop = self.findChild(LoopControls)
-            for button in (
-                self._first_frame_button,
-                self._step_back_button,
-                self._step_forward_button,
-                self._last_frame_button,
-                *(loop.buttons() if loop is not None else ()),
-            ):
-                button.setEnabled(controls_enabled)
-            self._play_button.setEnabled(controls_enabled)
-            target = min(max(0, int(frame_index)), maximum)
-            if self._timeline_slider.value() != target:
-                self._timeline_slider.blockSignals(True)
-                self._timeline_slider.setValue(target)
-                self._timeline_slider.blockSignals(False)
-            self._sync_play_button(is_playing)
-            fps_text = f"FPS: {format_fps(1000.0 / frame_time_ms)}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
-            if self._fps_label.text() != fps_text:
-                self._fps_label.setText(fps_text)
-            self._set_frame_counter_label(current=target + 1, total=total)
+            target = min(max(0, int(frame_index)), max(0, total - 1))
+            self.transport.apply_frame_time(
+                frame_index=frame_index,
+                total_frames=total,
+                frame_time_ms=frame_time_ms,
+                is_playing=is_playing,
+            )
             self._phase_strip.set_total_frames(total)
             self._phase_strip.set_current_frame(target)
+            loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(total)
                 loop.set_current_frame(target)
@@ -3008,31 +2858,18 @@ class ViewerWidget(QWidget):
         self._stored_linear_measurements.update(preserved)
         self._current_state = viewer_state
         try:
-            maximum = max(0, viewer_state.total_frames - 1)
-            self._timeline_slider.setRange(0, maximum)
-            controls_enabled = viewer_state.total_frames > 1
-            self._timeline_slider.setEnabled(controls_enabled)
-            loop = self.findChild(LoopControls)
-            for button in (
-                self._first_frame_button,
-                self._step_back_button,
-                self._step_forward_button,
-                self._last_frame_button,
-                *(loop.buttons() if loop is not None else ()),
-            ):
-                button.setEnabled(controls_enabled)
-            self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
-            target_frame = min(viewer_state.current_frame_index, maximum)
-            if self._timeline_slider.value() != target_frame:
-                self._timeline_slider.setValue(target_frame)
-            self._sync_play_button(viewer_state.is_playing)
-            fps_text = f"FPS: {format_fps(viewer_state.fps)}" if viewer_state.fps > 0 else "FPS: —"
-            if self._fps_label.text() != fps_text:
-                self._fps_label.setText(fps_text)
             current = viewer_state.current_frame_index + 1 if viewer_state.total_frames > 0 else 0
-            self._set_frame_counter_label(current=current, total=viewer_state.total_frames)
+            self.transport.apply_state(
+                frame_index=viewer_state.current_frame_index,
+                total_frames=viewer_state.total_frames,
+                fps=viewer_state.fps,
+                is_playing=viewer_state.is_playing,
+                decode_in_progress=viewer_state.decode_in_progress,
+                counter_current=current,
+            )
             self._phase_strip.set_total_frames(viewer_state.total_frames)
             self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(viewer_state.total_frames)
                 loop.set_current_frame(viewer_state.current_frame_index)
@@ -5320,14 +5157,7 @@ class ViewerWidget(QWidget):
         return self._contour_mode_active
 
     def set_scroll_debounce_ms(self, ms: int) -> None:
-        self._scroll_debounce_ms = max(0, ms)
-
-    def _emit_pending_scroll(self) -> None:
-        if self._pending_scroll_index is None:
-            return
-        index = self._pending_scroll_index
-        self._pending_scroll_index = None
-        self.scroll_frame_selected.emit(index)
+        self.transport.set_scroll_debounce_ms(ms)
 
     def _handle_wheel(self, ev) -> bool:
         _wt0 = time.perf_counter() if _FREEZE_DIAG else 0
@@ -5351,27 +5181,20 @@ class ViewerWidget(QWidget):
         if self._current_state.total_frames <= 1:
             return False
         step = -1 if delta_y > 0 else 1
-        current = (
-            self._pending_scroll_index
-            if self._pending_scroll_index is not None
-            else self._current_state.current_frame_index
-        )
+        pending = self.transport.pending_scroll_index
+        current = pending if pending is not None else self._current_state.current_frame_index
         total = self._current_state.total_frames
         new_index = (current + step) % total
         if new_index == current:
             return False
         ev.accept()
-        self._pending_scroll_index = new_index
         if _FREEZE_DIAG and _diag_log:
             _diag_log.warning(
                 "[wheel] new_idx=%d elapsed=%.3fms",
                 new_index,
                 (time.perf_counter() - _wt0) * 1000,
             )
-        if self._scroll_debounce_ms <= 0:
-            self._emit_pending_scroll()
-            return True
-        self._scroll_debounce_timer.start(self._scroll_debounce_ms)
+        self.transport.queue_scroll(new_index)
         return True
 
     def _handle_ctrl_wheel(self, ev, delta_y: int) -> bool:
@@ -5478,8 +5301,7 @@ class ViewerWidget(QWidget):
         self.set_hint(self._zoom_loupe_hint)
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
-        self._timeline_slider.setToolTip("")
-        self._timeline_slider.setStyleSheet("")
+        self.transport.update_timeline_indicator(viewer_state)
 
     def append_frame_overlay(self, line: str) -> None:
         self._frame_overlay_lines.append(line)
@@ -8450,20 +8272,9 @@ class ViewerWidget(QWidget):
             self._caliper_labels.append(label)
         self._caliper_label_index = self._caliper_labels.index(label)
 
-    def _step_back(self) -> None:
-        current = self._timeline_slider.value()
-        if current > 0:
-            self._timeline_slider.setValue(current - 1)
-
-    def _step_forward(self) -> None:
-        current = self._timeline_slider.value()
-        if current < self._timeline_slider.maximum():
-            self._timeline_slider.setValue(current + 1)
-
     def _on_timeline_changed(self, value: int) -> None:
-        if self._syncing_state:
-            return
-        self.frame_selected.emit(value)
+        """Loop-strip entry point; the transport owns the emit and the guard."""
+        self.transport.on_timeline_changed(value)
 
     def bind_display_controls(
         self,

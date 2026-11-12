@@ -224,7 +224,9 @@ class MultiViewPaneWidget(QWidget):
         self._viewer.installEventFilter(self)
         for child in self._viewer_widgets_to_watch():
             child.installEventFilter(self)
-        self._viewer._timeline_slider.installEventFilter(self)
+        slider = self._frame_slider()
+        if slider is not None:
+            slider.installEventFilter(self)
         self._placeholder.installEventFilter(self)
         # a click on the header activates the pane too (spec 10.1)
         header.installEventFilter(self)
@@ -378,6 +380,11 @@ class MultiViewPaneWidget(QWidget):
 
     # ── geometry ────────────────────────────────────────────────────
 
+    def _frame_slider(self) -> QWidget | None:
+        """The viewer's frame slider, through its public transport owner."""
+        transport = getattr(self._viewer, "transport", None)
+        return getattr(transport, "timeline_slider", None)
+
     def _in_same_window(self, widget: QWidget) -> bool:
         """True when ``widget`` already shares a window with this pane."""
         try:
@@ -387,9 +394,8 @@ class MultiViewPaneWidget(QWidget):
 
     def _sync_marker_alignment(self) -> None:
         """Keep the marker strip horizontally aligned with the frame slider."""
-        try:
-            slider = self._viewer._timeline_slider
-        except RuntimeError:
+        slider = self._frame_slider()
+        if slider is None:
             return
         if not self.isVisible() or not slider.isVisible():
             return

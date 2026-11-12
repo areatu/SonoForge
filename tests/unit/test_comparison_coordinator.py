@@ -40,6 +40,7 @@ class FakeViewer(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal, self)
+        self.transport = SimpleNamespace(timeline_slider=self._timeline_slider)
         self.transport_states: list[dict[str, Any]] = []
 
     def set_transport_state(self, **kwargs: Any) -> None:

@@ -259,6 +259,7 @@ files = [
     "src/echo_personal_tool/presentation/viewer/mmode_controller.py",
     "src/echo_personal_tool/presentation/viewer/overlay_controller.py",
     "src/echo_personal_tool/presentation/viewer/target_boundary.py",
+    "src/echo_personal_tool/presentation/viewer/transport.py",
     "src/echo_personal_tool/presentation/viewer_clip_context.py",
     "src/echo_personal_tool/presentation/viewer_column.py",
     "src/echo_personal_tool/presentation/viewer_contract.py",
