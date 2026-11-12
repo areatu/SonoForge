@@ -200,6 +200,23 @@ def test_cine_heart_rate_estimate_returns_with_its_tab(controller, tmp_path) -> 
     assert heart_rate.value == 72
 
 
+def test_a_refused_flush_reports_that_the_load_never_started(controller, monkeypatch, tmp_path) -> None:
+    studies = _studies("a", tmp_path)
+    _switch_to(controller, studies, TabClinicalMemory())
+    assert controller.on_manual_calibration((0.3, 0.3))
+    blocked: list[bool] = []
+    controller.persistence_blocked.connect(lambda: blocked.append(True))
+    monkeypatch.setattr(controller.measurement_persistence, "flush", lambda *args, **kwargs: False)
+
+    assert controller.load_pre_scanned_studies(studies) is False
+    assert blocked, "the refusal is still reported loudly"
+    assert controller.state_manager.snapshot.manual_pixel_spacing == (0.3, 0.3), "state was never touched"
+
+
+def test_a_started_load_reports_true(controller, tmp_path) -> None:
+    assert controller.load_pre_scanned_studies(_studies("a", tmp_path)) is True
+
+
 def test_persistence_on_keeps_the_disk_record_as_the_authority(controller, tmp_path) -> None:
     _switch_to(controller, _studies("a", tmp_path), TabClinicalMemory())
     assert controller.on_manual_calibration((0.3, 0.3))

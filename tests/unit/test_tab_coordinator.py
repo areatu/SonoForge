@@ -169,6 +169,8 @@ class FakeWindow:
         self.doppler_resets = 0
         self.loaded: list[list[StudyMetadata]] = []
         self.loaded_memory: list[TabClinicalMemory | None] = []
+        self.load_result: bool | Exception = True
+        self.load_results: list[bool | Exception] = []
         self.memory: TabClinicalMemory | None = None
         self.selected: list[str] = []
         self.has_loaded_study = True
@@ -219,9 +221,13 @@ class FakeWindow:
         self.clip_counts.append(int(clip_count))
 
     # recorder for the controller ------------------------------------
-    def load_studies(self, studies, *, clinical_memory=None) -> None:  # noqa: ANN001 - controller signature
+    def load_studies(self, studies, *, clinical_memory=None) -> bool:  # noqa: ANN001 - controller signature
         self.loaded.append(list(studies))
         self.loaded_memory.append(clinical_memory)
+        outcome = self.load_results.pop(0) if self.load_results else self.load_result
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
     def snapshot_memory(self) -> TabClinicalMemory | None:
         return self.memory
@@ -408,6 +414,75 @@ def test_closing_the_active_tab_hands_the_neighbour_its_parked_memory() -> None:
     assert coordinator.tabs.active_tab_id == neighbour
     assert coordinator.tabs.get(neighbour).clinical_memory is parked
     assert window.loaded_memory[-1] is parked, "a close is a return, not a new source"
+
+
+def test_a_refused_switch_keeps_the_previous_tab_without_reloading_it() -> None:
+    coordinator, window = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    parked = TabClinicalMemory(manual_inputs={"a.study": {"bsa": 1.9}})
+    window.memory = parked
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    _finish(coordinator, _studies("b"))
+    previous = coordinator.tabs.active_tab_id
+    window.memory = None
+    window.loaded.clear()
+    window.loaded_memory.clear()
+    window.load_result = False
+
+    assert coordinator.switch_to(first) is False
+
+    assert coordinator.tabs.active_tab_id == previous, "the refusal rolls back to the visible tab"
+    assert len(window.loaded) == 1, "a refusal never reloads the old tab on top of intact state"
+    assert coordinator.loading_tab_id is None
+    assert coordinator.tabs.get(first).clinical_memory is parked, "the target keeps its own snapshot"
+
+
+def test_a_failed_switch_reloads_the_previous_tab_with_its_memory() -> None:
+    coordinator, window = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    window.memory = TabClinicalMemory(manual_inputs={"a.study": {"bsa": 1.9}})
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    _finish(coordinator, _studies("b"))
+    previous = coordinator.tabs.active_tab_id
+    parked_b = TabClinicalMemory(manual_inputs={"b.study": {"hr": 68}})
+    window.memory = parked_b
+    window.loaded.clear()
+    window.loaded_memory.clear()
+    window.load_results = [RuntimeError("decoder died")]
+
+    with pytest.raises(RuntimeError):
+        coordinator.switch_to(first)
+
+    assert coordinator.tabs.active_tab_id == previous, "the viewer goes back to the tab it came from"
+    assert window.loaded[-1] == _studies("b"), "the old tab is reloaded, not just re-marked active"
+    assert window.loaded_memory[-1] is parked_b, "its parked values are handed back"
+    _finish(coordinator, _studies("b"))
+    assert coordinator.tabs.get(previous).clinical_memory is parked_b
+    assert coordinator.loading_tab_id is None
+
+
+def test_a_failed_recovery_does_not_loop_or_leave_the_loading_mark() -> None:
+    coordinator, window = _coordinator()
+    first = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    _finish(coordinator, _studies("b"))
+    previous = coordinator.tabs.active_tab_id
+    window.load_results = [RuntimeError("decoder died"), RuntimeError("decoder died")]
+
+    with pytest.raises(RuntimeError):
+        coordinator.switch_to(first)
+
+    assert coordinator.tabs.active_tab_id == previous
+    assert coordinator.loading_tab_id is None, "the failed recovery must not keep the busy mark"
+    window.load_results = []
+    window.load_result = True
+    assert coordinator.switch_to(first) is True, "a later switch is not blocked by the failed recovery"
 
 
 def test_a_new_source_in_the_same_tab_drops_the_parked_memory() -> None:

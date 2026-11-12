@@ -124,6 +124,8 @@ class TabCoordinator:
         #: True while ``load_content`` returns a parked tab's own study set: its
         #: clinical memory must survive the resulting ``finish_load``.
         self.restoring_parked_tab = False
+        #: Guard against restoring the same tab again if the recovery itself fails.
+        self._restoring_after_abort = False
         #: ``(tab_id, instance_uid, frame_index)`` to restore after the load.
         self.restore_target: tuple[str, str, int] | None = None
         #: ``(tab_id, instance_uid, frame_index, viewer_state)`` applied once the
@@ -334,9 +336,15 @@ class TabCoordinator:
             except (RuntimeError, IndexError) as exc:
                 log_boundary_failure(logger, "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
-    def load_content(self, tab: TabSession) -> None:
-        """Make ``tab`` the content of the viewer (switch, close of the active tab)."""
+    def load_content(self, tab: TabSession) -> bool:
+        """Make ``tab`` the content of the viewer (switch, close of the active tab).
+
+        Returns ``False`` when the controller refused the load before touching
+        its state (a blocked flush); the tab rollback is already done, so the
+        previous tab stays visible together with its values.
+        """
         window = self._window
+        previous = self.previous_tab_id
         self.keep_content_visible = bool(tab.studies and window._main_stack.currentWidget() is window._content_widget)
         try:
             with window._batch_study_surface_updates():
@@ -356,13 +364,46 @@ class TabCoordinator:
                 self.refresh_strip()
                 self.update_main_stack()
                 self.restoring_parked_tab = True
-                window._controller.load_pre_scanned_studies(
-                    list(tab.studies),
-                    clinical_memory=tab.clinical_memory,
+                started = (
+                    window._controller.load_pre_scanned_studies(
+                        list(tab.studies),
+                        clinical_memory=tab.clinical_memory,
+                    )
+                    is not False
                 )
         except Exception:
             self.abort_load()
+            self._restore_aborted_tab(previous, tab.tab_id)
             raise
+        if not started:
+            # A refusal (blocked save) never reached the controller state: the
+            # rollback alone keeps the previous tab and its values on screen.
+            self.abort_load()
+            return False
+        return True
+
+    def _restore_aborted_tab(self, tab_id: str | None, failed_tab_id: str) -> None:
+        """Reload the tab the viewer came from after its switch failed mid-load.
+
+        The failed load had already cleared the controller, so the parked tab is
+        pushed back with its own snapshot; a failure of this recovery must not
+        turn into an endless abort/load/abort loop.
+        """
+        if tab_id is None or tab_id == failed_tab_id or tab_id not in self._tabs:
+            return
+        if self._restoring_after_abort:
+            return
+        tab = self._tabs.get(tab_id)
+        if tab is None or not tab.studies:
+            return
+        # Mark it as a switch so the reload neither records the folder history
+        # again nor drops the snapshot it is restoring.
+        self.previous_tab_id = tab_id
+        self._restoring_after_abort = True
+        try:
+            self.load_content(tab)
+        finally:
+            self._restoring_after_abort = False
 
     def switch_to(self, tab_id: str) -> bool:
         if tab_id == self._tabs.active_tab_id:
@@ -389,9 +430,9 @@ class TabCoordinator:
         self.park_active()
         self.previous_tab_id = self._tabs.active_tab_id
         self._tabs.activate(tab_id)
-        self.load_content(self._tabs.get(tab_id))
+        started = self.load_content(self._tabs.get(tab_id))
         # A synchronous controller-side refusal can already have rolled back.
-        return self._tabs.active_tab_id == tab_id
+        return started and self._tabs.active_tab_id == tab_id
 
     def finish_comparison_browsing(self) -> None:
         """Restore the active tab to the main controller after gallery-only browsing."""
