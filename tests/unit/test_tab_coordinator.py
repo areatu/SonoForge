@@ -389,6 +389,27 @@ def test_parking_a_tab_keeps_its_clinical_memory_and_the_return_adopts_it() -> N
     assert window.loaded_memory[-1] is parked, "the returning tab hands its values back"
 
 
+def test_closing_the_active_tab_hands_the_neighbour_its_parked_memory() -> None:
+    coordinator, window = _coordinator()
+    neighbour = coordinator.tabs.active_tab_id
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/B", "")
+    _finish(coordinator, _studies("b"))
+    parked = TabClinicalMemory(manual_inputs={"b.study": {"bsa": 1.8}})
+    window.memory = parked
+    coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")
+    _finish(coordinator, _studies("a"))
+    window.memory = None
+    closing = coordinator.tabs.active_tab_id
+    assert closing != neighbour
+
+    coordinator.on_close_requested(closing)
+    _finish(coordinator, _studies("b"))
+
+    assert coordinator.tabs.active_tab_id == neighbour
+    assert coordinator.tabs.get(neighbour).clinical_memory is parked
+    assert window.loaded_memory[-1] is parked, "a close is a return, not a new source"
+
+
 def test_a_new_source_in_the_same_tab_drops_the_parked_memory() -> None:
     coordinator, _ = _coordinator()
     coordinator.acquire_for_load(TAB_ORIGIN_FOLDER, "/data/A", "")

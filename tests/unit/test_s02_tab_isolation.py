@@ -209,3 +209,22 @@ def test_persistence_on_keeps_the_disk_record_as_the_authority(controller, tmp_p
         assert controller.snapshot_tab_clinical_memory() is None
     finally:
         controller.measurement_persistence.enabled = False
+
+
+def test_persistence_on_ignores_a_snapshot_parked_before_it_was_enabled(controller, monkeypatch, tmp_path) -> None:
+    studies = _studies("a", tmp_path)
+    _switch_to(controller, studies, TabClinicalMemory())
+    assert controller.on_manual_calibration((0.3, 0.3))
+    parked = controller.snapshot_tab_clinical_memory()
+    assert parked is not None
+
+    # Enabling persistence makes the disk record the authority: the RAM copy
+    # taken while it was off must not be restored over it.
+    monkeypatch.setattr(controller.measurement_persistence, "load", lambda *args, **kwargs: args[1]())
+    controller.measurement_persistence.enabled = True
+    try:
+        _switch_to(controller, studies, parked)
+        assert controller.state_manager.snapshot.manual_pixel_spacing is None
+        assert _manual_bsa(controller) is None
+    finally:
+        controller.measurement_persistence.enabled = False
