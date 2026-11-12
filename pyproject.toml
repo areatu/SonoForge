@@ -257,6 +257,7 @@ files = [
     "src/echo_personal_tool/presentation/viewer/context.py",
     "src/echo_personal_tool/presentation/viewer/display.py",
     "src/echo_personal_tool/presentation/viewer/doppler_controller.py",
+    "src/echo_personal_tool/presentation/viewer/label_picker_owner.py",
     "src/echo_personal_tool/presentation/viewer/magnifier_controller.py",
     "src/echo_personal_tool/presentation/viewer/mmode_controller.py",
     "src/echo_personal_tool/presentation/viewer/overlay_controller.py",

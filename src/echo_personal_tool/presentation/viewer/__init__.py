@@ -23,6 +23,7 @@ from echo_personal_tool.presentation.viewer.commands import (
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController, DopplerViewerPort
+from echo_personal_tool.presentation.viewer.label_picker_owner import ViewerLabelPicker
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.mmode_controller import MModeController, MModeViewerPort
 from echo_personal_tool.presentation.viewer.overlay_controller import (
@@ -61,4 +62,5 @@ __all__ = [
     "ViewerTransport",
     "ViewerDisplay",
     "ViewerZoom",
+    "ViewerLabelPicker",
 ]

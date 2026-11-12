@@ -146,6 +146,7 @@ from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
     DopplerViewerPort,
 )
+from echo_personal_tool.presentation.viewer.label_picker_owner import ViewerLabelPicker
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.mmode_controller import (
     MModeCalibrationKind,
@@ -1012,19 +1013,6 @@ class ViewerWidget(QWidget):
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
         self._contour_nodes: list[list[_ContourNodeItem]] = []
-        self._caliper_labels = [
-            "LVEDD",
-            "LVESD",
-            "IVSd",
-            "LVPWd",
-            "LVOT",
-            "LA",
-            "LAL",
-            "RA",
-            "RV basal",
-            "TAPSE",
-        ]
-        self._caliper_label_index = 0
         self._dist_serial = 1
         self._contour_mode_active = False
         # the radial-menu controller the window attaches; the viewer
@@ -1086,13 +1074,14 @@ class ViewerWidget(QWidget):
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
         self._initialize_measurement_state()
-        self._label_picker: Any = None
-        self._label_picker_enabled: bool = True
-        self._label_picker_target: tuple[str, Any] | None = None
-        self._label_picker_context_override: str | None = None
-        #: ``None`` = derive the study type from the DICOM header of the clip,
-        #: ``True``/``False`` = the host knows better (ТЗ 2026-10-23, п. 1).
-        self._cardiac_context_override: bool | None = None
+        # A4: the naming popup and the caliper-label cycle live in their own
+        # owner; the viewer keeps only the clinical apply path.
+        self.label_picker_owner = ViewerLabelPicker(
+            parent=self,
+            apply_label=self._apply_picked_label,
+            can_cycle_label=lambda: not self._caliper_repeat_mode,
+            cardiac_provider=self._header_cardiac_context,
+        )
         self._protocol_active: bool = False
         self._protocol_active_provider: Callable[[], bool] | None = None
         self._init_controller_providers()
@@ -3761,11 +3750,9 @@ class ViewerWidget(QWidget):
         return True
 
     def cycle_caliper_label(self) -> None:
-        if self.is_label_picker_visible() and self._label_picker is not None:
-            self._label_picker.cycle_next(emit_tab=False)
+        if self.label_picker_owner.cycle_visible_selection(emit_tab=False):
             return
-        self._caliper_label_index = (self._caliper_label_index + 1) % len(self._caliper_labels)
-        label = self._current_caliper_label()
+        label = self.label_picker_owner.cycle_label()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{label}: —")
             return
@@ -7367,30 +7354,20 @@ class ViewerWidget(QWidget):
     # ── Label picker after free measurement (TP-4, spec §4.4) ──────
 
     def _ensure_label_picker(self):
-        if self._label_picker is None:
-            from echo_personal_tool.presentation.label_picker import LabelPicker
-
-            picker = LabelPicker(self)
-            picker.label_selected.connect(self._apply_picked_label)
-            picker.tab_cycled.connect(self._on_label_picker_tab_cycled)
-            picker.dismissed.connect(self._on_label_picker_dismissed)
-            self._label_picker = picker
-        return self._label_picker
+        return self.label_picker_owner.picker()
 
     def label_picker(self):
         """Return (creating if needed) the viewer's :class:`LabelPicker` widget."""
-        return self._ensure_label_picker()
+        return self.label_picker_owner.picker()
 
     def is_label_picker_visible(self) -> bool:
-        return self._label_picker is not None and not self._label_picker.isHidden()
+        return self.label_picker_owner.visible
 
     def set_label_picker_enabled(self, enabled: bool) -> None:
-        self._label_picker_enabled = bool(enabled)
-        if not self._label_picker_enabled:
-            self.dismiss_label_picker()
+        self.label_picker_owner.set_enabled(enabled)
 
     def is_label_picker_enabled(self) -> bool:
-        return self._label_picker_enabled
+        return self.label_picker_owner.enabled
 
     def set_protocol_active(self, active: bool) -> None:
         self._protocol_active = bool(active)
@@ -7451,9 +7428,7 @@ class ViewerWidget(QWidget):
         return False
 
     def set_label_picker_context(self, context: str | None) -> None:
-        self._label_picker_context_override = context.strip().lower() if context and context.strip() else None
-        if self.is_label_picker_visible() and self._label_picker_context_override:
-            self._label_picker.set_context(self._label_picker_context_override)
+        self.label_picker_owner.set_context(context)
 
     def set_cardiac_context(self, cardiac: bool | None) -> None:
         """Tell the viewer whether the study is echocardiography.
@@ -7462,14 +7437,9 @@ class ViewerWidget(QWidget):
         closed set of measurement names, so the naming window is a cardiology
         affordance (:mod:`domain.services.cardiac_study`).
         """
-        self._cardiac_context_override = None if cardiac is None else bool(cardiac)
-        if not self.is_cardiac_context():
-            self.dismiss_label_picker()
+        self.label_picker_owner.set_cardiac_context(cardiac)
 
-    def is_cardiac_context(self) -> bool:
-        """Is this an echocardiographic clip?  Unknown means *no* (ТЗ п. 1)."""
-        if self._cardiac_context_override is not None:
-            return self._cardiac_context_override
+    def _header_cardiac_context(self) -> bool:
         instance = self._current_instance_metadata()
         if instance is None:
             return False
@@ -7481,26 +7451,30 @@ class ViewerWidget(QWidget):
             study_description=getattr(instance, "study_description", ""),
         )
 
+    def is_cardiac_context(self) -> bool:
+        """Is this an echocardiographic clip?  Unknown means *no* (ТЗ п. 1)."""
+        return self.label_picker_owner.is_cardiac_context()
+
     def _should_show_label_picker(self) -> bool:
         return (
-            bool(self._label_picker_enabled)
+            self.label_picker_owner.enabled
             and not self._vessel_measurement_mode
             and not self.is_protocol_active()
             and self.is_cardiac_context()
         )
 
     def _resolve_label_picker_context(self, *, doppler_measurement: bool = False) -> str:
-        if self._label_picker_context_override:
-            return self._label_picker_context_override
         if doppler_measurement:
-            return "doppler"
-        if self.mmode.is_calibrated():
-            return "m"
-        if self.doppler.is_context() and not (
+            default = "doppler"
+        elif self.mmode.is_calibrated():
+            default = "m"
+        elif self.doppler.is_context() and not (
             self.doppler.calibration_state is not None and self.doppler.calibration_state.roi is not None
         ):
-            return "doppler"
-        return "2d"
+            default = "doppler"
+        else:
+            default = "2d"
+        return self.label_picker_owner.resolve_context(default)
 
     def _map_image_point_to_viewer(self, point: tuple[float, float]) -> QPoint:
         try:
@@ -7540,9 +7514,9 @@ class ViewerWidget(QWidget):
         """
         if contour.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
             return
-        if not self._label_picker_enabled or self.is_protocol_active():
+        if not self.label_picker_owner.enabled or self.is_protocol_active():
             return
-        self._label_picker_target = ("contour", _contour_picker_reference(contour))
+        target = ("contour", _contour_picker_reference(contour))
         points = contour.closed_polygon_points()
         value_text = ""
         spacing = self._current_state.effective_pixel_spacing if self._current_state is not None else None
@@ -7558,8 +7532,8 @@ class ViewerWidget(QWidget):
         anchor_point = points[-1] if points else (self.width() / 2.0, self.height() / 2.0)
         from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
 
-        picker = self._ensure_label_picker()
-        picker.open_for(
+        self.label_picker_owner.offer(
+            target=target,
             value_text=value_text,
             context=PICKER_CONTEXT_PLANIMETER,
             anchor=self._map_image_point_to_viewer(anchor_point),
@@ -7615,12 +7589,11 @@ class ViewerWidget(QWidget):
     ) -> None:
         if not self._should_show_label_picker():
             return
-        self._label_picker_target = ("caliper", key)
         value_text = self._format_caliper_value_for_picker(measurement)
         context = self._resolve_label_picker_context(doppler_measurement=measurement.doppler)
         anchor = self._map_image_point_to_viewer(measurement.end)
-        picker = self._ensure_label_picker()
-        picker.open_for(
+        self.label_picker_owner.offer(
+            target=("caliper", key),
             value_text=value_text,
             context=context,
             anchor=anchor,
@@ -7634,7 +7607,6 @@ class ViewerWidget(QWidget):
         if not self._should_show_label_picker():
             return
         measurement_id = getattr(trace, "measurement_id", "") or ""
-        self._label_picker_target = ("trace", measurement_id)
         metrics = self.doppler.last_committed_metrics()
         vti_cm = getattr(metrics, "vti_cm", None) if metrics is not None else None
         value_text = f"{_fmt('doppler.vti', vti_cm, 'cm')} {tr('unit.cm')}" if vti_cm is not None else ""
@@ -7648,40 +7620,26 @@ class ViewerWidget(QWidget):
             anchor = self._map_image_point_to_viewer(end_xy)
         else:
             anchor = QPoint(self.width() // 2, self.height() // 2)
-        picker = self._ensure_label_picker()
-        picker.open_for(
+        self.label_picker_owner.offer(
+            target=("trace", measurement_id),
             value_text=value_text,
             context="doppler",
             anchor=anchor,
             bounds=self._graphics_content_geometry(),
         )
 
-    def _on_label_picker_tab_cycled(self) -> None:
-        if not self._caliper_repeat_mode and self._caliper_labels:
-            self._caliper_label_index = (self._caliper_label_index + 1) % len(self._caliper_labels)
-
-    def _on_label_picker_dismissed(self) -> None:
-        self._label_picker_target = None
-
     def accept_label_picker(self) -> bool:
-        if not self.is_label_picker_visible() or self._label_picker is None:
-            return False
-        return bool(self._label_picker.accept_current())
+        return self.label_picker_owner.accept()
 
     def dismiss_label_picker(self) -> bool:
-        self._label_picker_target = None
-        if self._label_picker is None or self._label_picker.isHidden():
-            return False
-        return bool(self._label_picker.dismiss())
+        return self.label_picker_owner.dismiss()
 
     def handle_label_picker_key(self, event: QKeyEvent) -> bool:
-        if not self.is_label_picker_visible() or self._label_picker is None:
-            return False
-        return bool(self._label_picker.handle_key_press(event))
+        return self.label_picker_owner.handle_key(event)
 
-    def _apply_picked_label(self, option: object) -> None:
-        target = self._label_picker_target
-        self._label_picker_target = None
+    def _apply_picked_label(self, option: object, target: tuple[str, Any] | None = None) -> None:
+        if target is None:
+            target = self.label_picker_owner.take_target()
         if target is None:
             return
         target_kind, target_ref = target
@@ -8058,9 +8016,7 @@ class ViewerWidget(QWidget):
         super().keyReleaseEvent(event)
 
     def _set_caliper_label(self, label: str) -> None:
-        if label not in self._caliper_labels:
-            self._caliper_labels.append(label)
-        self._caliper_label_index = self._caliper_labels.index(label)
+        self.label_picker_owner.set_label(label)
 
     def _on_timeline_changed(self, value: int) -> None:
         """Loop-strip entry point; the transport owns the emit and the guard."""
@@ -8200,4 +8156,4 @@ class ViewerWidget(QWidget):
                 break
 
     def _current_caliper_label(self) -> str:
-        return self._caliper_labels[self._caliper_label_index]
+        return self.label_picker_owner.current_label()
