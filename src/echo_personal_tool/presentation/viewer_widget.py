@@ -40,7 +40,6 @@ from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
     load_samsung_tick_calibration,
     read_ecg_waveform,
-    read_interesting_dicom_tag_rows,
     try_parse_dicom_doppler_calibration,
     try_parse_dicom_frame_panels,
 )
@@ -1169,7 +1168,6 @@ class ViewerWidget(QWidget):
         self.destroyed.connect(self._remove_loupe_key_relay)
         self._show_panel_frames = False
         self._init_caliper_display_state()
-        self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
         self._despeckle_enabled = False
@@ -1196,12 +1194,6 @@ class ViewerWidget(QWidget):
         self._results_overlay_label.parameter_clicked.connect(self.results_overlay_parameter_clicked.emit)
         self._results_overlay_label.hide()
 
-        self._dicom_tags_overlay_label = QLabel(self)
-        self._dicom_tags_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._dicom_tags_overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
-        self._dicom_tags_overlay_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._dicom_tags_overlay_label.hide()
-
         self._debug_overlay_visible = False
         self._debug_overlay_label = QLabel(self)
         self._debug_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -1213,9 +1205,8 @@ class ViewerWidget(QWidget):
 
         # ── QH-3 composition pilot (overlay / magnifier / context) ──────────
         # ViewerWidget stays the Qt facade; logic lives in small owner-scoped
-        # controllers.  The labels/magnifier remain children of the viewer so
-        # existing tests keep passing — controllers only add explicit ownership
-        # and lifecycle (§7.3) without a second authoritative copy.
+        # controllers. Overlay widgets remain children of the viewer for Qt
+        # lifetime and geometry, while each controller owns its workflow.
         self._viewer_context = ViewerContext()
         self._generation = 0
         self._viewer_context_generation = 0
@@ -1224,10 +1215,10 @@ class ViewerWidget(QWidget):
             lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
             parent=self,
         )
-        self._tags_overlay_controller = TagsOverlayController(
-            self._dicom_tags_overlay_label,
+        self.tags_overlay = TagsOverlayController(
+            self,
             lambda: self._graphics.geometry() if hasattr(self, "_graphics") else None,
-            parent=self,
+            lambda: getattr(self._current_instance_metadata(), "path", None),
         )
         self._magnifier_controller = MagnifierController(
             parent=self,
@@ -1240,7 +1231,7 @@ class ViewerWidget(QWidget):
         # Live owner-scoped controllers share the generation-scoped context (S-02, S-05).
         self._all_qh3_controllers: list[QObject] = [
             self._results_overlay_controller,
-            self._tags_overlay_controller,
+            self.tags_overlay,
             self._magnifier_controller,
         ]
 
@@ -1718,21 +1709,13 @@ class ViewerWidget(QWidget):
         # is due this pass, same as for the other overlay labels above.
         self._results_overlay_controller.reposition(reposition_results=reposition_results)
 
-        if self._dicom_tags_overlay_label.isVisible():
-            self._position_dicom_tags_overlay(geo)
+        self.tags_overlay.reposition()
 
         if self._ste_sensitivity.isVisible():
             self._position_ste_overlay()
 
         if self._vessel_sensitivity.isVisible():
             self._position_vessel_sensitivity_overlay()
-
-    def _position_dicom_tags_overlay(self, geo) -> None:
-        self._dicom_tags_overlay_label.adjustSize()
-        self._dicom_tags_overlay_label.move(
-            geo.x() + 8,
-            geo.y() + geo.height() - self._dicom_tags_overlay_label.height() - 8,
-        )
 
     def reset_results_overlay_to_default(self) -> None:
         self._results_overlay_controller.reset_to_default()
@@ -1908,12 +1891,6 @@ class ViewerWidget(QWidget):
                 preferences.results_overlay_opacity,
             )
         )
-        self._dicom_tags_overlay_label.setStyleSheet(
-            _results_overlay_style(
-                preferences.results_overlay_font_size,
-                preferences.results_overlay_opacity,
-            )
-        )
         self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._phi_filter.set_top_percent(preferences.phi_mask_top_percent)
         self._show_crosshair = preferences.show_crosshair
@@ -1938,13 +1915,11 @@ class ViewerWidget(QWidget):
                 )
             except Exception as exc:  # noqa: BLE001, S110
                 log_boundary_failure(logger, "results_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
-        if hasattr(self, "_tags_overlay_controller"):
-            try:
-                self._tags_overlay_controller.apply_style(
-                    preferences.results_overlay_font_size, preferences.results_overlay_opacity
-                )
-            except Exception as exc:  # noqa: BLE001, S110
-                log_boundary_failure(logger, "tags_overlay.apply_style", exc, code="ui", level=logging.DEBUG)
+        self.tags_overlay.configure(
+            preferences.interesting_dicom_tags,
+            preferences.results_overlay_font_size,
+            preferences.results_overlay_opacity,
+        )
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
@@ -1955,9 +1930,6 @@ class ViewerWidget(QWidget):
         self._length_display_unit = preferences.length_display_unit
         self._tenth_mm_precision = bool(getattr(preferences, "measurement_precision_tenth_mm", True))
         self.set_label_picker_enabled(preferences.label_picker_enabled)
-        self._interesting_dicom_tags = tuple(
-            tag.strip() for tag in preferences.interesting_dicom_tags.split(",") if tag.strip()
-        )
         self.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._magnetic_snap_weight_threshold = preferences.magnetic_snap_weight_threshold
         self._magnetic_snap_release_strength = preferences.magnetic_snap_release_strength
@@ -1968,7 +1940,7 @@ class ViewerWidget(QWidget):
         self._refresh_rendered_contour_pens()
         self._apply_window_level_preferences(preferences)
         self._refresh_panel_frame_graphics()
-        self._refresh_dicom_tags_overlay()
+        self.tags_overlay.refresh()
         if not self._show_caliper_labels_on_frame:
             self._measurement_label.hide()
         self._position_overlay_labels()
@@ -2205,26 +2177,6 @@ class ViewerWidget(QWidget):
             self._view.addItem(item)
             self._panel_frame_items.append(item)
 
-    def _refresh_dicom_tags_overlay(self) -> None:
-        instance = self._current_instance_metadata()
-        if instance is None or instance.path is None or not self._interesting_dicom_tags:
-            self._dicom_tags_overlay_label.hide()
-            return
-        try:
-            rows = read_interesting_dicom_tag_rows(instance.path, tuple(self._interesting_dicom_tags))
-        except Exception as exc:  # noqa: BLE001 - optional overlay, unreadable header hides it
-            log_boundary_failure(logger, "dicom.annotations", exc, code="invalid", level=logging.DEBUG)
-            self._dicom_tags_overlay_label.hide()
-            return
-        lines = [f"{row.keyword or row.tag_hex}: {row.value}" for row in rows if row.value]
-        if not lines:
-            self._dicom_tags_overlay_label.hide()
-            return
-        self._dicom_tags_overlay_label.setText("\n".join(lines))
-        self._dicom_tags_overlay_label.adjustSize()
-        self._dicom_tags_overlay_label.show()
-        self._position_dicom_tags_overlay(self._graphics.geometry())
-
     def _current_instance_metadata(self):
         if self._current_state is not None and self._current_state.instance is not None:
             return self._current_state.instance
@@ -2253,15 +2205,7 @@ class ViewerWidget(QWidget):
         """Show session measurement summary (top-right box, left-aligned text)."""
         result = self._results_overlay_controller.set_text(text)
         if result.reason == "erased":
-            self._position_dicom_tags_overlay(self._graphics.geometry())
-
-    def refresh_dicom_tags_overlay(self) -> None:
-        self._refresh_dicom_tags_overlay()
-
-    def dicom_tags_overlay_text(self) -> str:
-        """Text of the DICOM tags overlay while it is shown; an empty string while it is hidden."""
-        label = self._dicom_tags_overlay_label
-        return "" if label.isHidden() else label.text()
+            self.tags_overlay.reposition()
 
     @property
     def is_debug_overlay_visible(self) -> bool:
@@ -3109,7 +3053,7 @@ class ViewerWidget(QWidget):
             if not viewer_state.is_playing:
                 self._refresh_frame_panel_layout()
                 self._refresh_panel_frame_graphics()
-                self._refresh_dicom_tags_overlay()
+                self.tags_overlay.refresh()
         finally:
             self._syncing_state = False
             # rebuild explicit context + propagate generation to controllers
