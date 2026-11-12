@@ -140,6 +140,47 @@ def test_display_levels_follow_the_sliders_not_the_document(qtbot) -> None:
     assert recorder.only(MEASUREMENT_SIGNALS) == []
 
 
+def test_slider_combinations_change_only_display_pixels(qtbot) -> None:
+    viewer = _loaded_viewer(qtbot, total=10, frame=2)
+    before = instance_snapshot(viewer)
+    recorder = SignalRecorder(viewer)
+    contract = viewer.contract
+
+    contract.window_slider.setValue(contract.window_slider.value() + 25)
+    contract.level_slider.setValue(contract.level_slider.value() + 10)
+    contract.dr_slider.setValue(contract.dr_slider.value() - 10)
+
+    after = instance_snapshot(viewer)
+    assert after["pixels"] != before["pixels"]
+    for field in ("instance", "zoom_mode", "zoom_factor", "overlay", "overlay_custom"):
+        assert after[field] == before[field]
+    assert recorder.only(MEASUREMENT_SIGNALS) == []
+
+
+def test_instance_switch_restores_cached_wl_dr_without_measurement_signals(qtbot) -> None:
+    first = make_instance(sop_instance_uid="1.2.3.qh0.a")
+    second = make_instance(sop_instance_uid="1.2.3.qh0.b")
+    viewer = make_viewer(qtbot)
+    viewer.set_state(make_state(total=10, instance=first))
+    viewer.show_frame(make_frame())
+    contract = viewer.contract
+
+    contract.set_wl_dr_sliders(140, 63, 37)
+    viewer.set_state(make_state(total=10, instance=second))
+    viewer.show_frame(make_frame(64))
+    contract.set_wl_dr_sliders(75, 52, 48)
+
+    recorder = SignalRecorder(viewer)
+    viewer.set_state(make_state(total=10, instance=first))
+
+    assert (contract.window_slider.value(), contract.level_slider.value(), contract.dr_slider.value()) == (
+        140,
+        63,
+        37,
+    )
+    assert recorder.only(MEASUREMENT_SIGNALS) == []
+
+
 def test_results_overlay_setter_is_silent_and_reset_only_clears_the_custom_flag(qtbot) -> None:
     viewer = _loaded_viewer(qtbot, total=10)
     recorder = SignalRecorder(viewer)

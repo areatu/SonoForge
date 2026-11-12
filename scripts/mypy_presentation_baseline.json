@@ -2,8 +2,8 @@
   "comment": "Ratcheted ceiling of mypy --strict errors in presentation modules not yet in [tool.mypy].files (#476). Counts may only decrease; modules reaching 0 errors (with clean presentation imports) graduate to [tool.mypy].files via --fix.",
   "origin_issue": 476,
   "python_version": "3.11",
-  "total_files": 69,
-  "total_errors": 831,
+  "total_files": 68,
+  "total_errors": 820,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -46,9 +46,6 @@
     },
     "src/echo_personal_tool/presentation/focus_widgets.py": {
       "union-attr": 1
-    },
-    "src/echo_personal_tool/presentation/ge_labeled_slider.py": {
-      "no-untyped-def": 2
     },
     "src/echo_personal_tool/presentation/label_picker.py": {
       "assignment": 1
@@ -297,9 +294,9 @@
       "union-attr": 3
     },
     "src/echo_personal_tool/presentation/viewer_widget.py": {
-      "arg-type": 13,
-      "assignment": 13,
-      "attr-defined": 8,
+      "arg-type": 12,
+      "assignment": 9,
+      "attr-defined": 5,
       "comparison-overlap": 1,
       "has-type": 1,
       "index": 9,
@@ -307,8 +304,7 @@
       "no-any-return": 5,
       "no-redef": 1,
       "no-untyped-call": 17,
-      "no-untyped-def": 55,
-      "return-value": 1
+      "no-untyped-def": 55
     },
     "src/echo_personal_tool/presentation/web_reference/web_reference_bridge.py": {
       "attr-defined": 2

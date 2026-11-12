@@ -483,7 +483,7 @@ class TestPresenterModeController:
         _ = with_QSignalBlocker
         # The presenter viewer is bound to the same sliders: no crash and
         # the binding list is non-empty.
-        assert pw.viewer()._external_wl_dr_sliders is not None
+        assert pw.viewer().display.external_sliders is not None
         window._presenter.stop()
 
     def test_close_stops_presenter(self, presenter_window, qtbot):

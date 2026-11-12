@@ -21,6 +21,7 @@ from echo_personal_tool.presentation.viewer.commands import (
     ViewerCommand,
 )
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
+from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import DopplerController, DopplerViewerPort
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.mmode_controller import MModeController, MModeViewerPort
@@ -57,4 +58,5 @@ __all__ = [
     "DopplerController",
     "DopplerViewerPort",
     "ViewerTransport",
+    "ViewerDisplay",
 ]
