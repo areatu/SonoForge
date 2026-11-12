@@ -89,7 +89,7 @@ class LayoutConfigV2:
     tool_buttons: str = TOOL_BUTTONS_AUTO
     tool_labels: str = "icons_labels"
     status_bar_visible: bool = True
-    single_file_focus: bool = True
+    single_file_focus: bool = False
     #: Whether the row may drop its captions on its own when the strip is too
     #: narrow for them (2026-11-06 list, item 1).  ``True`` is the composition of
     #: spec §4.1 — icons plus the armed tool's caption — and keeps a 1024 px
