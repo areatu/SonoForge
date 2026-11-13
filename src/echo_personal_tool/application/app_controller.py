@@ -2640,7 +2640,7 @@ class AppController(QObject):
         self._playback_poll_pending = False
         if self._prefetch_request_id > 1:
             if _playback_diag is not None:
-                _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek")
+                _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek", queue_stats=self._decode_gate.stats())
 
     _PREFETCH_TIMEOUT_SEC = 1.0
 

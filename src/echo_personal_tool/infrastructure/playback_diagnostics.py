@@ -168,6 +168,16 @@ class InstanceSwitchRecord:
     frame_cache_bytes: int
 
 
+@dataclass(frozen=True)
+class DecodeQueueSnapshot:
+    """Parked decode work at the moment a prefetch was invalidated (#553)."""
+
+    parked_requests: int = 0
+    parked_frames: int = 0
+    pending_bytes: int = 0
+    dropped_requests: int = 0
+
+
 @dataclass
 class PlaybackReport:
     fps_target: float
@@ -183,6 +193,7 @@ class PlaybackReport:
     instance_switches: list[InstanceSwitchRecord] = field(default_factory=list)
     prefetch_cancel_count: int = 0
     batch_round_trips: list[BatchRoundTripRecord] = field(default_factory=list)
+    decode_queue: DecodeQueueSnapshot = field(default_factory=DecodeQueueSnapshot)
 
     def summary(self) -> str:
         lines: list[str] = []
@@ -214,6 +225,13 @@ class PlaybackReport:
                 lines.append(f"    max:  {max_ms:.2f} ms")
                 lines.append(f"    target: {target_ms:.2f} ms")
                 lines.append(f"    overdue (>1.5x): {overdue}/{len(deltas)} ({100 * overdue / len(deltas):.1f}%)")
+
+        queue = self.decode_queue
+        if queue.parked_requests or queue.dropped_requests:
+            lines.append("")
+            lines.append("  Decode queue (last prefetch invalidation):")
+            lines.append(f"    parked: {queue.parked_requests} request(s), {queue.parked_frames} frame(s)")
+            lines.append(f"    pending: {queue.pending_bytes / 1e6:.1f} MB, dropped: {queue.dropped_requests}")
 
         # Wall-clock jitter
         if self.wall_clock_jitter_ms:
@@ -346,6 +364,7 @@ class PlaybackDiagnostics:
         self._instance_switch_prefetch_cancelled: bool = False
         self._instance_switch_frame_cache_bytes: int = 0
         self._prefetch_cancels: int = 0
+        self._decode_queue = DecodeQueueSnapshot()
 
     @property
     def enabled(self) -> bool:
@@ -363,6 +382,7 @@ class PlaybackDiagnostics:
         self._round_trips.clear()
         self._numpy_snapshots.clear()
         self._wall_jitter.clear()
+        self._decode_queue = DecodeQueueSnapshot()
         self._rss_start_mb = _rss_mb()
         self._rss_end_mb = self._rss_start_mb
         self._rss_peak_mb = self._rss_start_mb
@@ -493,15 +513,24 @@ class PlaybackDiagnostics:
         )
         return record
 
-    def on_prefetch_cancel(self, *, reason: str = "file_switch") -> None:
-        """Called when FrameLoaderWorker prefetch is cancelled."""
+    def on_prefetch_cancel(self, *, reason: str = "file_switch", queue_stats: object | None = None) -> None:
+        """Called when FrameLoaderWorker prefetch is cancelled; records queue pressure."""
         if not self.enabled:
             return
         self._prefetch_cancels += 1
+        if queue_stats is not None:
+            self._decode_queue = DecodeQueueSnapshot(
+                parked_requests=int(getattr(queue_stats, "parked_requests", 0)),
+                parked_frames=int(getattr(queue_stats, "parked_frames", 0)),
+                pending_bytes=int(getattr(queue_stats, "pending_bytes", 0)),
+                dropped_requests=int(getattr(queue_stats, "dropped_requests", 0)),
+            )
         _LOG.info(
-            "[PLAYBACK_DIAG] prefetch_cancelled reason=%s count=%d",
+            "[PLAYBACK_DIAG] prefetch_cancelled reason=%s count=%d queue=%d pending=%.1f MB",
             reason,
             self._prefetch_cancels,
+            self._decode_queue.parked_requests,
+            self._decode_queue.pending_bytes / 1e6,
         )
 
     def stop(self) -> PlaybackReport:
@@ -520,6 +549,7 @@ class PlaybackDiagnostics:
                 instance_switches=[],
                 prefetch_cancel_count=0,
                 batch_round_trips=[],
+                decode_queue=DecodeQueueSnapshot(),
             )
         self._rss_end_mb = _rss_mb()
         total_ms = sum(t.elapsed_ms for t in self._ticks) if self._ticks else 0.0
@@ -537,6 +567,7 @@ class PlaybackDiagnostics:
             instance_switches=list(self._instance_switches),
             prefetch_cancel_count=self._prefetch_cancels,
             batch_round_trips=list(self._round_trips),
+            decode_queue=self._decode_queue,
         )
         _LOG.info("\n%s", report.summary())
         self._active = False

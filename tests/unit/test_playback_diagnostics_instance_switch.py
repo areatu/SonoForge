@@ -59,10 +59,18 @@ def test_instance_switch_stored_in_report(diag_enabled) -> None:
 
 
 def test_on_prefetch_cancel_increments_counter(diag_enabled) -> None:
-    diag_enabled.on_prefetch_cancel(reason="file_switch")
+    class _Stats:
+        parked_requests = 3
+        parked_frames = 12
+        pending_bytes = 4096
+        dropped_requests = 2
+
+    diag_enabled.on_prefetch_cancel(reason="file_switch", queue_stats=_Stats())
     diag_enabled.on_prefetch_cancel(reason="seek")
     report = diag_enabled.stop()
     assert report.prefetch_cancel_count == 2
+    assert report.decode_queue.parked_requests == 3
+    assert report.decode_queue.pending_bytes == 4096
 
 
 def test_instance_switch_disabled_when_diag_off() -> None:
