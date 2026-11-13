@@ -23,6 +23,7 @@ import struct
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -119,6 +120,11 @@ _JPEG2000_SYNTAXES = frozenset(
 )
 
 _MAX_DECODE_WORKERS = 4
+
+
+# The direct view is only valid for little-endian native pixel data. Big endian
+# (1.2.840.10008.1.2.2) is in _UNCOMPRESSED_SYNTAXES but must go through pydicom.
+_FAST_PATH_SYNTAXES = frozenset({"1.2.840.10008.1.2", "1.2.840.10008.1.2.1"})
 _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
 # How much of a file is read to *locate* the PixelData element. The value itself is mapped
 # rather than read: for an uncompressed cine it is the whole file (332 MB for 120 frames of
@@ -434,13 +440,80 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
         return None
 
 
+@dataclass(frozen=True)
+class _UncompressedLayout:
+    """A metadata combination the direct pixel view is proven to handle (#541)."""
+
+    dtype: np.dtype
+    samples: int
+    rows: int
+    cols: int
+    bytes_per_frame: int
+
+
+def _int_attribute(dataset: pydicom.Dataset, keyword: str, default: int | None = None) -> int | None:
+    value = getattr(dataset, keyword, default)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _uncompressed_layout(dataset: pydicom.Dataset, transfer_syntax_uid: str) -> _UncompressedLayout | None:
+    """Return the direct-view layout, or None when pydicom must decode the frame.
+
+    The fast path does no endian conversion, sign extension, bit masking, planar
+    transposition or colour conversion. It is therefore limited to native little-endian
+    data whose ``BitsStored``/``HighBit`` are full-width, whose samples are 8 or 16 bits,
+    and whose photometric interpretation is monochrome or interleaved RGB. Everything
+    else — big endian, YBR, planar RGB, 1-bit, float, compressed — falls back to the
+    indexed pydicom decoder (#541).
+    """
+    if transfer_syntax_uid not in _FAST_PATH_SYNTAXES:
+        return None
+    if hasattr(dataset, "FloatPixelData") or hasattr(dataset, "DoubleFloatPixelData"):
+        return None
+    rows = _int_attribute(dataset, "Rows")
+    cols = _int_attribute(dataset, "Columns")
+    samples = _int_attribute(dataset, "SamplesPerPixel", 1)
+    bits_allocated = _int_attribute(dataset, "BitsAllocated")
+    bits_stored = _int_attribute(dataset, "BitsStored")
+    high_bit = _int_attribute(dataset, "HighBit")
+    representation = _int_attribute(dataset, "PixelRepresentation", 0)
+    if rows is None or cols is None or rows <= 0 or cols <= 0:
+        return None
+    if samples not in (1, 3) or bits_allocated not in (8, 16) or representation not in (0, 1):
+        return None
+    # Sign extension and HighBit shifting are pydicom's job when the stored width is not
+    # the allocated width. A raw int16 view would silently turn -1 into 4095 for 12-bit data.
+    if bits_stored != bits_allocated or high_bit != bits_stored - 1:
+        return None
+    photometric = str(getattr(dataset, "PhotometricInterpretation", ""))
+    if samples == 1:
+        if photometric not in ("MONOCHROME1", "MONOCHROME2"):
+            return None
+    else:
+        if photometric != "RGB":
+            return None
+        if _int_attribute(dataset, "PlanarConfiguration") != 0:
+            return None
+    dtype = np.dtype(f"{'int' if representation == 1 else 'uint'}{bits_allocated}")
+    return _UncompressedLayout(
+        dtype=dtype,
+        samples=samples,
+        rows=rows,
+        cols=cols,
+        bytes_per_frame=rows * cols * samples * (bits_allocated // 8),
+    )
+
+
 def _decode_uncompressed_frame(
     pixel_data: bytes | np.ndarray,
     offset: int,
     size: int,
-    rows: int,
-    cols: int,
-    bytes_per_pixel: int,
+    layout: _UncompressedLayout,
 ) -> np.ndarray:
     """Decode single uncompressed frame. Returns OWNED WRITABLE array.
     This is the ONLY copy for single-frame path.
@@ -448,17 +521,16 @@ def _decode_uncompressed_frame(
     ``pixel_data`` is either a bytes object or a read-only memory map of the pixel block;
     for the map the slice is a view, so this copy is the only allocation per frame.
     """
-    if offset < 0 or size <= 0 or offset + size > len(pixel_data) or size != rows * cols * bytes_per_pixel:
+    if offset < 0 or size <= 0 or offset + size > len(pixel_data) or size != layout.bytes_per_frame:
         # #475: the header promises a frame the pixel data does not hold. Opening such a file
         # stays possible (the header and the frame count are still useful), decoding the
         # missing frame is a typed refusal instead of a reshape error.
         raise DicomFrameGeometryError("invalid", "DICOM pixel data is shorter than the frames the header describes")
     raw = pixel_data[offset : offset + size]
-    if bytes_per_pixel == 1:
-        return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
-    if bytes_per_pixel == 2:
-        return np.frombuffer(raw, dtype=np.uint16).reshape(rows, cols).copy()
-    return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols, bytes_per_pixel).copy()
+    values = np.frombuffer(raw, dtype=layout.dtype, count=layout.rows * layout.cols * layout.samples)
+    if layout.samples == 1:
+        return values.reshape(layout.rows, layout.cols).copy()
+    return values.reshape(layout.rows, layout.cols, layout.samples).copy()
 
 
 class DicomSession:
@@ -772,6 +844,9 @@ class DicomSession:
             return None
         return self._encapsulated_frames[index]
 
+    def _uncompressed_layout(self) -> _UncompressedLayout | None:
+        return _uncompressed_layout(self._require_metadata(), self._transfer_syntax_uid)
+
     @_synchronized
     def decode_first_frame(self) -> np.ndarray:
         """Decode only the first frame for fast initial display."""
@@ -792,24 +867,18 @@ class DicomSession:
 
         self._ensure_pixel_data()
 
-        # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy)
-        if self._is_uncompressed and self._pixel_data_raw is not None and self._frame_slices:
-            ds = self._require_metadata()
-            rows, cols = int(ds.Rows), int(ds.Columns)
-            samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bits_allocated = int(ds.BitsAllocated)
-            bpp = (bits_allocated // 8) * samples
-            expected = self._frame_count * rows * cols * bpp
+        # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy),
+        # only for the metadata combinations _uncompressed_layout() proves safe.
+        layout = self._uncompressed_layout()
+        if self._is_uncompressed and layout is not None and self._pixel_data_raw is not None and self._frame_slices:
+            expected = self._frame_count * layout.bytes_per_frame
             if len(self._pixel_data_raw) >= expected:
-                # dtype based on BitsAllocated, not bpp
-                dtype = np.dtype(f"uint{bits_allocated}")
-                element_size = np.dtype(dtype).itemsize
-                count_elements = expected // element_size
-                buf = np.frombuffer(self._pixel_data_raw, dtype=dtype, count=count_elements)
-                if samples == 1:
-                    self._frames = buf.reshape((self._frame_count, rows, cols))
+                count_elements = expected // layout.dtype.itemsize
+                buf = np.frombuffer(self._pixel_data_raw, dtype=layout.dtype, count=count_elements)
+                if layout.samples == 1:
+                    self._frames = buf.reshape((self._frame_count, layout.rows, layout.cols))
                 else:
-                    self._frames = buf.reshape((self._frame_count, rows, cols, samples))
+                    self._frames = buf.reshape((self._frame_count, layout.rows, layout.cols, layout.samples))
 
                 # SPEC-001 ENFORCEMENT: Mark as read-only to prevent downstream mutations
                 self._frames.flags.writeable = False
@@ -848,11 +917,15 @@ class DicomSession:
             raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
         rows, cols = int(ds.Rows), int(ds.Columns)
 
-        if self._is_uncompressed and self._frame_slices is not None and self._pixel_data_raw is not None:
-            samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples
+        layout = self._uncompressed_layout()
+        if (
+            self._is_uncompressed
+            and layout is not None
+            and self._frame_slices is not None
+            and self._pixel_data_raw is not None
+        ):
             offset, size = self._frame_slices[index]
-            return _decode_uncompressed_frame(self._pixel_data_raw, offset, size, rows, cols, bytes_per_pixel)
+            return _decode_uncompressed_frame(self._pixel_data_raw, offset, size, layout)
 
         compressed = self._encapsulated_frame_bytes(index)
         if compressed is not None:
