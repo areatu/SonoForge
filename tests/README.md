@@ -5,6 +5,28 @@
 SonoForge tests: unit, integration, acceptance, regression, migration,
 security, compatibility, and benchmarks.
 
+## Qt-free domain/imaging regression (#556)
+
+The curated `tests/pure_core_manifest.json` lane needs no PySide6, pytest-qt,
+Xvfb or OpenGL. It supplements, rather than replaces, the full unit/GUI suite.
+`not gui` alone does not guarantee Qt-free imports.
+
+```bash
+python -m venv .venv-core
+.venv-core/bin/pip install pytest pytest-timeout numpy scipy pydicom opencv-python-headless
+.venv-core/bin/python scripts/run_pure_core_tests.py -q
+```
+
+CI pins these packages using `.github/scripts/locked_version.py` in the
+`test-pure-core` job. On Windows use `.venv-core\Scripts\python.exe`.
+The runner disables plugin autoload, explicitly loads pytest-timeout and enables
+`--pure-core`. An import guard rejects Qt, including swallowed optional imports.
+Only manifest modules are accepted; add modules after verifying Qt-free execution.
+Direct `--pure-core` use needs a fresh process with
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`. Default tests retain QSettings isolation,
+thread-pool draining and GC/theme/WebEngine cleanup. No Qt stubs are installed.
+
+
 ## Structure
 
 | Folder | Description |

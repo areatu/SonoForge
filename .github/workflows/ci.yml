@@ -22,6 +22,29 @@ env:
   UV_PYTHON_DOWNLOADS: never
 
 jobs:
+  test-pure-core:
+    name: Domain/imaging without Qt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install only locked pure-core dependencies (no application or Qt extras)
+        run: |
+          for package in pytest pytest-timeout numpy scipy pydicom opencv-python-headless; do
+            pip install "$package==$(python .github/scripts/locked_version.py "$package")"
+          done
+      - name: Verify Qt is not installed
+        run: |
+          python - <<'PY'
+          import importlib.util
+          assert importlib.util.find_spec("PySide6") is None
+          assert importlib.util.find_spec("pytestqt") is None
+          PY
+      - name: Run guarded pure-core regression manifest
+        run: python scripts/run_pure_core_tests.py -q
+
   lint:
     runs-on: ubuntu-latest
     steps:
