@@ -89,6 +89,8 @@ def test_pixel_cache_evicts_oldest(tmp_path: Path) -> None:
     p1 = tmp_path / "1.dcm"
     p2 = tmp_path / "2.dcm"
     p3 = tmp_path / "3.dcm"
+    for path in (p1, p2, p3):
+        path.touch()
     arr = np.zeros(4, dtype=np.uint16)
 
     cache.put(p1, 0, arr)
