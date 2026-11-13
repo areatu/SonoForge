@@ -83,14 +83,18 @@ Job `lint` запускает ещё и `python scripts/check_test_private_acces
 --fix` и закоммить baseline. `--list` печатает список работ: файлы и самые
 частые приватные имена.
 
-### Тесты MainWindow / AppController и приватное состояние (#474)
+### Тесты Viewer, MainWindow, AppController и Orthanc и приватное состояние (#474, #536)
 
 Тот же скрипт держит в baseline **группы**: тест-файл, упоминающий
-`MainWindow` / `make_main_window` (или `AppController`), входит в группу, и
-считаются обращения, чья цепочка атрибутов начинается с `window`, `main_window`,
-`mw`, `win` (или `controller`, `ctrl`, `app_controller`) — `window._viewer._frame`
-считается дважды, `dialog._x` в том же файле — нет. У каждой группы свой итог с
-теми же правилами. Job `lint` также запускает `python scripts/check_class_size.py`
+`MainWindow` / `make_main_window` (или `AppController`, `OrthancStudyDialog`),
+входит в свою группу, и считаются обращения, чья цепочка атрибутов начинается с
+`window`, `main_window`, `mw`, `win` (или `controller`, `ctrl`,
+`app_controller`; `dialog`, `d`) — `window._viewer._frame` считается дважды,
+`dialog._x` в том же файле — нет. Группа `ViewerWidget` покрывает контуры,
+калиперы и зум, которые живут вне `test_*viewer*.py`: в файлах, упоминающих
+`ViewerWidget`, `make_viewer` или `viewer`, считаются обращения с корнем
+`viewer`, `w`, `widget` или `viewer_widget`. У каждой группы свой итог с теми же
+правилами. Job `lint` также запускает `python scripts/check_class_size.py`
 и `python scripts/check_broad_excepts.py` (размер классов/модулей и молчаливые
 широкие `except` могут только уменьшаться).
 

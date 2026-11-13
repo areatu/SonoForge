@@ -99,13 +99,20 @@ object and asserts nothing fails the check.
 The metrics (tests without a signal, with at most one `assert`, without any
 `assert`) are on the run page: Checks → lint → Summary.
 
-### Viewer tests and private state (required)
+### Viewer tests and private state (required, #327, #536)
 
 `ViewerWidget` is being decomposed (#305, #307), and a test that reads
 `w._contour_stage` or calls `w._apply_caliper_node_drag(...)` pins how the
 widget works instead of what it promises. `scripts/check_test_private_access.py`
 counts such references in `tests/unit/test_*viewer*.py`; the count may only go
 down, and a new test file with `viewer` in its name starts with no allowance.
+
+The viewer debt is not only in viewer-named files: the contour, caliper and zoom
+suites (`test_caliper_*`, `test_lv_trace_contour.py`, `test_spline_editor.py`,
+`test_area_*`) build the same widget. A `ViewerWidget` group in the baseline
+selects every test file that mentions `ViewerWidget` / `make_viewer` / `viewer`
+and counts references rooted at `viewer`, `w`, `widget` and `viewer_widget`, so a
+new `viewer._private` there fails the gate too.
 
 - Prefer the public API (`w.ghost_mode`, `w.refresh_dicom_tags_overlay()`). When
   the behaviour you need to check has no public handle, give the widget a small
@@ -117,14 +124,14 @@ down, and a new test file with `viewer` in its name starts with no allowance.
 - `python scripts/check_test_private_access.py --list` shows where the
   references live and which private names are used most.
 
-### MainWindow / AppController tests and god-object ratchets (required, #474)
+### MainWindow / AppController / Orthanc tests and god-object ratchets (required, #474, #536)
 
-The same private-access ratchet holds the tests that build the real window or
-controller: a test file that mentions `MainWindow` / `make_main_window`
-(or `AppController`) may not add references like `window._tabs` or
-`controller._state` — the `groups` section of
-`scripts/test_private_access_baseline.json` records the current numbers, and
-the same `--fix` rule applies.
+The same private-access ratchet holds the tests that build the real window,
+controller or Orthanc dialog: a test file that mentions `MainWindow` /
+`make_main_window` (or `AppController`, `OrthancStudyDialog`) may not add
+references like `window._tabs`, `controller._state` or `dialog._downloading` —
+the `groups` section of `scripts/test_private_access_baseline.json` records the
+current numbers, and the same `--fix` rule applies.
 
 Two more `lint` ratchets keep the large classes from growing back:
 

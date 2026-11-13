@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `ci(ratchets)`: #536 — private-access ratchet видит контуры/зум и Orthanc-диалог: группы `ViewerWidget` (410 обращений в 30 файлах) и `OrthancStudyDialog` (497 в 4) ([полностью](changelog.d/036-ci-private-access-groups-536.md))
+
 - `fix(orthanc)`: #534 — cache-сессия очищается при отмене загрузки и при любом завершении disk-экспорта ([полностью](changelog.d/035-fix-orthanc-cache-cleanup-534.md))
 
 - `fix(orthanc)`: #532 — частичный отказ при сохранении на диск больше не уводит batch в cache-режим; успешные исследования экспортируются ([полностью](changelog.d/034-fix-orthanc-disk-partial-532.md))

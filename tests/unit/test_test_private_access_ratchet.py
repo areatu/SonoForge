@@ -412,6 +412,8 @@ class TestGroups:
         assert [(group["name"], group["total"]) for group in data["groups"]] == [
             ("MainWindow", 1),
             ("AppController", 0),
+            ("ViewerWidget", 0),
+            ("OrthancStudyDialog", 0),
         ]
 
         (tmp_path / "tests/unit/test_mw.py").write_text(
@@ -443,10 +445,71 @@ class TestGroups:
         with pytest.raises(ValueError):
             check_test_private_access.load_baseline(path)
 
+    def test_a_viewer_reference_in_a_caliper_test_fails_the_ratchet(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A contour/caliper file has no ``viewer`` in its name, but it builds the same widget."""
+
+        contour = "tests/unit/test_caliper_zoom.py"
+        _write(
+            tmp_path,
+            {
+                VIEWER: "def test_v(w): assert w.zoom\n",
+                contour: "def test_a(make_viewer):\n    viewer = make_viewer()\n    assert viewer._x\n",
+            },
+        )
+        assert _run(tmp_path, "--fix") == 0
+        (tmp_path / contour).write_text(
+            "def test_a(make_viewer):\n    viewer = make_viewer()\n    assert viewer._x and viewer._y\n",
+            encoding="utf-8",
+        )
+        capsys.readouterr()
+
+        assert _run(tmp_path) == 1
+        error = capsys.readouterr().err
+        assert "private state of ViewerWidget 2 times" in error
+        assert f"{contour}: 2 ViewerWidget references" in error
+        assert _run(tmp_path, "--fix") == 1
+
+    def test_the_committed_viewer_group_covers_tests_outside_the_viewer_scope(self) -> None:
+        """#327's main scope only sees ``test_*viewer*.py``; contour and zoom tests live elsewhere."""
+
+        baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+        group = next(group for group in baseline.groups if group.name == "ViewerWidget")
+        main_scope, errors = check_test_private_access.scan(REPO_ROOT, baseline.scope)
+        counts, group_errors = check_test_private_access.scan_group(REPO_ROOT, group)
+
+        assert errors == [] and group_errors == []
+        # The debt outside the viewer-named files that the old scope silently ignored.
+        assert check_test_private_access.file_counts(main_scope) == {}
+        for path in (
+            "tests/unit/test_area_tool_mode_wiring.py",
+            "tests/unit/test_caliper_doppler_and_repeat.py",
+            "tests/unit/test_lv_trace_contour.py",
+            "tests/unit/test_spline_editor.py",
+        ):
+            assert counts[path] > 0
+        assert sum(counts.values()) == group.total > 0
+
+    def test_the_committed_orthanc_group_sees_the_private_state_of_the_dialog(self) -> None:
+        baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+        group = next(group for group in baseline.groups if group.name == "OrthancStudyDialog")
+        counts, errors = check_test_private_access.scan_group(REPO_ROOT, group)
+
+        assert errors == []
+        assert counts["tests/unit/test_presentation_orthanc_study_dialog.py"] > 0
+        assert counts["tests/unit/test_orthanc_download_batch_characterization.py"] > 0
+        assert sum(counts.values()) == group.total > 0
+
     def test_the_committed_groups_match_the_tree_exactly(self) -> None:
         baseline = check_test_private_access.load_baseline(BASELINE_FILE)
 
-        assert [group.name for group in baseline.groups] == ["MainWindow", "AppController"]
+        assert [group.name for group in baseline.groups] == [
+            "MainWindow",
+            "AppController",
+            "ViewerWidget",
+            "OrthancStudyDialog",
+        ]
         for group in baseline.groups:
             counts, errors = check_test_private_access.scan_group(REPO_ROOT, group)
             assert errors == []

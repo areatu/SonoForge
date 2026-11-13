@@ -24,9 +24,12 @@ same thing — ``getattr``/``setattr``/``hasattr``/``delattr(obj, "_name")``,
 ``monkeypatch.setattr(obj, "_name", ...)`` and ``patch.object(obj, "_name")``.
 Importing a private *module-level* helper is not counted.
 
-**Groups (issue #474)** extend the ratchet beyond the viewer. ``MainWindow``
-and ``AppController`` cannot be decomposed (#478, #480) while ~2 000 test
-lines read ``window._…`` and ``controller._…``. A group in the baseline names
+**Groups (issue #474, #536)** extend the ratchet beyond the main scope.
+``MainWindow`` and ``AppController`` cannot be decomposed (#478, #480) while
+~2 000 test lines read ``window._…`` and ``controller._…``. The viewer tests
+themselves are mostly outside ``test_*viewer*.py`` (contour, caliper and zoom
+files), and the Orthanc dialog has its own batch state, so groups select those
+files by the class they build and count the receivers they use. A group names
 
 * ``scope`` — the candidate files (globs, like the main scope);
 * ``uses`` — a file belongs to the group only if it mentions one of these
@@ -69,7 +72,8 @@ BASELINE_VERSION = 1
 BASELINE_COMMENT = (
     "Ratchet for issue #327 (python scripts/check_test_private_access.py). 'total' is the number of references to "
     "private names of other objects in the files matching 'scope'; it only goes down - run --fix after replacing "
-    "private access with a public API. 'files' shows where the references live (informational)."
+    "private access with a public API. 'files' shows where the references live (informational). Every entry in "
+    "'groups' applies the same rules to the tests that build one large class."
 )
 
 #: Builtins that read or write an attribute by its name.
@@ -82,7 +86,7 @@ PATCH_CALLS = {
 }
 
 
-#: Groups written when ``--fix`` creates a baseline from scratch (issue #474).
+#: Groups written when ``--fix`` creates a baseline from scratch (issue #474, #536).
 DEFAULT_GROUPS: tuple[dict[str, object], ...] = (
     {
         "name": "MainWindow",
@@ -95,6 +99,18 @@ DEFAULT_GROUPS: tuple[dict[str, object], ...] = (
         "scope": ["tests/unit/test_*.py"],
         "uses": ["AppController", "make_main_window"],
         "receivers": ["controller", "ctrl", "app_controller", "AppController"],
+    },
+    {
+        "name": "ViewerWidget",
+        "scope": ["tests/unit/test_*.py"],
+        "uses": ["ViewerWidget", "make_viewer", "viewer", "viewer_widget"],
+        "receivers": ["ViewerWidget", "viewer", "viewer_widget", "w", "widget"],
+    },
+    {
+        "name": "OrthancStudyDialog",
+        "scope": ["tests/unit/test_*.py"],
+        "uses": ["OrthancStudyDialog"],
+        "receivers": ["OrthancStudyDialog", "dialog", "d"],
     },
 )
 

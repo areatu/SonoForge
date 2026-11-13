@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "Ratchet for issue #327 (python scripts/check_test_private_access.py). 'total' is the number of references to private names of other objects in the files matching 'scope'; it only goes down - run --fix after replacing private access with a public API. 'files' shows where the references live (informational).",
+  "comment": "Ratchet for issue #327 (python scripts/check_test_private_access.py). 'total' is the number of references to private names of other objects in the files matching 'scope'; it only goes down - run --fix after replacing private access with a public API. 'files' shows where the references live (informational). Every entry in 'groups' applies the same rules to the tests that build one large class.",
   "scope": [
     "tests/unit/test_*viewer*.py"
   ],
@@ -96,6 +96,79 @@
         "tests/unit/test_ste_protocol_report.py": 6,
         "tests/unit/test_study_report_snapshot.py": 4,
         "tests/unit/test_tool_panel_calculators.py": 3
+      }
+    },
+    {
+      "name": "ViewerWidget",
+      "scope": [
+        "tests/unit/test_*.py"
+      ],
+      "uses": [
+        "ViewerWidget",
+        "make_viewer",
+        "viewer",
+        "viewer_widget"
+      ],
+      "receivers": [
+        "ViewerWidget",
+        "viewer",
+        "viewer_widget",
+        "w",
+        "widget"
+      ],
+      "total": 410,
+      "files": {
+        "tests/unit/test_accessibility_and_i18n_484.py": 1,
+        "tests/unit/test_area_contour_click_gesture.py": 22,
+        "tests/unit/test_area_tool_mode_wiring.py": 42,
+        "tests/unit/test_caliper_doppler_and_repeat.py": 66,
+        "tests/unit/test_caliper_node_drag.py": 32,
+        "tests/unit/test_cine_phase_strip.py": 19,
+        "tests/unit/test_contour.py": 4,
+        "tests/unit/test_doppler_autocal_widget.py": 23,
+        "tests/unit/test_freehand_trace_no_assist.py": 15,
+        "tests/unit/test_label_picker.py": 7,
+        "tests/unit/test_linear_caliper_click_click.py": 11,
+        "tests/unit/test_lv_trace_contour.py": 29,
+        "tests/unit/test_magnifier_trigger.py": 10,
+        "tests/unit/test_main_window_doppler.py": 1,
+        "tests/unit/test_main_window_measurement_actions.py": 3,
+        "tests/unit/test_main_window_vessel.py": 3,
+        "tests/unit/test_measurement_undo_redo.py": 16,
+        "tests/unit/test_multiview_widgets.py": 1,
+        "tests/unit/test_paired_tools.py": 6,
+        "tests/unit/test_planimeter_labels.py": 7,
+        "tests/unit/test_prepared_anatomy.py": 8,
+        "tests/unit/test_presentation_main_window.py": 3,
+        "tests/unit/test_presenter_view.py": 24,
+        "tests/unit/test_qh3_controller_providers.py": 11,
+        "tests/unit/test_qh3_lifecycle.py": 6,
+        "tests/unit/test_qh3_magnifier_owner.py": 3,
+        "tests/unit/test_radial_menu.py": 5,
+        "tests/unit/test_scroll_debounce.py": 6,
+        "tests/unit/test_spline_editor.py": 24,
+        "tests/unit/test_ste_entry_flow.py": 2
+      }
+    },
+    {
+      "name": "OrthancStudyDialog",
+      "scope": [
+        "tests/unit/test_*.py"
+      ],
+      "uses": [
+        "OrthancStudyDialog"
+      ],
+      "receivers": [
+        "OrthancStudyDialog",
+        "d",
+        "dialog"
+      ],
+      "total": 497,
+      "files": {
+        "tests/unit/test_orthanc_download_batch_characterization.py": 66,
+        "tests/unit/test_orthanc_export_layout.py": 6,
+        "tests/unit/test_orthanc_study_dialog.py": 33,
+        "tests/unit/test_presentation_orthanc_study_dialog.py": 392
       }
     }
   ]
