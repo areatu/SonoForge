@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `fix(orthanc)`: #534 — cache-сессия очищается при отмене загрузки и при любом завершении disk-экспорта ([полностью](changelog.d/035-fix-orthanc-cache-cleanup-534.md))
+
 - `fix(orthanc)`: #532 — частичный отказ при сохранении на диск больше не уводит batch в cache-режим; успешные исследования экспортируются ([полностью](changelog.d/034-fix-orthanc-disk-partial-532.md))
 
 - `refactor(arch)`: S-03a — состояние загрузки Orthanc перешло к одному Qt-free владельцу `DownloadBatch`; координатор использует публичный seam диалога ([полностью](changelog.d/033-refactor-arch-s03a-download-batch-530.md))
