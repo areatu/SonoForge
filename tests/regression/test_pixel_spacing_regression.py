@@ -56,6 +56,17 @@ class TestSpacingFromKnownDistanceRegression:
         row, col = spacing_from_known_distance(200.0, 30.0)
         assert row == col
 
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_inputs_raise(self, bad: float) -> None:
+        with pytest.raises(ValueError):
+            spacing_from_known_distance(bad, 15.0)
+        with pytest.raises(ValueError):
+            spacing_from_known_distance(100.0, bad)
+
+    def test_zero_known_mm_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            spacing_from_known_distance(100.0, 0.0)
+
 
 class TestEffectivePixelSpacingRegression:
     """effective_pixel_spacing priority rules produce exact results."""
@@ -75,6 +86,16 @@ class TestEffectivePixelSpacingRegression:
     def test_both_none(self) -> None:
         result = effective_pixel_spacing(None, None)
         assert result is None
+
+    @pytest.mark.parametrize(
+        "bad_manual",
+        [(float("nan"), 0.1), (0.1, float("inf")), (0.0, 0.1), (-0.1, 0.1)],
+    )
+    def test_invalid_manual_falls_back_to_dicom(self, bad_manual: tuple[float, float]) -> None:
+        assert effective_pixel_spacing((0.2, 0.2), bad_manual) == (0.2, 0.2)
+
+    def test_invalid_manual_without_dicom_is_none(self) -> None:
+        assert effective_pixel_spacing(None, (float("nan"), float("nan"))) is None
 
 
 class TestPixelLengthAlongAngleRegression:
@@ -140,11 +161,15 @@ class TestResolvePixelSpacingRegression:
         result = resolve_pixel_spacing(ds)
         assert result is None
 
-    def test_invalid_spacing_values(self) -> None:
+    @pytest.mark.parametrize(
+        "bad",
+        [[-1.0, 0.1], [float("nan"), 0.1], [0.1, float("inf")], [0.0, 0.1]],
+    )
+    def test_invalid_spacing_values(self, bad: list[float]) -> None:
         from unittest.mock import MagicMock
 
         ds = MagicMock()
-        ds.get.side_effect = lambda key, *a: [-1.0, 0.1] if key == "PixelSpacing" else None
+        ds.get.side_effect = lambda key, *a: bad if key == "PixelSpacing" else None
         result = resolve_pixel_spacing(ds)
         assert result is None
 

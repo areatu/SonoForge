@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import os
 import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -1648,7 +1649,7 @@ class AppController(QObject):
             if not isinstance(spacing, tuple) or len(spacing) != 2:
                 raise ValueError("calibration_invalid")
             row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
-            if row_spacing <= 0 or col_spacing <= 0:
+            if not math.isfinite(row_spacing) or not math.isfinite(col_spacing) or row_spacing <= 0 or col_spacing <= 0:
                 raise ValueError("calibration_invalid")
         except (TypeError, ValueError) as exc:
             # The message never surfaces: the log keeps only a stable code and
@@ -1839,12 +1840,12 @@ class AppController(QObject):
         manual_spacing = state.manual_pixel_spacing or session_manual_spacing
         if manual_spacing is not None:
             row_spacing, col_spacing = manual_spacing
-            if row_spacing > 0.0 and col_spacing > 0.0:
+            if math.isfinite(row_spacing) and math.isfinite(col_spacing) and row_spacing > 0.0 and col_spacing > 0.0:
                 return manual_spacing, True
         spacing = state.effective_pixel_spacing
         if spacing is not None:
             row_spacing, col_spacing = spacing
-            if row_spacing > 0.0 and col_spacing > 0.0:
+            if math.isfinite(row_spacing) and math.isfinite(col_spacing) and row_spacing > 0.0 and col_spacing > 0.0:
                 return spacing, True
         return (1.0, 1.0), False
 

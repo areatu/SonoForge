@@ -36,3 +36,36 @@ def test_edv_zero_returns_ri_one() -> None:
 def test_psv_zero_no_ri() -> None:
     m = compute_vessel_metrics(0.0, 10.0)
     assert m.ri is None
+
+
+def test_non_finite_psv_is_invalid() -> None:
+    for psv in (float("nan"), float("inf"), float("-inf")):
+        m = compute_vessel_metrics(psv, 10.0)
+        assert m.valid is False
+        assert m.ri is None
+        assert m.sd is None
+        assert m.mv_approx is None
+
+
+def test_non_finite_edv_is_invalid() -> None:
+    for edv in (float("nan"), float("inf"), float("-inf")):
+        m = compute_vessel_metrics(120.0, edv)
+        assert m.valid is False
+        assert m.ri is None
+        assert m.sd is None
+        assert m.mv_approx is None
+
+
+def test_negative_edv_is_real_reverse_flow_without_sd() -> None:
+    m = compute_vessel_metrics(100.0, -20.0)
+    assert m.valid is True
+    assert m.ri == pytest.approx(1.2)
+    assert m.sd is None
+    assert m.mv_approx == pytest.approx(20.0)
+
+
+def test_overflowing_derived_values_are_not_valid() -> None:
+    m = compute_vessel_metrics(1e308, -1e308)
+    assert m.valid is False
+    assert m.ri is None
+    assert m.mv_approx is None

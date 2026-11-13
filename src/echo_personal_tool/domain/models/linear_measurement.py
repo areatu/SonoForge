@@ -149,9 +149,11 @@ class LinearMeasurement:
         if self.velocity_cm_s is not None:
             magnitude = abs(self.velocity_cm_s)
             vel_text, unit = format_velocity_measurement("doppler.vmax", magnitude, self.doppler_mode)
-            pg_text = format_measurement("doppler.pg_peak", pressure_gradient_mmhg(magnitude), "mmHg")
             parts.append(f"{vel_text} {unit}")
-            parts.append(f"PGmax {pg_text} mmHg")
+            pg = pressure_gradient_mmhg(magnitude)
+            if pg is not None:
+                pg_text = format_measurement("doppler.pg_peak", pg, "mmHg")
+                parts.append(f"PGmax {pg_text} mmHg")
         return parts
 
     def display_text(self, *, length_unit: str = "mm") -> str:

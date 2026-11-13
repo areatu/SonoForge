@@ -73,11 +73,22 @@ class TestPlanimeterResultsFromContours:
     def test_volume_uncalibrated(self):
         contours = (_volume_contour(),)
         with patch(
-            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
-            return_value=80.0,
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_px3",
+            return_value=80_000.0,
         ):
             result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=False)
         assert result[0].unit == "px³"
+        assert result[0].value == 80_000.0
+
+    def test_area_uncalibrated_keeps_pixel_area(self):
+        contours = (_area_contour(),)
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_px2",
+            return_value=1600.0,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=False)
+        assert result[0].unit == "px²"
+        assert result[0].value == 1600.0
 
     def test_lv_contour_ignored(self):
         result = planimeter_results_from_contours(

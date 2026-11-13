@@ -80,6 +80,7 @@ from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS
 from echo_personal_tool.domain.services.measurement_results_formatter import (
+    chamber_volume_status_lines,
     format_results_overlay,
     format_results_overlay_html,
 )
@@ -6367,10 +6368,6 @@ class MainWindow(QMainWindow):
                 self._tool_panel.measure.clear_action_highlight()
 
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
-            from echo_personal_tool.domain.calculations.chamber_simpson import (
-                biplane_es_volume_ml,
-                es_volume_from_view,
-            )
             from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
@@ -6381,17 +6378,13 @@ class MainWindow(QMainWindow):
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-            if snapshot is not None and snapshot.la_simpson is not None:
-                volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
-                lav_4c = es_volume_from_view(snapshot.la_simpson.a4c)
-                if lav_4c is not None and contour.view.upper() == "A4C":
-                    extra_lines = (*extra_lines, f"LAV 4C: {_fmt('la.lav_a4c', lav_4c, volume_unit)} {volume_unit}")
-                lav_bi = biplane_es_volume_ml(snapshot.la_simpson.a4c, snapshot.la_simpson.a2c)
-                if lav_bi is not None:
-                    extra_lines = (*extra_lines, f"LAV Bi: {_fmt('la.lav_bp', lav_bi, volume_unit)} {volume_unit}")
+            if snapshot is not None:
+                extra_lines = (
+                    *extra_lines,
+                    *chamber_volume_status_lines(snapshot, chamber="LA", view=contour.view),
+                )
         elif chamber == "RA" and contour.phase.upper() == "ES":
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
-            from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
             from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
@@ -6399,11 +6392,11 @@ class MainWindow(QMainWindow):
             )
             self._show_status(line)
             snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-            if snapshot is not None and snapshot.ra_simpson is not None:
-                volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
-                rav = es_volume_from_view(snapshot.ra_simpson.a4c) or snapshot.ra_simpson.max_volume_ml
-                if rav is not None:
-                    extra_lines = (*extra_lines, f"RAV 4C: {_fmt('ra.vol', rav, volume_unit)} {volume_unit}")
+            if snapshot is not None:
+                extra_lines = (
+                    *extra_lines,
+                    *chamber_volume_status_lines(snapshot, chamber="RA", view=contour.view),
+                )
         elif chamber == "RV":
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
             from echo_personal_tool.domain.calculations.rv_fac import format_rv_area_overlay_line

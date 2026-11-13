@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import cos, radians, sin
+from math import cos, isfinite, radians, sin
 from typing import Any
 
 from pydicom.dataset import Dataset
@@ -23,23 +23,40 @@ def spacing_from_known_distance(
 ) -> tuple[float, float]:
     """Derive isotropic spacing from a calibration line of known length in mm."""
 
-    if pixel_length <= 0:
+    if not isfinite(pixel_length) or pixel_length <= 0:
         raise ValueError("pixel_length must be positive")
-    if known_mm <= 0:
+    if not isfinite(known_mm) or known_mm <= 0:
         raise ValueError("known_mm must be positive")
     spacing = known_mm / pixel_length
+    if not isfinite(spacing) or spacing <= 0:
+        raise ValueError("spacing must be finite and positive")
     return (spacing, spacing)
+
+
+def _valid_spacing_pair(spacing: tuple[float, float] | None) -> bool:
+    if spacing is None:
+        return False
+    try:
+        row, col = float(spacing[0]), float(spacing[1])
+    except (TypeError, ValueError):
+        return False
+    return isfinite(row) and isfinite(col) and row > 0.0 and col > 0.0
 
 
 def effective_pixel_spacing(
     dicom_spacing: tuple[float, float] | None,
     manual_spacing: tuple[float, float] | None,
 ) -> tuple[float, float] | None:
-    """Manual calibration overrides DICOM-derived spacing."""
+    """Manual calibration overrides DICOM-derived spacing when both are valid.
 
-    if manual_spacing is not None:
+    A non-finite or non-positive manual pair is discarded rather than promoted
+    to a calibration; the DICOM pair is still used when it is valid (#547).
+    """
+    if _valid_spacing_pair(manual_spacing):
         return manual_spacing
-    return dicom_spacing
+    if _valid_spacing_pair(dicom_spacing):
+        return dicom_spacing
+    return None
 
 
 def resolve_pixel_spacing(dataset: Dataset) -> PixelSpacingResolution | None:
@@ -66,7 +83,7 @@ def _pair_from_values(first: Any, second: Any, source: str) -> PixelSpacingResol
         col = float(second)
     except (TypeError, ValueError):
         return None
-    if row <= 0 or col <= 0:
+    if not isfinite(row) or not isfinite(col) or row <= 0 or col <= 0:
         return None
     return PixelSpacingResolution(spacing=(row, col), source=source)
 
@@ -130,20 +147,25 @@ def _spacing_from_ultrasound_region(region: Dataset) -> PixelSpacingResolution |
         return None
 
     def _delta_to_mm(delta: float, units: int | None, *, tissue_2d: bool) -> float | None:
+        magnitude = abs(delta)
+        if not isfinite(magnitude):
+            return None
         if units in (None, PHYSICAL_UNIT_CM):
-            return abs(delta) * 10.0
-        if units == PHYSICAL_UNIT_MM:
-            return abs(delta)
-        if tissue_2d and units == PHYSICAL_UNIT_SEC and abs(delta) < 1.0:
-            return abs(delta) * 10.0
-        return None
+            result = magnitude * 10.0
+        elif units == PHYSICAL_UNIT_MM:
+            result = magnitude
+        elif tissue_2d and units == PHYSICAL_UNIT_SEC and magnitude < 1.0:
+            result = magnitude * 10.0
+        else:
+            return None
+        return result if isfinite(result) and result > 0.0 else None
 
     spatial = int(region.get("RegionSpatialFormat", 0) or 0)
     data_type = int(region.get("RegionDataType", 0) or 0)
     tissue_2d = spatial == 1 and data_type == 1
     col_mm = _delta_to_mm(delta_x, units_x, tissue_2d=tissue_2d)
     row_mm = _delta_to_mm(delta_y, units_y, tissue_2d=tissue_2d)
-    if col_mm is None or row_mm is None or row_mm <= 0 or col_mm <= 0:
+    if col_mm is None or row_mm is None:
         return None
     return PixelSpacingResolution(
         spacing=(row_mm, col_mm),

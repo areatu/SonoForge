@@ -118,14 +118,18 @@ def format_contour_overlay(
         return tr("domain.lvef.check_contour", chamber=chamber, view=view, phase=phase)
     if pixel_spacing is None:
         return tr("domain.lvef.status_empty", chamber=chamber, view=view, phase=phase)
-    length = _contour_length_mm(contour, pixel_spacing)
-    volume = _contour_volume_ml(contour, pixel_spacing)
     if spacing_calibrated:
+        length = _contour_length_mm(contour, pixel_spacing)
+        volume = _contour_volume_ml(contour, pixel_spacing)
         length_text = f"{length:.1f} mm" if length is not None else "—"
         volume_text = f"{volume:.1f} mL" if volume is not None else "—"
     else:
+        # The pixel branch evaluates the geometry with unit spacing; calling the
+        # mL helper here would divide a pixel volume by 1000 (#546).
+        length = _contour_length_mm(contour, (1.0, 1.0))
+        volume_px3 = simpson_volume_px3_from_contour(contour)
         length_text = f"{length:.1f} px" if length is not None else "—"
-        volume_text = f"{volume:.1f} px³" if volume is not None else "—"
+        volume_text = f"{volume_px3:.1f} px³" if volume_px3 is not None else "—"
     return tr(
         "domain.lvef.status_partial", chamber=chamber, view=view, phase=phase, length=length_text, volume=volume_text
     )
@@ -347,8 +351,32 @@ def simpson_volume_ml_from_closed_polygon(
         return None
     row_spacing, col_spacing = pixel_spacing
     points_mm = tuple((float(col) * col_spacing, float(row) * row_spacing) for col, row in contour.points)
-    volume = _simpson_volume_ml(points_mm, None)
-    return volume if volume > 0.0 else None
+    volume_mm3 = _simpson_volume_mm3(points_mm, None)
+    return volume_mm3 / 1000.0 if volume_mm3 > 0.0 else None
+
+
+def simpson_volume_px3_from_closed_polygon(contour: Contour) -> float | None:
+    """Simpson disk volume in cubic pixels for an uncalibrated closed polygon.
+
+    The geometry is evaluated in pixel coordinates directly.  Keeping this
+    separate from ``simpson_volume_ml_from_closed_polygon`` prevents a pixel
+    volume from being divided by 1000 as if it were a physical millilitre
+    (#546).
+    """
+    if len(contour.points) < 3:
+        return None
+    points_px = tuple((float(col), float(row)) for col, row in contour.points)
+    volume_px3 = _simpson_volume_mm3(points_px, None)
+    return volume_px3 if math.isfinite(volume_px3) and volume_px3 > 0.0 else None
+
+
+def simpson_volume_px3_from_contour(contour: Contour) -> float | None:
+    """Simpson disk volume in cubic pixels for an open-arc contour."""
+    points_px, annulus_px = _contour_to_mm(contour, (1.0, 1.0))
+    if annulus_px is None:
+        return None
+    volume_px3 = _simpson_volume_mm3(points_px, annulus_px)
+    return volume_px3 if math.isfinite(volume_px3) and volume_px3 > 0.0 else None
 
 
 def _contour_volume_ml(
@@ -451,11 +479,11 @@ def _disk_diameters_mm(
     return disk_diameters_mm
 
 
-def _simpson_volume_ml(
+def _simpson_volume_mm3(
     contour_points_mm: tuple[tuple[float, float], ...],
     mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None = None,
 ) -> float:
-    """Approximate a contour volume using 20 Simpson disks."""
+    """Approximate a contour volume in cubic millimetres using 20 Simpson disks."""
     disk_diameters_mm = _disk_diameters_mm(contour_points_mm, mitral_annulus_mm)
     if not disk_diameters_mm or max(disk_diameters_mm) <= 0.0:
         return 0.0
@@ -475,7 +503,15 @@ def _simpson_volume_ml(
     for diameter_mm in disk_diameters_mm:
         disk_volume_mm3 += (math.pi / 4.0) * diameter_mm * diameter_mm * disk_height_mm
 
-    return disk_volume_mm3 / 1000.0
+    return disk_volume_mm3
+
+
+def _simpson_volume_ml(
+    contour_points_mm: tuple[tuple[float, float], ...],
+    mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None = None,
+) -> float:
+    """Approximate a contour volume using 20 Simpson disks, in millilitres."""
+    return _simpson_volume_mm3(contour_points_mm, mitral_annulus_mm) / 1000.0
 
 
 def _long_axis_mm(

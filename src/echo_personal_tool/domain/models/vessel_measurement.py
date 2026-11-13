@@ -11,7 +11,7 @@ class VesselMeasurement:
     edv_cm_s: float
     ri: float | None
     sd: float | None
-    mv_approx: float
+    mv_approx: float | None
     sop_instance_uid: str
     frame_index: int
     calibration_id: str | None = None

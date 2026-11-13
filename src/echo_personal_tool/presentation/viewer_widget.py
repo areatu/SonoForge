@@ -111,7 +111,10 @@ from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_col
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
 )
-from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
+from echo_personal_tool.domain.services.planimeter_formatter import (
+    format_planimeter_overlay_line,
+    planimeter_progress_text,
+)
 from echo_personal_tool.imaging.display import (
     is_color_frame,
     to_display_rgb,
@@ -3450,7 +3453,7 @@ class ViewerWidget(QWidget):
             edv_cm_s=edv,
             ri=metrics.ri,
             sd=metrics.sd,
-            mv_approx=metrics.mv_approx or 0.0,
+            mv_approx=metrics.mv_approx,
             sop_instance_uid=instance_uid,
             frame_index=self._current_frame_index() or 0,
             cycle_source=self.doppler.overlay.vessel_cycle_source() or "manual",
@@ -6165,7 +6168,12 @@ class ViewerWidget(QWidget):
             spacing = self._current_state.effective_pixel_spacing
             if spacing is not None:
                 row_spacing, col_spacing = spacing
-                if row_spacing > 0.0 and col_spacing > 0.0:
+                if (
+                    math.isfinite(row_spacing)
+                    and math.isfinite(col_spacing)
+                    and row_spacing > 0.0
+                    and col_spacing > 0.0
+                ):
                     return spacing, True
         return (1.0, 1.0), False
 
@@ -6590,23 +6598,9 @@ class ViewerWidget(QWidget):
             points=list(self.contour_state.active_arc_points),
             frame_index=self._contour_frame_index(),
         )
-        if chamber == GENERIC_VOLUME_CHAMBER:
-            value = closed_polygon_volume_ml(probe, spacing)
-            text = (
-                tr("viewer.volume_progress", value=_fmt("planimeter.volume", value, "mL"))
-                if value is not None
-                else None
-            )
-        else:
-            value = closed_polygon_area_cm2(probe, spacing)
-            text = (
-                tr("viewer.area_progress", value=_fmt("planimeter.area", value, "cm²")) if value is not None else None
-            )
-        if text is None:
-            return
-        if not calibrated:
-            text += tr("viewer.area_progress_no_calibration")
-        self._measurement_label.setText(text)
+        text = planimeter_progress_text(probe, spacing, spacing_calibrated=calibrated)
+        if text is not None:
+            self._measurement_label.setText(text)
 
     def _handle_calibration_mouse_press(self, ev) -> bool:
         if not self._calibration_active or self._current_frame is None:
