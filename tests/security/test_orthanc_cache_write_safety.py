@@ -235,7 +235,10 @@ def test_temporary_file_is_created_private(cache: OrthancSessionCache, monkeypat
     observed: list[int] = []
     real_open = os.open
 
-    def recording_open(path, flags, mode=0o777, *args, **kwargs):
+    # The default is owner-only on purpose: a copy of production's default 0o777
+    # would trip the static "overly permissive file permissions" check even
+    # though this wrapper only observes what the cache passes in.
+    def recording_open(path, flags, mode=0o600, *args, **kwargs):
         if isinstance(path, (str, os.PathLike)) and str(path).endswith(".tmp"):
             observed.append(mode)
         return real_open(path, flags, mode, *args, **kwargs)
