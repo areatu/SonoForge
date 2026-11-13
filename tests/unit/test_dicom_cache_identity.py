@@ -55,6 +55,8 @@ def test_deleted_source_never_returns_cached_pixels(tmp_path):
     path = _make_test_dicom(tmp_path)
     reader = DicomReaderImpl()
     reader.read_pixels(path)
+    if sys.platform == "win32":
+        release_stale_sessions()  # Windows cannot unlink a mapped source.
     path.unlink()
     with pytest.raises(FileNotFoundError):
         reader.read_pixels(path)
