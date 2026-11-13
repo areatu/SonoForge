@@ -581,6 +581,8 @@ class TestOnDone:
             dialog._on_done("session-123", "study-uid")
         assert dialog._result == ("session-123", "study-uid")
         assert dialog._session_id is None
+        # A cache download must keep its session: the result points into it.
+        dialog._cache.clear_session.assert_not_called()
 
 
 class TestOnFailed:
@@ -607,6 +609,7 @@ class TestOnCancelled:
             dialog._on_cancelled("test")
         assert dialog._session_id is None
         assert dialog._studies_list.isEnabled()
+        dialog._cache.clear_session.assert_called_once_with("test")
 
 
 class TestResetAfterDownload:
@@ -674,6 +677,7 @@ class TestOnDiskDownloadDone:
         assert dialog._worker is None
         assert dialog._session_id is None
         assert dialog.completed_disk_download_path() == tmp_path
+        dialog._cache.clear_session.assert_called_once_with("test-session")
         mock_final_accept.assert_called_once()
 
     def test_evaluation_line_is_logged_for_the_choice(self, dialog, tmp_path, caplog):
@@ -699,6 +703,7 @@ class TestOnDiskDownloadDone:
         assert dialog._session_id is None
         assert dialog._find_btn.isEnabled()
         assert dialog.completed_disk_download_path() is None
+        dialog._cache.clear_session.assert_called_once_with("test-session")
         mock_accept.assert_not_called()
 
     def test_export_error_still_resets(self, dialog, tmp_path):
@@ -712,6 +717,7 @@ class TestOnDiskDownloadDone:
         assert dialog._downloading is False
         assert dialog._worker is None
         assert dialog._studies_list.isEnabled()
+        dialog._cache.clear_session.assert_called_once_with("test-session")
         mock_accept.assert_not_called()
         mock_box.warning.assert_called_once()
 
@@ -728,6 +734,7 @@ class TestOnDiskDownloadDone:
             dialog._on_disk_download_done(partial=True)
         assert dialog._downloading is False
         assert dialog._find_btn.isEnabled()
+        dialog._cache.clear_session.assert_called_once_with("test-session")
         mock_accept.assert_not_called()
 
     def test_worker_failure_still_resets(self, dialog, tmp_path):
@@ -742,6 +749,7 @@ class TestOnDiskDownloadDone:
         assert dialog._worker is None
         assert dialog._session_id is None
         assert dialog._find_btn.isEnabled()
+        dialog._cache.clear_session.assert_called_once_with("test-session")
         mock_accept.assert_not_called()
         mock_box.warning.assert_called_once()
 

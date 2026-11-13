@@ -2681,7 +2681,9 @@ class OrthancStudyDialog(QDialog):
         if not accepted:
             log.info("[DLG] de-identified export cancelled by the user")
             self._reset_after_download()
-            self._session_id = None
+            if self._session_id is not None:
+                self._cache.clear_session(self._session_id)
+                self._session_id = None
             self._progress.hide()
             self._set_lists_enabled(True)
             self._cancel_btn.setText(tr("orthanc.cancel"))
@@ -2750,7 +2752,9 @@ class OrthancStudyDialog(QDialog):
         log.info("[DLG] de-identified export: exported=%d failed=%d unverified=%d", exported, failed, unverified)
 
         self._reset_after_download()
-        self._session_id = None
+        if self._session_id is not None:
+            self._cache.clear_session(self._session_id)
+            self._session_id = None
         self._progress.setValue(self._progress.maximum())
         if bool(getattr(summary, "cancelled", False)):
             self._set_status(tr("orthanc.disk_export_cancelled"))
@@ -2801,7 +2805,9 @@ class OrthancStudyDialog(QDialog):
     def _fail_disk_export(self, error: str) -> None:
         self._worker = None
         self._reset_after_download()
-        self._session_id = None
+        if self._session_id is not None:
+            self._cache.clear_session(self._session_id)
+            self._session_id = None
         message = tr("orthanc.download_error.body", message=self._clip(error, _DIALOG_TEXT_LIMIT))
         self._set_status(message)
         self._progress.hide()
@@ -3021,7 +3027,9 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         self._reset_after_download()
-        self._session_id = None
+        if self._session_id is not None:
+            self._cache.clear_session(self._session_id)
+            self._session_id = None
         self._progress.hide()
         self._set_lists_enabled(True)
         self._cancel_btn.setText(tr("orthanc.cancel"))
