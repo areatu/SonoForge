@@ -412,6 +412,8 @@ class TestGroups:
         assert [(group["name"], group["total"]) for group in data["groups"]] == [
             ("MainWindow", 1),
             ("AppController", 0),
+            ("ViewerWidget", 0),
+            ("OrthancStudyDialog", 0),
         ]
 
         (tmp_path / "tests/unit/test_mw.py").write_text(
@@ -443,10 +445,45 @@ class TestGroups:
         with pytest.raises(ValueError):
             check_test_private_access.load_baseline(path)
 
+    def test_the_committed_viewer_group_covers_tests_outside_the_viewer_scope(self) -> None:
+        """#327's main scope only sees ``test_*viewer*.py``; contour and zoom tests live elsewhere."""
+
+        baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+        group = next(group for group in baseline.groups if group.name == "ViewerWidget")
+        main_scope, errors = check_test_private_access.scan(REPO_ROOT, baseline.scope)
+        counts, group_errors = check_test_private_access.scan_group(REPO_ROOT, group)
+
+        assert errors == [] and group_errors == []
+        # The debt outside the viewer-named files that the old scope silently ignored.
+        assert check_test_private_access.file_counts(main_scope) == {}
+        for path in (
+            "tests/unit/test_area_tool_mode_wiring.py",
+            "tests/unit/test_caliper_doppler_and_repeat.py",
+            "tests/unit/test_lv_trace_contour.py",
+            "tests/unit/test_spline_editor.py",
+        ):
+            assert counts[path] > 0
+        assert sum(counts.values()) == group.total > 0
+
+    def test_the_committed_orthanc_group_sees_the_private_state_of_the_dialog(self) -> None:
+        baseline = check_test_private_access.load_baseline(BASELINE_FILE)
+        group = next(group for group in baseline.groups if group.name == "OrthancStudyDialog")
+        counts, errors = check_test_private_access.scan_group(REPO_ROOT, group)
+
+        assert errors == []
+        assert counts["tests/unit/test_presentation_orthanc_study_dialog.py"] > 0
+        assert counts["tests/unit/test_orthanc_download_batch_characterization.py"] > 0
+        assert sum(counts.values()) == group.total > 0
+
     def test_the_committed_groups_match_the_tree_exactly(self) -> None:
         baseline = check_test_private_access.load_baseline(BASELINE_FILE)
 
-        assert [group.name for group in baseline.groups] == ["MainWindow", "AppController"]
+        assert [group.name for group in baseline.groups] == [
+            "MainWindow",
+            "AppController",
+            "ViewerWidget",
+            "OrthancStudyDialog",
+        ]
         for group in baseline.groups:
             counts, errors = check_test_private_access.scan_group(REPO_ROOT, group)
             assert errors == []
