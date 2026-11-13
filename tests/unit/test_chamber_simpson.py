@@ -21,11 +21,12 @@ def _open_arc(
     width: float,
     height: float,
     review_pending: bool = False,
+    segments: int = 9,
 ) -> Contour:
     import math
 
     annulus = ((0.0, 0.0), (width, 0.0))
-    n = 9
+    n = segments
     angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
     points = [(width / 2.0 + (width / 2.0) * math.cos(a), height * math.sin(a)) for a in angles]
     return Contour(
@@ -52,6 +53,9 @@ def test_la_simpson_monoplan_volume() -> None:
     assert result.a4c.esv_ml is not None
     assert result.max_volume_ml is not None
     assert result.max_volume_ml >= result.a4c.esv_ml
+    assert result.method == "simpson_monoplan"
+    assert result.biplane_es_ml is None
+    assert result.biplane_verified is False
 
 
 def test_la_simpson_includes_area_cm2() -> None:
@@ -134,7 +138,7 @@ def test_pending_contour_does_not_change_accepted_chamber_result(chamber: str) -
     assert with_pending == baseline
 
 
-def test_two_views_are_reported_as_mean_of_monoplanes_not_biplane() -> None:
+def test_la_two_views_use_the_true_coupled_biplane_volume() -> None:
     contours = (
         _open_arc(chamber="LA", phase="ED", view="A4C", width=80.0, height=50.0),
         _open_arc(chamber="LA", phase="ES", view="A4C", width=60.0, height=40.0),
@@ -145,12 +149,68 @@ def test_two_views_are_reported_as_mean_of_monoplanes_not_biplane() -> None:
     result = calculate_chamber(contours, "LA", (0.5, 0.5))
 
     assert result is not None
-    assert result.method == "simpson_mean_monoplan"
-    assert result.method != "simpson_biplan"
+    assert result.method == "simpson_biplan"
+    assert result.biplane_verified is True
+    assert result.biplane_es_ml is not None
+    assert confirmed_biplane_es_volume_ml(result) == pytest.approx(result.biplane_es_ml)
+    # The coupled volume is not the mean of the two monoplane volumes.
+    mean = mean_es_volume_ml(result.a4c, result.a2c)
+    assert mean is not None
+    assert result.biplane_es_ml != pytest.approx(mean, rel=0.001)
+
+
+def test_la_biplane_matches_the_analytic_coupled_disk_formula() -> None:
+    import math
+
+    contours = (
+        _open_arc(chamber="LA", phase="ES", view="A4C", width=40.0, height=100.0, segments=720),
+        _open_arc(chamber="LA", phase="ES", view="A2C", width=20.0, height=100.0, segments=720),
+    )
+
+    result = calculate_chamber(contours, "LA", (1.0, 1.0))
+
+    assert result is not None
+    assert result.biplane_es_ml is not None
+    disk_sum = sum(1.0 - ((index + 0.5) / 20.0) ** 2 for index in range(20))
+    expected = math.pi / 4.0 * 40.0 * 20.0 * (100.0 / 20.0) * disk_sum / 1000.0
+    expected_a4c = math.pi / 4.0 * 40.0**2 * (100.0 / 20.0) * disk_sum / 1000.0
+    expected_a2c = math.pi / 4.0 * 20.0**2 * (100.0 / 20.0) * disk_sum / 1000.0
+    assert result.biplane_es_ml == pytest.approx(expected, rel=0.002)
+    assert mean_es_volume_ml(result.a4c, result.a2c) == pytest.approx((expected_a4c + expected_a2c) / 2.0, rel=0.002)
+    # Different diameters make the mean materially larger than the true biplane.
+    assert result.biplane_es_ml < mean_es_volume_ml(result.a4c, result.a2c) * 0.9
+
+
+def test_biplane_requires_the_same_phase_in_both_views() -> None:
+    contours = (
+        _open_arc(chamber="LA", phase="ED", view="A4C", width=40.0, height=100.0),
+        _open_arc(chamber="LA", phase="ES", view="A4C", width=30.0, height=90.0),
+        _open_arc(chamber="LA", phase="ED", view="A2C", width=20.0, height=100.0),
+    )
+
+    result = calculate_chamber(contours, "LA", (1.0, 1.0))
+
+    assert result is not None
     assert result.biplane_es_ml is None
     assert result.biplane_verified is False
-    assert confirmed_biplane_es_volume_ml(result) is None
-    assert mean_es_volume_ml(result.a4c, result.a2c) is not None
+    assert result.method != "simpson_biplan"
+
+
+@pytest.mark.parametrize("chamber", ["RA", "RV"])
+def test_ra_and_rv_two_views_stay_descriptive_not_biplane(chamber: str) -> None:
+    contours = (
+        _open_arc(chamber=chamber, phase="ED", view="A4C", width=80.0, height=50.0),
+        _open_arc(chamber=chamber, phase="ES", view="A4C", width=60.0, height=40.0),
+        _open_arc(chamber=chamber, phase="ED", view="A2C", width=90.0, height=60.0),
+        _open_arc(chamber=chamber, phase="ES", view="A2C", width=70.0, height=45.0),
+    )
+
+    result = calculate_chamber(contours, chamber, (0.5, 0.5))
+
+    assert result is not None
+    assert result.method == "simpson_mean_monoplan"
+    assert result.biplane_es_ml is None
+    assert result.biplane_verified is False
 
 
 def test_legacy_biplane_flag_without_confirmation_is_not_trusted() -> None:
@@ -194,3 +254,39 @@ def test_mean_of_es_does_not_mix_an_ed_volume_from_the_other_view() -> None:
 
     assert mean_es_volume_ml(LvViewMetrics(esv_ml=40.0), LvViewMetrics(edv_ml=50.0)) is None
     assert mean_es_volume_ml(LvViewMetrics(esv_ml=40.0), LvViewMetrics(esv_ml=50.0)) == pytest.approx(45.0)
+
+
+def test_la_biplane_ef_uses_the_same_coupled_volumes() -> None:
+    import math
+
+    contours = (
+        _open_arc(chamber="LA", phase="ED", view="A4C", width=40.0, height=100.0, segments=720),
+        _open_arc(chamber="LA", phase="ED", view="A2C", width=20.0, height=100.0, segments=720),
+        _open_arc(chamber="LA", phase="ES", view="A4C", width=30.0, height=80.0, segments=720),
+        _open_arc(chamber="LA", phase="ES", view="A2C", width=15.0, height=80.0, segments=720),
+    )
+
+    result = calculate_chamber(contours, "LA", (1.0, 1.0))
+
+    assert result is not None
+    assert result.ef_percent is not None
+    disk_sum = sum(1.0 - ((index + 0.5) / 20.0) ** 2 for index in range(20))
+    edv = math.pi / 4.0 * 40.0 * 20.0 * (100.0 / 20.0) * disk_sum / 1000.0
+    esv = math.pi / 4.0 * 30.0 * 15.0 * (80.0 / 20.0) * disk_sum / 1000.0
+    assert result.ef_percent == pytest.approx((edv - esv) / edv * 100.0, rel=0.002)
+
+
+def test_contradictory_biplane_ed_es_is_not_confirmed() -> None:
+    contours = (
+        _open_arc(chamber="LA", phase="ED", view="A4C", width=20.0, height=100.0, segments=180),
+        _open_arc(chamber="LA", phase="ED", view="A2C", width=20.0, height=100.0, segments=180),
+        _open_arc(chamber="LA", phase="ES", view="A4C", width=40.0, height=100.0, segments=180),
+        _open_arc(chamber="LA", phase="ES", view="A2C", width=40.0, height=100.0, segments=180),
+    )
+
+    result = calculate_chamber(contours, "LA", (1.0, 1.0))
+
+    assert result is not None
+    assert result.biplane_es_ml is None
+    assert result.biplane_verified is False
+    assert confirmed_biplane_es_volume_ml(result) is None

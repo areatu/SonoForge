@@ -307,10 +307,10 @@ def test_biplane_volume_uses_max_long_axis_height() -> None:
 
     from echo_personal_tool.domain.calculations.lvef_simpson import (
         _SIMPSON_N_DISKS,
-        _biplane_volume_ml,
         _contour_to_mm,
         _disk_diameters_mm,
         _long_axis_mm,
+        biplane_volume_ml,
     )
 
     a4c = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
@@ -318,7 +318,7 @@ def test_biplane_volume_uses_max_long_axis_height() -> None:
     spacing = (0.5, 0.5)
     pts_a, ann_a = _contour_to_mm(a4c, spacing)
     pts_b, ann_b = _contour_to_mm(a2c, spacing)
-    volume = _biplane_volume_ml(pts_a, ann_a, pts_b, ann_b)
+    volume = biplane_volume_ml(pts_a, ann_a, pts_b, ann_b)
     diameters_a = _disk_diameters_mm(pts_a, ann_a)
     diameters_b = _disk_diameters_mm(pts_b, ann_b)
     long_a = _long_axis_mm(pts_a, ann_a)

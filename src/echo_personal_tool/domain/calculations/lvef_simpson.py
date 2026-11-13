@@ -59,8 +59,8 @@ def calculate(
         a2c_es_pts, a2c_es_ann = grouped_mm["A2C"]["es"]
 
         if all(ann is not None for ann in (a4c_ed_ann, a4c_es_ann, a2c_ed_ann, a2c_es_ann)):
-            edv_ml = _biplane_volume_ml(a4c_ed_pts, a4c_ed_ann, a2c_ed_pts, a2c_ed_ann)
-            esv_ml = _biplane_volume_ml(a4c_es_pts, a4c_es_ann, a2c_es_pts, a2c_es_ann)
+            edv_ml = biplane_volume_ml(a4c_ed_pts, a4c_ed_ann, a2c_ed_pts, a2c_ed_ann)
+            esv_ml = biplane_volume_ml(a4c_es_pts, a4c_es_ann, a2c_es_pts, a2c_es_ann)
             if edv_ml is not None and esv_ml is not None and edv_ml > 0.0 and esv_ml <= edv_ml:
                 lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
                 method = "simpson_biplan"
@@ -525,12 +525,17 @@ def _long_axis_mm(
     return max(y_values) - min(y_values)
 
 
-def _biplane_volume_ml(
+def biplane_volume_ml(
     points_a: tuple[tuple[float, float], ...],
     annulus_a: tuple[tuple[float, float], tuple[float, float]] | None,
     points_b: tuple[tuple[float, float], ...],
     annulus_b: tuple[tuple[float, float], tuple[float, float]] | None,
 ) -> float | None:
+    """Coupled 20-disk volume from two views of the same phase, in mL.
+
+    Each disk pairs the perpendicular diameters of the two views at the same
+    relative height; the disk height is ``max(long_axis_a, long_axis_b) / 20``.
+    """
     diameters_a = _disk_diameters_mm(points_a, annulus_a)
     diameters_b = _disk_diameters_mm(points_b, annulus_b)
     if not diameters_a or not diameters_b:

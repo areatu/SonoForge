@@ -181,13 +181,15 @@ class LaVolumeResult:
 
 @dataclass(frozen=True)
 class ChamberSimpsonResult:
-    """Simpson monoplane / mean-of-monoplane metrics for LA, RA, or RV.
+    """Simpson chamber metrics: monoplane, descriptive mean, or confirmed LA biplane.
 
-    Two views currently produce the arithmetic mean of two monoplane volumes
-    (``simpson_mean_monoplan``); that is not a biplane disk method.  A true
-    biplane result may only be consumed through ``biplane_es_ml`` together
-    with ``biplane_verified`` — the protective gate for F08 until the real
-    coupled-disk calculation lands.
+    The LA may carry a true coupled-disk biplane result (``simpson_biplan``,
+    ``biplane_verified``).  RA/RV keep the arithmetic mean of two monoplane
+    volumes (``simpson_mean_monoplan``); that is not a biplane disk method.
+    Consumers may use ``biplane_es_ml`` only through
+    :func:`confirmed_biplane_es_volume_ml`, which also checks the method id and
+    the verified flag, so a legacy averaged value can never become a biplane
+    index (F08 / issue 548).
     """
 
     chamber: str

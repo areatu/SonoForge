@@ -244,6 +244,7 @@ def chamber_volume_status_lines(
         la = snapshot.la_simpson
         if view.upper() == "A4C":
             lines.append(line("la.lav_a4c", "LAV 4C", es_volume_from_view(la.a4c)))
+        lines.append(line("la.lav_bp", "LAV Bi", confirmed_biplane_es_volume_ml(la)))
     elif chamber == "RA" and snapshot.ra_simpson is not None:
         ra = snapshot.ra_simpson
         lines.append(line("ra.vol", "RAV 4C", es_volume_from_view(ra.a4c) or ra.max_volume_ml))

@@ -147,3 +147,19 @@ def test_two_monoplane_volumes_do_not_become_a_biplane_status_line() -> None:
     assert "LAV 4C: 50 mL" in lines
     assert not any("Bi" in line for line in lines)
     assert "Biplan" not in format_results_overlay(snapshot)
+
+
+def test_confirmed_true_biplane_gets_a_biplane_status_line() -> None:
+    la = ChamberSimpsonResult(
+        chamber="LA",
+        method="simpson_biplan",
+        a4c=LvViewMetrics(esv_ml=50.0),
+        a2c=LvViewMetrics(esv_ml=60.0),
+        biplane_es_ml=54.0,
+        biplane_verified=True,
+    )
+    snapshot = MeasurementSnapshot(la_simpson=la, spacing_calibrated=True)
+    lines = chamber_volume_status_lines(snapshot, chamber="LA", view="A4C")
+    assert "LAV 4C: 50 mL" in lines
+    assert "LAV Bi: 54 mL" in lines
+    assert "ОЛП Биплан: 54 mL" in format_results_overlay(snapshot)

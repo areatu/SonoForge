@@ -978,8 +978,8 @@ def _append_chamber_report_values(
         )
 
         volumes = [("la.lav_a4c", es_volume_from_view(la.a4c))]
-        # No true biplane method yet: the averaged monoplane value is not
-        # promoted to the «LAV (biplane)» row (F08 / issue 548).
+        # The averaged monoplane value is not promoted to the «LAV (biplane)»
+        # row; only a confirmed coupled-disk result can fill it (F08).
         biplane_volume = confirmed_biplane_es_volume_ml(la)
         if biplane_volume is not None:
             volumes.append(("la.lav_bp", biplane_volume))
