@@ -117,20 +117,20 @@ class OpticalFlowRefineWorker(QRunnable):
         session = get_thread_dicom_session(self._source_path)
         session.open(self._source_path)
         try:
-            all_frames = session.decode_all_frames()
+            valid = [idx for idx in indices if 0 <= idx < session.frame_count]
+            decoded = session.decode_frames(valid)
         finally:
             session.release_heavy()
         result: list[np.ndarray] = []
-        for idx in indices:
-            if 0 <= idx < len(all_frames):
-                frame = all_frames[idx]
-                if frame.ndim == 3:
-                    gray = (
-                        cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                        if frame.shape[2] == 3
-                        else np.mean(frame, axis=2).astype(np.uint8)
-                    )
-                else:
-                    gray = frame.astype(np.uint8)
-                result.append(gray)
+        for idx in valid:
+            frame = decoded[idx]
+            if frame.ndim == 3:
+                gray = (
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    if frame.shape[2] == 3
+                    else np.mean(frame, axis=2).astype(np.uint8)
+                )
+            else:
+                gray = frame.astype(np.uint8)
+            result.append(gray)
         return result

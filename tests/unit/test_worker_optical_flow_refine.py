@@ -112,7 +112,8 @@ class TestLoadFromDicom:
     def test_loads_grayscale_frames(self, mock_cv2):
         frames = [np.zeros((10, 10), dtype=np.uint8) + i for i in range(5)]
         session = MagicMock()
-        session.decode_all_frames.return_value = frames
+        session.frame_count = len(frames)
+        session.decode_frames.return_value = {index: frames[index] for index in (1, 2, 3)}
 
         mock_cv2.COLOR_BGR2GRAY = 6
 
@@ -131,12 +132,15 @@ class TestLoadFromDicom:
             result = worker._load_from_dicom([1, 2, 3])
             assert len(result) == 3
             session.open.assert_called_once()
+            session.decode_frames.assert_called_once_with([1, 2, 3])
+            session.decode_all_frames.assert_not_called()
 
     @patch("echo_personal_tool.application.workers.optical_flow_refine_worker.cv2")
     def test_converts_3ch_frame(self, mock_cv2):
         frame_rgb = np.zeros((10, 10, 3), dtype=np.uint8)
         session = MagicMock()
-        session.decode_all_frames.return_value = [frame_rgb]
+        session.frame_count = 1
+        session.decode_frames.return_value = {0: frame_rgb}
 
         mock_cv2.COLOR_BGR2GRAY = 6
         mock_cv2.cvtColor.return_value = np.zeros((10, 10), dtype=np.uint8)
@@ -161,7 +165,8 @@ class TestLoadFromDicom:
     def test_converts_4ch_frame(self, mock_cv2):
         frame_rgba = np.zeros((10, 10, 4), dtype=np.uint8)
         session = MagicMock()
-        session.decode_all_frames.return_value = [frame_rgba]
+        session.frame_count = 1
+        session.decode_frames.return_value = {0: frame_rgba}
 
         mock_cv2.COLOR_BGR2GRAY = 6
 
@@ -184,7 +189,8 @@ class TestLoadFromDicom:
     @patch("echo_personal_tool.application.workers.optical_flow_refine_worker.cv2")
     def test_skips_out_of_range_indices(self, mock_cv2):
         session = MagicMock()
-        session.decode_all_frames.return_value = [np.zeros((10, 10), dtype=np.uint8)]
+        session.frame_count = 1
+        session.decode_frames.return_value = {0: np.zeros((10, 10), dtype=np.uint8)}
         mock_cv2.COLOR_BGR2GRAY = 6
 
         worker = OpticalFlowRefineWorker(

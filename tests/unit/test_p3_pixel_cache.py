@@ -160,3 +160,55 @@ def test_isolated_preview_edits_do_not_change_shared_pixels(tmp_path):
     preview = DicomReaderImpl(isolated=True).read_pixels(path)
     preview[0, 0] = 999
     np.testing.assert_array_equal(reader.read_pixels(path), expected)
+
+
+def test_oversized_entry_does_not_evict_or_exceed_the_limit(tmp_path: Path) -> None:
+    """#545: one frame above the quota is refused before admitting it.
+
+    The old loop evicted every resident entry and then inserted the oversized
+    entry anyway, so the cache ended up over its byte limit by the full size
+    of the frame.
+    """
+    from echo_personal_tool.infrastructure.dicom_reader import _DecodedPixelCache
+
+    cache = _DecodedPixelCache(max_bytes=8)
+    resident = tmp_path / "resident.dcm"
+    resident.touch()
+    cache.put(resident, 0, np.zeros(2, dtype=np.uint16))
+    assert cache.bytes_used() == 4
+
+    oversized = tmp_path / "oversized.dcm"
+    oversized.touch()
+    cache.put(oversized, 0, np.zeros((4, 4), dtype=np.uint16))
+    assert cache.bytes_used() == 4
+    assert cache.entry_count() == 1
+    assert cache.get(resident, 0) is not None
+    assert cache.get(oversized, 0) is None
+
+
+def test_clear_resets_the_byte_counter(tmp_path: Path) -> None:
+    """#545: clear() must leave a zero counter, not the last entry's nbytes."""
+    from echo_personal_tool.infrastructure.dicom_reader import _DecodedPixelCache
+
+    cache = _DecodedPixelCache()
+    path = tmp_path / "counter.dcm"
+    path.touch()
+    cache.put(path, 0, np.zeros(4, dtype=np.uint16))
+    assert cache.bytes_used() == 8
+
+    cache.clear()
+    assert cache.bytes_used() == 0
+    assert cache.entry_count() == 0
+
+
+def test_entry_cap_bounds_tiny_frames(tmp_path: Path) -> None:
+    """The declared entry cap is enforced, not just the byte cap."""
+    from echo_personal_tool.infrastructure.dicom_reader import _DecodedPixelCache
+
+    cache = _DecodedPixelCache(max_bytes=1_000_000, max_entries=2)
+    for index in range(3):
+        path = tmp_path / f"{index}.dcm"
+        path.touch()
+        cache.put(path, 0, np.zeros(4, dtype=np.uint16))
+    assert cache.entry_count() == 2
+    assert cache.bytes_used() == 16

@@ -72,12 +72,17 @@ class DcmRangeExportWorker(QRunnable):
             total = session.frame_count
             start = max(0, min(start, total - 1))
             end = max(start, min(end, total - 1))
-            frames = session.decode_all_frames()
+            # Export only the requested range: a selected range must not require
+            # the whole study to be resident first (#545).
+            decoded = session.decode_frames(range(start, end + 1))
         finally:
             session.release_heavy()
 
-        selected = frames[start : end + 1]
-        count = int(selected.shape[0])
+        count = end - start + 1
+        first = decoded[start]
+        selected = np.empty((count,) + first.shape, dtype=first.dtype)
+        for offset, index in enumerate(range(start, end + 1)):
+            selected[offset] = decoded[index]
         for i in range(count):
             if i % 5 == 0 or i == count - 1:
                 self.signals.progress.emit(i + 1, count)

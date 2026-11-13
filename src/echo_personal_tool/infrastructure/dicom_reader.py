@@ -25,8 +25,9 @@ class _DecodedPixelCache:
     put() copies into an immutable bytes backing to survive release_heavy() and
     prevent callers from re-enabling ndarray writeability. Copy to edit pixels."""
 
-    def __init__(self, max_bytes: int = _CACHE_MAX_BYTES) -> None:
+    def __init__(self, max_bytes: int = _CACHE_MAX_BYTES, max_entries: int = _CACHE_MAX_ENTRIES) -> None:
         self._max_bytes = max_bytes
+        self._max_entries = max(1, int(max_entries))
         self._cache: OrderedDict[tuple[FileIdentity, int], np.ndarray] = OrderedDict()
         self._current_bytes = 0
         self._lock = Lock()
@@ -69,7 +70,14 @@ class _DecodedPixelCache:
 
             owned = np.frombuffer(pixels.tobytes(order="C"), dtype=pixels.dtype).reshape(pixels.shape)
             entry_bytes = owned.nbytes
-            while self._current_bytes + entry_bytes > self._max_bytes and self._cache:
+            if entry_bytes > self._max_bytes:
+                # One frame that cannot fit must not evict the whole cache and
+                # still be admitted: the old loop emptied the cache and then
+                # exceeded the byte limit by the size of the oversized entry.
+                return
+            while (
+                self._current_bytes + entry_bytes > self._max_bytes or len(self._cache) >= self._max_entries
+            ) and self._cache:
                 _, evicted = self._cache.popitem(last=False)
                 self._current_bytes -= evicted.nbytes
             self._cache[key] = owned
@@ -79,6 +87,15 @@ class _DecodedPixelCache:
         with self._lock:
             self._cache.clear()
             self._current_bytes = 0
+
+    def bytes_used(self) -> int:
+        """Bytes held by cached immutable frames (for budget diagnostics)."""
+        with self._lock:
+            return self._current_bytes
+
+    def entry_count(self) -> int:
+        with self._lock:
+            return len(self._cache)
 
 
 _pixel_cache = _DecodedPixelCache()

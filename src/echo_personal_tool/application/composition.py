@@ -408,6 +408,7 @@ def build_app_services(
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
         max_cache_bytes=cache_budget.max_cache_bytes,
+        max_full_cine_bytes=cache_budget.ram_cap_bytes,
     )
 
     if segmenter is not None:
@@ -476,6 +477,7 @@ def in_memory_app_services(
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
         max_cache_bytes=cache_budget.max_cache_bytes,
+        max_full_cine_bytes=cache_budget.ram_cap_bytes,
     )
     resolved_segmenter: IOnnxSegmenter = segmenter if segmenter is not None else DisabledOnnxSegmenter()
     io_facades = _build_io_facades(

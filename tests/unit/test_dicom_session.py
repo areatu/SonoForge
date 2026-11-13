@@ -474,3 +474,29 @@ def test_dicom_session_annotations_reads_graphic_annotations(tmp_path: Path) -> 
         assert contours[0].measurement_label == "LV Contour"
     finally:
         session.release()
+
+
+def test_decode_frames_decodes_only_requested_frames(tmp_path: Path) -> None:
+    """#545: selected cycles must not allocate the whole cine."""
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=12, rows=16, cols=16)
+    session = DicomSession()
+    session.open(path)
+
+    decoded = session.decode_frames([2, 9])
+
+    assert set(decoded) == {2, 9}
+    assert decoded[2][0, 0] == 2
+    assert decoded[9][0, 0] == 9
+    assert session._frames is None  # no full-cine staging buffer
+    session.release()
+
+
+def test_decode_frames_rejects_out_of_range_without_decoding(tmp_path: Path) -> None:
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=3, rows=8, cols=8)
+    session = DicomSession()
+    session.open(path)
+    with pytest.raises(IndexError):
+        session.decode_frames([0, 3])
+    session.release()
