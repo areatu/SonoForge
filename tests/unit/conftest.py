@@ -32,7 +32,20 @@ import pytest
 # ── Offscreen rendering for headless CI ───────────────────────────
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-pytestmark = pytest.mark.gui
+
+@pytest.fixture(autouse=True)
+def _unit_qt_environment(request):
+    """Keep GUI hygiene unchanged, but never activate it in the pure-core lane."""
+    if request.config.getoption("--pure-core"):
+        return
+    for name in (
+        "_drain_global_thread_pool",
+        "_isolate_user_settings",
+        "_gc_per_test",
+        "_restore_canonical_app_sheet",
+        "_stub_web_engine",
+    ):
+        request.getfixturevalue(name)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -62,7 +75,7 @@ def qapp(qapp_session):
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _drain_global_thread_pool():
     """Drain the global QThreadPool after every test.
 
@@ -99,7 +112,7 @@ def _isolate_measurement_store(request, tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "measurements_dir", lambda: tmp_path / "measurements")
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _isolate_user_settings(request):
     """Run every unit test against a throwaway QSettings store.
 
@@ -117,7 +130,7 @@ def _isolate_user_settings(request):
     yield store
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _gc_per_test():
     """Freeze GC during each test; collect only between tests.
 
@@ -135,7 +148,7 @@ def _gc_per_test():
 _CANONICAL_APP_SHEET: str | None = None
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _restore_canonical_app_sheet(_gc_per_test):
     """Undo global theme changes a test leaves behind.
 
@@ -168,7 +181,7 @@ def _restore_canonical_app_sheet(_gc_per_test):
 # ═══════════════════════════════════════════════════════════════════
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _stub_web_engine(request, monkeypatch):
     """Keep unit tests from spinning up a real QtWebEngine view.
 
