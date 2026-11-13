@@ -122,6 +122,10 @@ _JPEG2000_SYNTAXES = frozenset(
 _MAX_DECODE_WORKERS = 4
 
 
+class DicomDecodeCancelled(RuntimeError):
+    """The caller withdrew the decode before it published a result."""
+
+
 class DicomFrameDecodeError(RuntimeError):
     """A frame failed during bulk decode; no partial cine was published (#550).
 
@@ -909,14 +913,23 @@ class DicomSession:
         return {index: self._decode_single_frame(index) for index in selected}
 
     @_synchronized
-    def decode_all_frames(self) -> np.ndarray:
-        """Decode all frames, returning the full (N,H,W) or (N,H,W,C) array."""
+    def decode_all_frames(self, cancel_check: Callable[[], bool] | None = None) -> np.ndarray:
+        """Decode all frames, returning the full (N,H,W) or (N,H,W,C) array.
+
+        ``cancel_check`` is polled before the staging allocation and between completed
+        frames; a withdrawn request raises :class:`DicomDecodeCancelled` instead of
+        publishing a full-length array nobody will consume.
+        """
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
         if self._frames is not None and self._frames.shape[0] == self._frame_count:
             return self._frames
+        if cancel_check is not None and cancel_check():
+            raise DicomDecodeCancelled("decode cancelled before pixel data")
 
         self._ensure_pixel_data()
+        if cancel_check is not None and cancel_check():
+            raise DicomDecodeCancelled("decode cancelled before pixel data")
 
         # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy),
         # only for the metadata combinations _uncompressed_layout() proves safe.
@@ -949,6 +962,8 @@ class DicomSession:
         except _DECODE_FAILURES as exc:
             raise DicomFrameDecodeError(0, exc) from exc
 
+        if cancel_check is not None and cancel_check():
+            raise DicomDecodeCancelled("decode cancelled before staging allocation")
         staging = np.empty((self._frame_count,) + first_frame.shape, dtype=first_frame.dtype)
         staging[0] = first_frame
 
@@ -965,6 +980,8 @@ class DicomSession:
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {pool.submit(self._decode_single_frame, i): i for i in remaining}
                 for future in as_completed(futures):
+                    if cancel_check is not None and cancel_check():
+                        raise DicomDecodeCancelled("decode cancelled between frames")
                     idx = futures[future]
                     try:
                         staging[idx] = future.result()
@@ -972,6 +989,8 @@ class DicomSession:
                         raise
                     except _DECODE_FAILURES as exc:
                         raise DicomFrameDecodeError(idx, exc) from exc
+            if cancel_check is not None and cancel_check():
+                raise DicomDecodeCancelled("decode cancelled before publication")
             staging.flags.writeable = False
             self._frames = staging
             published = True

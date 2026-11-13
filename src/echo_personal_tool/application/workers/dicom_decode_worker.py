@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.dicom_frame_geometry import DicomFrameGeometryError
-from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+from echo_personal_tool.infrastructure.dicom_session import DicomDecodeCancelled, get_thread_dicom_session
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class DicomDecodeSignals(QObject):
     first_frame_ready = Signal(int, object, object)  # request_id, path, first_frame
     progress = Signal(int, int)  # current, total
     finished = Signal(int, object, object)  # request_id, path, all_frames
+    cancelled = Signal(int)
     failed = Signal(int, str)
 
 
@@ -50,15 +52,32 @@ class DicomDecodeWorker(QRunnable):
         self._path = Path(path)
         self._request_id = request_id
         self._first_frame_only = first_frame_only
+        self._cancel_event = threading.Event()
         self.signals = DicomDecodeSignals()
         self.setAutoDelete(True)
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def cancel(self) -> None:
+        """Withdraw this request; the session stops between frames and never publishes."""
+        self._cancel_event.set()
 
     @Slot()
     def run(self) -> None:
         t0 = time.perf_counter()
+        session = None
         try:
+            if self.cancelled:
+                self.signals.cancelled.emit(self._request_id)
+                return
             session = get_thread_dicom_session(self._path)
             session.open(self._path)
+            if self.cancelled:
+                session.release_heavy()
+                self.signals.cancelled.emit(self._request_id)
+                return
 
             t_meta = time.perf_counter()
             logger.debug("DICOM metadata parsed in %.1f ms", (t_meta - t0) * 1000)
@@ -66,6 +85,10 @@ class DicomDecodeWorker(QRunnable):
             first_frame = session.decode_first_frame()
             t_first = time.perf_counter()
             logger.debug("First frame decoded in %.1f ms", (t_first - t_meta) * 1000)
+            if self.cancelled:
+                session.release_heavy()
+                self.signals.cancelled.emit(self._request_id)
+                return
 
             self.signals.first_frame_ready.emit(
                 self._request_id,
@@ -78,8 +101,11 @@ class DicomDecodeWorker(QRunnable):
                 self.signals.progress.emit(total, total)
                 return
 
-            frames = session.decode_all_frames()
+            frames = session.decode_all_frames(cancel_check=lambda: self.cancelled)
             session.release_heavy()
+            if self.cancelled:
+                self.signals.cancelled.emit(self._request_id)
+                return
             t_all = time.perf_counter()
             logger.debug(
                 "All %d frames decoded in %.1f ms",
@@ -93,6 +119,10 @@ class DicomDecodeWorker(QRunnable):
                 self._path,
                 frames,
             )
+        except DicomDecodeCancelled:
+            if session is not None:
+                session.release_heavy()
+            self.signals.cancelled.emit(self._request_id)
         except DicomFrameGeometryError as exc:
             log_boundary_failure(logger, "dicom.decode", exc, code=exc.code)
             self.signals.failed.emit(self._request_id, frame_geometry_failure_message(exc))

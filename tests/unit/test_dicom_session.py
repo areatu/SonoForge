@@ -500,3 +500,37 @@ def test_decode_frames_rejects_out_of_range_without_decoding(tmp_path: Path) -> 
     with pytest.raises(IndexError):
         session.decode_frames([0, 3])
     session.release()
+
+
+def test_decode_all_frames_honours_cancellation_before_staging(tmp_path: Path) -> None:
+    """#553: a withdrawn full decode must not allocate/publish the staging array."""
+    from echo_personal_tool.infrastructure.dicom_session import DicomDecodeCancelled
+
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=16, cols=16)
+    session = DicomSession()
+    session.open(path)
+    checks = 0
+
+    def cancel_after_first_check() -> bool:
+        nonlocal checks
+        checks += 1
+        return checks > 1
+
+    with pytest.raises(DicomDecodeCancelled):
+        session.decode_all_frames(cancel_check=cancel_after_first_check)
+    assert session._frames is None
+    session.release()
+
+
+def test_decode_all_frames_honours_cancellation_before_start(tmp_path: Path) -> None:
+    from echo_personal_tool.infrastructure.dicom_session import DicomDecodeCancelled
+
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=3, rows=8, cols=8)
+    session = DicomSession()
+    session.open(path)
+    with pytest.raises(DicomDecodeCancelled):
+        session.decode_all_frames(cancel_check=lambda: True)
+    assert session._frames is None
+    session.release()
