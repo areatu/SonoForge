@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import bisect
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,17 @@ _FORWARD_ARC_FRACTION = 0.75
 # still pays off (measured: 44 frames retained on a 720p RGB cine versus 35 at 3/4, and
 # 423 decoded frames for 368 displayed versus 577).
 _EMERGENCY_TRIM_FRACTION = 0.5
+
+
+@dataclass(frozen=True)
+class FrameProjection:
+    """Loaded frames in source-index order, not necessarily a continuous cine.
+
+    No timing is inferred: consumers must map frame_indices to source timestamps.
+    """
+
+    frame_indices: tuple[int, ...]
+    frames: np.ndarray
 
 
 class FrameCache:
@@ -57,17 +69,33 @@ class FrameCache:
         self._cached_frames: np.ndarray | None = None
         self._memory_bytes: int = 0
 
+    def _has_full_cine(self) -> bool:
+        return (
+            self._total_frames > 0
+            and len(self._frame_store) == self._total_frames
+            and all(0 <= index < self._total_frames for index in self._frame_store)
+        )
+
     @property
-    def frames(self) -> np.ndarray | None:
-        if self._cached_frames is not None:
-            return self._cached_frames
+    def sparse_projection(self) -> FrameProjection | None:
+        """Return loaded pixels with their original indices; never cache a partial stack."""
         if not self._frame_store:
             return None
-        if len(self._frame_store) == self._total_frames:
-            self._cached_frames = self._stack_full_cine()
-        else:
-            self._cached_frames = np.stack([self._frame_store[i] for i in self._sorted_keys])
-        return self._cached_frames
+        indices = tuple(self._sorted_keys)
+        pixels = (
+            self.require_full_cine() if self._has_full_cine() else np.stack([self._frame_store[i] for i in indices])
+        )
+        return FrameProjection(indices, pixels)
+
+    @property
+    def frames(self) -> np.ndarray | None:
+        """Legacy loaded-frame projection. Use require_full_cine for temporal analysis.
+
+        Partial results are not memoized as a full cine. New sparse consumers should
+        use sparse_projection to retain the source-index mapping.
+        """
+        projection = self.sparse_projection
+        return None if projection is None else projection.frames
 
     def _stack_full_cine(self) -> np.ndarray:
         """Stack every frame and rebind the store to views into that stack.
@@ -115,7 +143,12 @@ class FrameCache:
         return frame
 
     def set_total_frames(self, path: Path, total: int) -> None:
-        self.source_path = Path(path).resolve()
+        if total < 0:
+            raise ValueError("total frames must not be negative")
+        resolved = Path(path).resolve()
+        if resolved != self.source_path or total != self._total_frames:
+            self.clear()
+        self.source_path = resolved
         self._total_frames = total
 
     def put(self, index: int, frame: np.ndarray) -> None:
@@ -302,16 +335,15 @@ class FrameCache:
         self._evict()
 
     def require_full_cine(self) -> np.ndarray:
-        if self._cached_frames is not None:
-            return self._cached_frames
         if not self._frame_store or self._total_frames == 0:
             raise IncompleteCineError("Frame cache is empty")
-        if len(self._frame_store) != self._total_frames:
+        if not self._has_full_cine():
             raise IncompleteCineError(
                 f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
                 "Reload full cine before speckle tracking."
             )
-        self._cached_frames = self._stack_full_cine()
+        if self._cached_frames is None:
+            self._cached_frames = self._stack_full_cine()
         return self._cached_frames
 
     def load_all_frames(self) -> np.ndarray:
@@ -323,12 +355,9 @@ class FrameCache:
         if self._total_frames == 0:
             raise IncompleteCineError("No frames available")
 
-        # Already fully loaded
-        if self._cached_frames is not None and len(self._frame_store) == self._total_frames:
-            return self._cached_frames
-        if len(self._frame_store) == self._total_frames:
-            self._cached_frames = self._stack_full_cine()
-            return self._cached_frames
+        # Check completeness before consulting any memoized full stack.
+        if self._has_full_cine():
+            return self.require_full_cine()
 
         # Need to load missing frames from source
         if self.source_path is None:
