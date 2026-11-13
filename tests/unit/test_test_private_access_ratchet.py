@@ -445,6 +445,32 @@ class TestGroups:
         with pytest.raises(ValueError):
             check_test_private_access.load_baseline(path)
 
+    def test_a_viewer_reference_in_a_caliper_test_fails_the_ratchet(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A contour/caliper file has no ``viewer`` in its name, but it builds the same widget."""
+
+        contour = "tests/unit/test_caliper_zoom.py"
+        _write(
+            tmp_path,
+            {
+                VIEWER: "def test_v(w): assert w.zoom\n",
+                contour: "def test_a(make_viewer):\n    viewer = make_viewer()\n    assert viewer._x\n",
+            },
+        )
+        assert _run(tmp_path, "--fix") == 0
+        (tmp_path / contour).write_text(
+            "def test_a(make_viewer):\n    viewer = make_viewer()\n    assert viewer._x and viewer._y\n",
+            encoding="utf-8",
+        )
+        capsys.readouterr()
+
+        assert _run(tmp_path) == 1
+        error = capsys.readouterr().err
+        assert "private state of ViewerWidget 2 times" in error
+        assert f"{contour}: 2 ViewerWidget references" in error
+        assert _run(tmp_path, "--fix") == 1
+
     def test_the_committed_viewer_group_covers_tests_outside_the_viewer_scope(self) -> None:
         """#327's main scope only sees ``test_*viewer*.py``; contour and zoom tests live elsewhere."""
 
