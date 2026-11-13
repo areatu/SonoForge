@@ -84,10 +84,13 @@ def _drain_global_thread_pool():
     next test's Qt event loop (or interpreter shutdown) and SIGSEGV.
     waitForDone() on an idle pool returns immediately.
     """
-    yield
     from PySide6.QtCore import QThreadPool
 
-    QThreadPool.globalInstance().waitForDone(5000)
+    # Capture before the test can monkeypatch globalInstance(). The dispatcher
+    # activates us after monkeypatch's setup, so its undo may now run after us.
+    pool = QThreadPool.globalInstance()
+    yield
+    pool.waitForDone(5000)
 
 
 @pytest.fixture(autouse=True)
