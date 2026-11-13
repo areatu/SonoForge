@@ -142,3 +142,43 @@ class TestDicomDecodeWorkerRun:
         assert len(failed) == 1
         assert failed == ["DICOM decode failed"]
         assert "corrupt data" not in failed[0]
+
+
+class TestDicomDecodeCancellation:
+    def test_cancel_before_run_emits_cancelled_without_opening(self, qapp):
+        worker = DicomDecodeWorker(Path("/tmp/src.dcm"), request_id=50)
+        cancelled = []
+        opened = []
+        worker.signals.cancelled.connect(cancelled.append)
+
+        with patch(
+            "echo_personal_tool.application.workers.dicom_decode_worker.get_thread_dicom_session"
+        ) as get_session:
+            worker.cancel()
+            worker.run()
+
+        assert cancelled == [50]
+        get_session.assert_not_called()
+        assert opened == []
+
+    @patch("echo_personal_tool.application.workers.dicom_decode_worker.get_thread_dicom_session")
+    def test_session_cancellation_does_not_publish_frames(self, mock_get_session):
+        from echo_personal_tool.infrastructure.dicom_session import DicomDecodeCancelled
+
+        session = MagicMock()
+        session.decode_first_frame.return_value = np.zeros((8, 8), dtype=np.uint8)
+        session.decode_all_frames.side_effect = DicomDecodeCancelled("withdrawn")
+        session.frame_count = 4
+        mock_get_session.return_value = session
+
+        worker = DicomDecodeWorker(Path("/tmp/src.dcm"), request_id=60)
+        cancelled = []
+        finished = []
+        worker.signals.cancelled.connect(cancelled.append)
+        worker.signals.finished.connect(lambda *args: finished.append(args))
+
+        worker.run()
+
+        assert cancelled == [60]
+        assert finished == []
+        session.release_heavy.assert_called_once()

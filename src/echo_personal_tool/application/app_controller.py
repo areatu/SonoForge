@@ -28,7 +28,7 @@ from echo_personal_tool.application.composition import (
     in_memory_app_services,
     services_of,
 )
-from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
+from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
@@ -226,16 +226,13 @@ class AppController(QObject):
         resolved_services = services if services is not None else in_memory_app_services(segmenter=segmenter)
         bind_controller_services(self, resolved_services)
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
-        # One decoding worker per file + priority ordering of the parked requests
-        # (see decode_gate.DecodeGate): the shared per-file session/reader serialises
-        # concurrent decodes anyway, so parallel workers only burned pool threads and
-        # let a prefetch batch delay the frame the user scrolled to.
+        # One decoding worker per file + priority ordering of parked requests
+        # (decode_gate.DecodeGate): shared per-file sessions serialise concurrent decodes
+        # anyway, so parallel workers only burned pool threads and delayed scroll targets.
         self._decode_gate = DecodeGate()
         self._state_manager = resolved_services.state_manager
         self._measurement_session = resolved_services.measurement_store
-        # Analysed STE views per study (``study_uid -> StrainStudy``). Kept in
-        # the controller so the protocol row and the strain window are derived
-        # from one accumulation instead of two.
+        # Analysed STE views per study (``study_uid -> StrainStudy``), one accumulation.
         self._strain_studies: dict[str, StrainStudy] = {}
         # Manual calculator inputs and the cine HR estimate per study.
         self._calculator_inputs = resolved_services.calculator_inputs
@@ -362,8 +359,7 @@ class AppController(QObject):
 
     def _retain_worker(self, worker: object) -> None:
         """Prevent GC of a QRunnable until its QueuedConnection signals are delivered."""
-        # Safety: if too many workers are retained, force-release the oldest
-        # to prevent unbounded memory growth (each holds decoded numpy arrays).
+        # Cap retained workers: each can hold decoded numpy arrays until its signals drain.
         if len(self._live_workers) > 8:
             leaked = list(self._live_workers)[: len(self._live_workers) - 4]
             if _FREEZE_DIAG:
@@ -391,8 +387,8 @@ class AppController(QObject):
         """
         worker.decode_gate = self._decode_gate
         worker.priority = priority
-        # A request superseded while parked never emits finished/failed, so release the
-        # retained worker here to keep _live_workers from growing while scrubbing.
+        worker.estimated_frame_bytes = int(self._frame_cache.average_frame_bytes())
+        # A superseded parked request never emits finished/failed: release it here.
         worker.signals.cancelled.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
@@ -2491,7 +2487,7 @@ class AppController(QObject):
             return
         if scroll and not self._state_manager.snapshot.is_playing:
             self._mark_scroll_active()
-            self._invalidate_prefetch()
+        self._invalidate_prefetch()
         self._scroll_neighbor_load_id = 0
         self._batch_target_frame = target
         if _FREEZE_DIAG:
@@ -2637,6 +2633,9 @@ class AppController(QObject):
         self._prefetch_request_id += 1
         self._prefetch_load_id = 0
         self._prefetch_load_count = 0
+        for worker in tuple(self._live_workers):
+            if isinstance(worker, FrameLoaderWorker) and worker.priority >= DecodePriority.NEIGHBORS:
+                cancel_request(worker)
         # Whatever the timer was waiting for is stale now; the next tick re-arms it.
         self._playback_poll_pending = False
         if self._prefetch_request_id > 1:

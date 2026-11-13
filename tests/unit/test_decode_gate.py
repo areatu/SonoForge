@@ -442,3 +442,271 @@ class TestControllerWiring:
         assert len(started) == 1
         assert started[0].priority == DecodePriority.INTERACTIVE
         assert started[0].decode_gate is controller._decode_gate
+
+
+class _RangedWorker(_FakeWorker):
+    """Speculative worker with a source range and a byte estimate."""
+
+    def __init__(
+        self,
+        path: Path,
+        priority: DecodePriority = DecodePriority.PLAYBACK,
+        *,
+        start: int = 0,
+        frames: int = 1,
+        frame_bytes: int = 1000,
+    ) -> None:
+        super().__init__(path, priority)
+        self.requested_frames = frames
+        self.frame_range = (start, start + frames)
+        self.estimated_frame_bytes = frame_bytes
+        self.cancelled = False
+
+    def cancel_parked(self) -> None:
+        self.cancelled = True
+
+
+class TestBoundedSpeculativeQueue:
+    def test_per_file_request_bound_drops_the_oldest_speculative(self, tmp_path) -> None:
+        gate = DecodeGate(max_parked_requests_per_file=2)
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        first = _RangedWorker(path, start=0, frames=4)
+        second = _RangedWorker(path, start=10, frames=4)
+        third = _RangedWorker(path, start=20, frames=4)
+
+        for worker in (first, second, third):
+            gate.enter(worker)
+
+        assert gate.parked_count(path) == 2
+        assert first.cancelled is True
+        assert second.cancelled is False
+        assert third.cancelled is False
+        assert gate.stats().dropped_requests == 1
+
+    def test_per_file_frame_bound_counts_requested_frames(self, tmp_path) -> None:
+        gate = DecodeGate(max_parked_requests_per_file=10, max_parked_frames_per_file=8)
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        for start in (0, 10, 20):
+            gate.enter(_RangedWorker(path, start=start, frames=4))
+
+        assert gate.stats().parked_frames <= 8
+        assert gate.parked_count(path) == 2
+
+    def test_global_bound_is_shared_between_files(self, tmp_path) -> None:
+        gate = DecodeGate(max_parked_requests=1)
+        file_a = tmp_path / "a.dcm"
+        file_b = tmp_path / "b.dcm"
+        gate.enter(_FakeWorker(file_a))
+        gate.enter(_FakeWorker(file_b))
+        first = _RangedWorker(file_a, start=0)
+        second = _RangedWorker(file_b, start=0)
+
+        gate.enter(first)
+        gate.enter(second)
+
+        assert first.cancelled is True  # oldest speculative across files
+        assert second.cancelled is False
+        assert gate.stats().parked_requests == 1
+
+    def test_interactive_target_is_never_dropped_by_the_bound(self, tmp_path) -> None:
+        gate = DecodeGate(max_parked_requests_per_file=1)
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        prefetch = _RangedWorker(path, DecodePriority.PLAYBACK)
+        target = _RangedWorker(path, DecodePriority.INTERACTIVE, start=5)
+
+        gate.enter(prefetch)
+        gate.enter(target)
+
+        assert prefetch.cancelled is True
+        assert target.cancelled is False
+        assert gate.parked_count(path) == 1
+        assert gate.next_parked(gate._owner[gate_key(path)]) is target
+
+    def test_pending_bytes_are_reported_from_frame_size_estimates(self, tmp_path) -> None:
+        gate = DecodeGate()
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        worker = _RangedWorker(path, start=0, frames=4, frame_bytes=2048)
+
+        gate.enter(worker)
+
+        stats = gate.stats()
+        assert stats.parked_requests == 1
+        assert stats.parked_frames == 4
+        assert stats.pending_bytes == 8192
+
+
+class TestRangeDeduplication:
+    def test_new_range_that_covers_the_old_one_supersedes_it(self, tmp_path) -> None:
+        gate = DecodeGate()
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        narrow = _RangedWorker(path, start=2, frames=4)
+        wide = _RangedWorker(path, start=0, frames=10)
+
+        gate.enter(narrow)
+        gate.enter(wide)
+
+        assert narrow.cancelled is True
+        assert wide.cancelled is False
+        assert gate.parked_count(path) == 1
+
+    def test_duplicate_range_keeps_the_new_request_and_drops_the_old_one(self, tmp_path) -> None:
+        gate = DecodeGate()
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        first = _RangedWorker(path, start=0, frames=10)
+        duplicate = _RangedWorker(path, start=2, frames=4)
+
+        gate.enter(first)
+        gate.enter(duplicate)
+
+        assert duplicate.cancelled is False
+        assert first.cancelled is True
+        assert gate.parked_count(path) == 1
+
+    def test_partial_overlap_is_kept_because_both_ranges_cover_new_frames(self, tmp_path) -> None:
+        gate = DecodeGate()
+        path = tmp_path / "c.dcm"
+        gate.enter(_FakeWorker(path))
+        first = _RangedWorker(path, start=0, frames=8)
+        second = _RangedWorker(path, start=6, frames=8)
+
+        gate.enter(first)
+        gate.enter(second)
+
+        assert first.cancelled is False
+        assert second.cancelled is False
+        assert gate.parked_count(path) == 2
+
+
+class TestCancellation:
+    def test_cancel_removes_a_parked_request_from_the_gate(self, tmp_path) -> None:
+        gate = DecodeGate()
+        path = tmp_path / "c.dcm"
+        owner = _FakeWorker(path)
+        parked = _FakeWorker(path)
+        gate.enter(owner)
+        gate.enter(parked)
+
+        assert gate.discard(parked) is True
+        assert gate.parked_count(path) == 0
+        assert gate.next_parked(owner) is None
+
+    def test_cancel_before_run_emits_cancelled_and_decodes_nothing(self, qapp, png) -> None:
+        worker = FrameLoaderWorker(png, media_format="png")
+        decoded: list[np.ndarray] = []
+        cancelled: list[bool] = []
+        worker.signals.finished.connect(decoded.append, Qt.ConnectionType.DirectConnection)
+        worker.signals.cancelled.connect(lambda: cancelled.append(True), Qt.ConnectionType.DirectConnection)
+
+        worker.cancel()
+        worker.run()
+
+        assert decoded == []
+        assert cancelled == [True]
+
+    def test_cancel_between_batch_frames_drops_partial_results(self, qapp, tmp_path, monkeypatch) -> None:
+        from echo_personal_tool.application.workers import frame_loader_worker as module
+
+        calls: list[int] = []
+        worker = FrameLoaderWorker(
+            tmp_path / "c.dcm",
+            frame_index=0,
+            media_format="dicom",
+            total_frames=4,
+            batch_size=4,
+        )
+
+        class _Session:
+            frame_count = 4
+
+            def open(self, path):
+                pass
+
+            def decode_single_frame(self, index):
+                calls.append(index)
+                if index == 1:
+                    worker.cancel()
+                return np.zeros((4, 4), dtype=np.uint8)
+
+        monkeypatch.setattr(module, "get_thread_dicom_session", lambda path: _Session())
+        finished: list[list] = []
+        cancelled: list[bool] = []
+        worker.signals.batch_finished.connect(finished.append, Qt.ConnectionType.DirectConnection)
+        worker.signals.cancelled.connect(lambda: cancelled.append(True), Qt.ConnectionType.DirectConnection)
+
+        worker.run()
+
+        assert calls == [0, 1]
+        assert finished == []
+        assert cancelled == [True]
+
+    def test_cancel_after_single_decode_suppresses_publication(self, qapp, tmp_path, monkeypatch) -> None:
+        from echo_personal_tool.application.workers import frame_loader_worker as module
+
+        worker = FrameLoaderWorker(tmp_path / "c.dcm", frame_index=0, media_format="dicom")
+
+        class _Session:
+            def open(self, path):
+                pass
+
+            def decode_single_frame(self, index):
+                worker.cancel()
+                return np.zeros((4, 4), dtype=np.uint8)
+
+        monkeypatch.setattr(module, "get_thread_dicom_session", lambda path: _Session())
+        finished: list[np.ndarray] = []
+        worker.signals.finished.connect(finished.append, Qt.ConnectionType.DirectConnection)
+
+        worker.run()
+
+        assert finished == []
+
+
+def gate_key(path: Path) -> str:
+    from echo_personal_tool.application.decode_gate import decode_gate_key
+
+    return decode_gate_key(path)
+
+
+def test_cancel_request_tolerates_workers_without_the_hook() -> None:
+    from echo_personal_tool.application.decode_gate import cancel_request
+
+    class _WithHook:
+        cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    class _WithoutHook:
+        pass
+
+    worker = _WithHook()
+    cancel_request(worker)
+    cancel_request(_WithoutHook())
+
+    assert worker.cancelled is True
+
+
+def test_cancel_removes_a_real_parked_worker_from_the_gate(qapp, png) -> None:
+    gate = DecodeGate()
+    owner = FrameLoaderWorker(png, media_format="png")
+    parked = FrameLoaderWorker(png, media_format="png")
+    for worker in (owner, parked):
+        worker.decode_gate = gate
+    cancelled: list[bool] = []
+    parked.signals.cancelled.connect(lambda: cancelled.append(True), Qt.ConnectionType.DirectConnection)
+
+    assert gate.enter(owner) is True
+    parked.run()
+    assert gate.parked_count(png) == 1
+
+    parked.cancel()
+
+    assert cancelled == [True]
+    assert gate.parked_count(png) == 0
+    assert gate.next_parked(owner) is None

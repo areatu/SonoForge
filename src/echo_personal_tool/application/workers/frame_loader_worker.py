@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -92,22 +93,72 @@ class FrameLoaderWorker(QRunnable):
         # immediately, which keeps standalone construction (tests, one-off scripts) working.
         self.decode_gate: DecodeGate | None = None
         self.priority: DecodePriority = DecodePriority.PLAYBACK
+        # Filled by AppController._start_frame_loader from FrameCache's observed frame
+        # size, so the gate can bound parked *bytes*, not only request counts.
+        self.estimated_frame_bytes: int = 0
+        self._cancel_event = threading.Event()
+        self._cancel_lock = threading.Lock()
+        self._cancelled_emitted = False
 
     @property
     def decode_path(self) -> Path:
         """File this worker decodes - the gate's single-flight key."""
         return self._path
 
-    def cancel_parked(self) -> None:
-        """Report that this request was superseded before it ever decoded."""
+    @property
+    def requested_frames(self) -> int:
+        """Frames this request will decode (used by the gate's frame bound)."""
+        if self._batch_size > 0 and self._media_format in ("dicom", "mp4"):
+            return max(1, self._batch_size)
+        return 1
+
+    @property
+    def frame_range(self) -> tuple[int, int] | None:
+        """Half-open source-frame range, or None when it is not meaningful."""
+        if self._batch_size > 0 and self._media_format in ("dicom", "mp4"):
+            return (self._frame_index, self._frame_index + max(1, self._batch_size))
+        if self._frame_index >= 0:
+            return (self._frame_index, self._frame_index + 1)
+        return None
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
+    def _emit_cancelled(self) -> None:
+        with self._cancel_lock:
+            if self._cancelled_emitted:
+                return
+            self._cancelled_emitted = True
         try:
             self.signals.cancelled.emit()
         except RuntimeError:
             # Receiver already deleted - nothing to release.
             pass
 
+    def cancel_parked(self) -> None:
+        """Report that this request was superseded before it ever decoded."""
+        self._cancel_event.set()
+        self._emit_cancelled()
+
+    def cancel(self) -> None:
+        """Stop this request between frames and before it publishes pixels.
+
+        Idempotent and safe from the GUI thread while the worker decodes on a pool
+        thread: the in-flight frame completes, then ``_run_batch`` drops its partial
+        results instead of emitting a stale ``batch_finished``.
+        """
+        self._cancel_event.set()
+        gate = self.decode_gate
+        if gate is not None:
+            gate.discard(self)
+        self._emit_cancelled()
+
     @Slot()
     def run(self) -> None:
+        if self.cancelled:
+            self._emit_cancelled()
+            return
         gate = self.decode_gate if self._media_format in GATED_MEDIA_FORMATS else None
         if gate is None:
             self._decode_request()
@@ -120,6 +171,8 @@ class FrameLoaderWorker(QRunnable):
         try:
             while True:
                 current._decode_request()
+                if current.cancelled:
+                    break
                 nxt = gate.next_parked(current)
                 if nxt is None:
                     break
@@ -130,6 +183,8 @@ class FrameLoaderWorker(QRunnable):
                 orphan._decode_request()
 
     def _decode_request(self) -> None:
+        if self.cancelled:
+            return
         _t0 = time.perf_counter() if _FREEZE_DIAG else 0
         try:
             if self._batch_size > 0 and self._media_format in ("dicom", "mp4"):
@@ -180,21 +235,31 @@ class FrameLoaderWorker(QRunnable):
             urgent._decode_request()
 
     def _run_single(self) -> None:
+        if self.cancelled:
+            return
         _t0 = time.perf_counter()
         if self._media_format == "mp4":
             reader = get_thread_video_reader(self._path)
             reader.open(self._path)
+            if self.cancelled:
+                return
             pixels = reader.read_frame(self._frame_index)
         elif self._media_format in ("jpeg", "png"):
             pixels = ImageReader().read_pixels(self._path)
         else:
             session = get_thread_dicom_session(self._path)
             session.open(self._path)
+            if self.cancelled:
+                return
             pixels = session.decode_single_frame(self._frame_index)
+            if self.cancelled:
+                return
             # No release_heavy() here: the session is shared per file and must stay warm.
             # Dropping the pixel buffers after every call made each decode re-read the whole
             # file (184-219 ms per batch at 1280x720). open() releases the buffers of the
             # *other* cached sessions when the user switches to a different file.
+        if self.cancelled:
+            return
         _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
         # ── Playback diagnostics: single decode ──
         if _playback_diag is not None:
@@ -205,6 +270,8 @@ class FrameLoaderWorker(QRunnable):
             pass
 
     def _run_batch(self) -> None:
+        if self.cancelled:
+            return
         end = min(self._frame_index + self._batch_size, self._total_frames)
         results: list[tuple[int, np.ndarray]] = []
         _batch_t0 = time.perf_counter()
@@ -212,21 +279,35 @@ class FrameLoaderWorker(QRunnable):
         if self._media_format == "mp4":
             reader = get_thread_video_reader(self._path)
             reader.open(self._path)
+            if self.cancelled:
+                return
             for i in range(self._frame_index, end):
+                if self.cancelled:
+                    return
                 pixels = reader.read_frame(i)
+                if self.cancelled:
+                    return
                 results.append((i, pixels))
                 self._drain_higher_priority()
         elif self._media_format == "dicom":
             # Sequential decode on the shared per-file session (kept warm between batches).
             session = get_thread_dicom_session(self._path)
             session.open(self._path)
+            if self.cancelled:
+                return
             actual_count = session.frame_count
             end = min(end, actual_count)
             for i in range(self._frame_index, end):
+                if self.cancelled:
+                    return
                 pixels = session.decode_single_frame(i)
+                if self.cancelled:
+                    return
                 results.append((i, pixels))
                 self._drain_higher_priority()
 
+        if self.cancelled:
+            return
         _batch_elapsed_ms = (time.perf_counter() - _batch_t0) * 1000.0
         # ── Playback diagnostics: decode batch ──
         if _playback_diag is not None:
