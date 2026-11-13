@@ -312,14 +312,8 @@ class TestStrain:
 
 
 class TestAtriaAndRightVentricle:
-    def test_la_requires_biplane_es_volumes(self) -> None:
-        la = ChamberSimpsonResult(
-            chamber="LA",
-            method="simpson_biplan",
-            a4c=LvViewMetrics(esv_ml=60),
-            a2c=LvViewMetrics(esv_ml=62),
-        )
-        snapshot = _manual_bsa_snapshot(
+    def _snapshot(self, la: ChamberSimpsonResult) -> MeasurementSnapshot:
+        return _manual_bsa_snapshot(
             la_simpson=la,
             indexed=IndexedMeasurements(
                 bsa_m2=1.8,
@@ -327,11 +321,38 @@ class TestAtriaAndRightVentricle:
                 lav_bi_index_ml_m2=35,
             ),
         )
-        assert _one(build_conclusion(snapshot, sex="M"), "la.size").text_key.endswith("la_size.mild")
-        monoplane = replace(la, method="simpson_monoplan")
-        assert "la.size" not in {
-            finding.id for finding in build_conclusion(replace(snapshot, la_simpson=monoplane), sex="M").findings
-        }
+
+    def test_legacy_biplane_label_without_confirmation_is_not_a_finding(self) -> None:
+        """Old saved documents called the mean of two monoplanes “biplane”."""
+        legacy = ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_biplan",
+            a4c=LvViewMetrics(esv_ml=60),
+            a2c=LvViewMetrics(esv_ml=62),
+        )
+        findings = build_conclusion(self._snapshot(legacy), sex="M").findings
+        assert "la.size" not in {finding.id for finding in findings}
+
+    def test_mean_of_monoplanes_is_not_a_biplane_finding(self) -> None:
+        mean = ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_mean_monoplan",
+            a4c=LvViewMetrics(esv_ml=60),
+            a2c=LvViewMetrics(esv_ml=62),
+        )
+        findings = build_conclusion(self._snapshot(mean), sex="M").findings
+        assert "la.size" not in {finding.id for finding in findings}
+
+    def test_confirmed_true_biplane_result_is_used(self) -> None:
+        verified = ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_biplan",
+            a4c=LvViewMetrics(esv_ml=60),
+            a2c=LvViewMetrics(esv_ml=62),
+            biplane_es_ml=61.0,
+            biplane_verified=True,
+        )
+        assert _one(build_conclusion(self._snapshot(verified), sex="M"), "la.size").text_key.endswith("la_size.mild")
 
     def test_ra_uses_explicit_end_systolic_volume_not_ed_fallback(self) -> None:
         ra = ChamberSimpsonResult(chamber="RA", a4c=LvViewMetrics(esv_ml=54))

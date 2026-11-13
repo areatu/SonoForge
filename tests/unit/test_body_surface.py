@@ -72,3 +72,38 @@ def test_compute_indexed_lvmi() -> None:
     indexed = compute_indexed_measurements(snapshot, height_cm=170.0, weight_kg=70.0)
     assert indexed is not None
     assert indexed.lvmi_g_m2 == pytest.approx(120.0 / indexed.bsa_m2, rel=0.01)
+
+
+def test_mean_of_two_monoplanes_is_not_indexed_as_biplane() -> None:
+    snapshot = MeasurementSnapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_mean_monoplan",
+            a4c=LvViewMetrics(esv_ml=40.0),
+            a2c=LvViewMetrics(esv_ml=50.0),
+        )
+    )
+
+    indexed = compute_indexed_measurements(snapshot, height_cm=170.0, weight_kg=70.0)
+
+    assert indexed is not None
+    assert indexed.lav_4c_index_ml_m2 == pytest.approx(40.0 / indexed.bsa_m2, rel=0.01)
+    assert indexed.lav_bi_index_ml_m2 is None
+
+
+def test_only_a_confirmed_true_biplane_volume_is_indexed() -> None:
+    snapshot = MeasurementSnapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_biplan",
+            a4c=LvViewMetrics(esv_ml=40.0),
+            a2c=LvViewMetrics(esv_ml=50.0),
+            biplane_es_ml=55.0,
+            biplane_verified=True,
+        )
+    )
+
+    indexed = compute_indexed_measurements(snapshot, height_cm=170.0, weight_kg=70.0)
+
+    assert indexed is not None
+    assert indexed.lav_bi_index_ml_m2 == pytest.approx(55.0 / indexed.bsa_m2, rel=0.01)

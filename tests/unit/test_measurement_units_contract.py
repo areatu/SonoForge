@@ -133,3 +133,17 @@ def test_uncalibrated_lv_volume_is_the_same_in_overlay_and_report() -> None:
     assert "100000 px³" in format_results_overlay(snapshot)
     report_rows = [(value.value, value.unit) for group in build_report_groups(snapshot) for value in group.values]
     assert ("100000", "px³") in report_rows
+
+
+def test_two_monoplane_volumes_do_not_become_a_biplane_status_line() -> None:
+    la = ChamberSimpsonResult(
+        chamber="LA",
+        method="simpson_mean_monoplan",
+        a4c=LvViewMetrics(esv_ml=50.0),
+        a2c=LvViewMetrics(esv_ml=56.0),
+    )
+    snapshot = MeasurementSnapshot(la_simpson=la, spacing_calibrated=True)
+    lines = chamber_volume_status_lines(snapshot, chamber="LA", view="A4C")
+    assert "LAV 4C: 50 mL" in lines
+    assert not any("Bi" in line for line in lines)
+    assert "Biplan" not in format_results_overlay(snapshot)

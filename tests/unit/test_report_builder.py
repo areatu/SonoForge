@@ -285,14 +285,20 @@ class TestBuildReportGroups:
         assert tr_row.pathological is False
 
     def test_indexed_values_use_the_indexed_norm(self) -> None:
-        snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_bi_index_ml_m2=40.0))
+        snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_4c_index_ml_m2=40.0))
         groups = build_report_groups(snapshot, sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert "LVMI" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
-        assert "иОЛП Биплан" in lavi
+        assert "иОЛП · 4-кам." in lavi
+        assert not any("Биплан" in label for label in lavi)
         flagged = {value.label for group in groups for value in group.values if value.pathological}
-        assert {"LVMI", "иОЛП Биплан"} <= flagged
+        assert {"LVMI", "иОЛП · 4-кам."} <= flagged
+
+    def test_unconfirmed_biplane_index_is_not_reported(self) -> None:
+        snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lav_bi_index_ml_m2=40.0))
+        lavi = _values(build_report_groups(snapshot, sex="M"), GROUP_LEFT_ATRIUM)
+        assert not any("Биплан" in label for label in lavi)
 
     def test_planimeter_measurements_form_their_own_group(self) -> None:
         snapshot = _snapshot(planimeter=(PlanimeterResult(label="Thrombus", kind="area", value=3.4, unit="cm²"),))
@@ -530,3 +536,38 @@ def test_named_vessel_sites_prefix_the_rows_and_join_their_group(language, site,
     assert f"{site} PSV" in _values(groups, GROUP_PRECEREBRAL)
     assert f"{renal_site} PSV" in _values(groups, GROUP_KIDNEY)
     assert "PSV" in _values(groups, GROUP_VESSELS)
+
+
+def test_mean_of_two_monoplanes_is_not_reported_as_biplane() -> None:
+    from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
+
+    snapshot = _snapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_mean_monoplan",
+            a4c=LvViewMetrics(esv_ml=60.0),
+            a2c=LvViewMetrics(esv_ml=62.0),
+        )
+    )
+    labels = {value.label for group in build_report_groups(snapshot, sex="M") for value in group.values}
+    assert "ОЛП · 4-кам." in labels
+    assert "ОЛП Биплан" not in labels
+
+
+def test_confirmed_biplane_result_is_reported_as_biplane() -> None:
+    from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
+
+    snapshot = _snapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_biplan",
+            a4c=LvViewMetrics(esv_ml=60.0),
+            a2c=LvViewMetrics(esv_ml=62.0),
+            biplane_es_ml=61.0,
+            biplane_verified=True,
+        ),
+        indexed=IndexedMeasurements(bsa_m2=1.8, lav_bi_index_ml_m2=34.0),
+    )
+    values = {value.label: value for group in build_report_groups(snapshot, sex="M") for value in group.values}
+    assert values["ОЛП Биплан"].value == "61"
+    assert values["иОЛП Биплан"].value == "34"

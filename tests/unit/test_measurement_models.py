@@ -190,6 +190,8 @@ class TestChamberSimpsonResult:
         assert result.max_volume_ml is None
         assert result.ef_percent is None
         assert result.method is None
+        assert result.biplane_es_ml is None
+        assert result.biplane_verified is False
 
     def test_populated(self) -> None:
         result = ChamberSimpsonResult(
@@ -199,11 +201,12 @@ class TestChamberSimpsonResult:
             area_cm2=25.0,
             max_volume_ml=120.0,
             ef_percent=62.5,
-            method="simpson_biplan",
+            method="simpson_mean_monoplan",
         )
         assert result.chamber == "LV"
         assert result.a4c.edv_ml == 120.0
         assert result.ef_percent == 62.5
+        assert result.biplane_verified is False
 
     def test_frozen(self) -> None:
         result = ChamberSimpsonResult(chamber="RA")

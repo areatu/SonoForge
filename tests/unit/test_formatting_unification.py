@@ -178,7 +178,7 @@ def _rich_snapshot_and_projection() -> tuple[MeasurementSnapshot, StudyProjectio
             bsa_m2=1.924,
             simpson_edvi_ml_m2=78.1,
             simpson_esvi_ml_m2=36.1,
-            lav_bi_index_ml_m2=39.74,
+            lav_4c_index_ml_m2=38.77,
             rav_index_ml_m2=32.4,
             lvmi_g_m2=135.4,
             linear_index_mm_m2=(("LVEDD", 62.4 / 1.924),),
@@ -221,7 +221,7 @@ def _rich_snapshot_and_projection() -> tuple[MeasurementSnapshot, StudyProjectio
             "lv.ivsd": ProjectionValue(value=12.4),
             "lv.lvedd": ProjectionValue(value=58.6),
             "lv.ef_bp": ProjectionValue(value=53.8),
-            "la.lavi_bp": ProjectionValue(value=39.74),
+            "la.lavi_a4c": ProjectionValue(value=38.77),
             "tr.vmax": ProjectionValue(value=314.0),
             "lv.gls": ProjectionValue(value=-18.44),
             "mv.e": ProjectionValue(value=88.4),
@@ -258,7 +258,7 @@ class TestCrossSurfaceAgreement:
 
         for key, expected in (
             ("lv.ef_bp", "54"),
-            ("la.lavi_bp", "40"),
+            ("la.lavi_a4c", "39"),
             ("tr.vmax", "3.1"),
             ("mv.e", "88"),
             ("tdi.e_sept", "7.4"),
@@ -296,7 +296,7 @@ class TestCrossSurfaceAgreement:
         [
             ("lv.ivsd", "lv.ivsd", 2, "12.40"),
             ("lv.ef_bp", "lv.ef_bp", 2, "53.80"),
-            ("la.lavi_bp", "la.lavi_bp", 2, "39.74"),
+            ("la.lavi_a4c", "la.lavi_a4c", 2, "38.77"),
             ("tr.vmax", "tr.vmax", 3, "3.140"),
             ("mv.e", "mv.e", 2, "88.40"),
         ],

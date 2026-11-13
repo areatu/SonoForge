@@ -973,14 +973,17 @@ def _append_chamber_report_values(
 
     if la is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import (
-            biplane_es_volume_ml,
+            confirmed_biplane_es_volume_ml,
             es_volume_from_view,
         )
 
-        for measurement_id, volume in (
-            ("la.lav_a4c", es_volume_from_view(la.a4c)),
-            ("la.lav_bp", biplane_es_volume_ml(la.a4c, la.a2c)),
-        ):
+        volumes = [("la.lav_a4c", es_volume_from_view(la.a4c))]
+        # No true biplane method yet: the averaged monoplane value is not
+        # promoted to the «LAV (biplane)» row (F08 / issue 548).
+        biplane_volume = confirmed_biplane_es_volume_ml(la)
+        if biplane_volume is not None:
+            volumes.append(("la.lav_bp", biplane_volume))
+        for measurement_id, volume in volumes:
             item = _value(
                 _label_catalog(measurement_id),
                 measurement_id,
@@ -1175,10 +1178,14 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
     indexed = snapshot.indexed
     provenance_notes_list: list[str] = []
     if indexed is not None:
+        from echo_personal_tool.domain.calculations.chamber_simpson import confirmed_biplane_es_volume_ml
         from echo_personal_tool.domain.services.bsa_provenance import bsa_source_label
         from echo_personal_tool.domain.services.provenance_notes import all_provenance_notes
 
         provenance_notes_list = list(all_provenance_notes(snapshot))
+        lav_bi_index = (
+            indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(snapshot.la_simpson) is not None else None
+        )
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
             value=bsa_source_label(indexed.bsa_basis),
@@ -1222,7 +1229,7 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
                 "LVESVi",
             ),
             (_label_index("lavi", "4C"), "la.lavi_a4c", indexed.lav_4c_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
-            (_label_index("lavi", "BP"), "la.lavi_bp", indexed.lav_bi_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
+            (_label_index("lavi", "BP"), "la.lavi_bp", lav_bi_index, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
             (_label_index("ravi"), "ra.ravi", indexed.rav_index_ml_m2, "mL/m²", GROUP_RIGHT_ATRIUM, "RAV"),
         )
         for label, measurement_id, indexed_val, unit, group, norm_label in indexed_values:

@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
+from echo_personal_tool.domain.calculations.chamber_simpson import confirmed_biplane_es_volume_ml
 from echo_personal_tool.domain.calculators.models import SOURCE_MANUAL, CalculationsSnapshot, CalculatorResult
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.services.bsa_freshness import evaluate_bsa_freshness
@@ -372,14 +373,7 @@ def _atrial_findings(snapshot: MeasurementSnapshot, *, bsa_fresh: bool) -> list[
     if not bsa_fresh or snapshot.indexed is None:
         return findings
     la = snapshot.la_simpson
-    if (
-        la is not None
-        and la.method == "simpson_biplan"
-        and la.a4c is not None
-        and la.a2c is not None
-        and _finite(la.a4c.esv_ml) is not None
-        and _finite(la.a2c.esv_ml) is not None
-    ):
+    if la is not None and confirmed_biplane_es_volume_ml(la) is not None:
         lavi = _finite(snapshot.indexed.lav_bi_index_ml_m2)
         if lavi is not None:
             if lavi <= 34.0:

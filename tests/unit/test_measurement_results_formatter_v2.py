@@ -8,6 +8,7 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
     DopplerResults,
+    IndexedMeasurements,
     LvefResult,
     LvViewMetrics,
     MeasurementSnapshot,
@@ -83,29 +84,33 @@ class TestIsOutside:
 
 
 class TestBestLavIndex:
-    def test_returns_first_available(self) -> None:
-        idx = type(
-            "Idx",
-            (),
-            {
-                "lav_bi_index_ml_m2": 30.0,
-                "lav_area_length_index_ml_m2": None,
-                "lav_4c_index_ml_m2": None,
-            },
-        )()
-        assert _best_lav_index(idx) == 30.0
+    def test_unconfirmed_biplane_index_falls_through_to_4c(self) -> None:
+        snapshot = MeasurementSnapshot(
+            indexed=IndexedMeasurements(bsa_m2=1.8, lav_bi_index_ml_m2=30.0, lav_4c_index_ml_m2=33.0),
+            la_simpson=ChamberSimpsonResult(
+                chamber="LA",
+                method="simpson_mean_monoplan",
+                a4c=LvViewMetrics(esv_ml=60.0),
+                a2c=LvViewMetrics(esv_ml=66.0),
+            ),
+        )
+        assert _best_lav_index(snapshot) == 33.0
+
+    def test_confirmed_biplane_index_is_preferred(self) -> None:
+        snapshot = MeasurementSnapshot(
+            indexed=IndexedMeasurements(bsa_m2=1.8, lav_bi_index_ml_m2=30.0, lav_4c_index_ml_m2=33.0),
+            la_simpson=ChamberSimpsonResult(
+                chamber="LA",
+                method="simpson_biplan",
+                biplane_es_ml=55.0,
+                biplane_verified=True,
+            ),
+        )
+        assert _best_lav_index(snapshot) == 30.0
 
     def test_returns_none_when_all_none(self) -> None:
-        idx = type(
-            "Idx",
-            (),
-            {
-                "lav_bi_index_ml_m2": None,
-                "lav_area_length_index_ml_m2": None,
-                "lav_4c_index_ml_m2": None,
-            },
-        )()
-        assert _best_lav_index(idx) is None
+        snapshot = MeasurementSnapshot(indexed=IndexedMeasurements(bsa_m2=1.8))
+        assert _best_lav_index(snapshot) is None
 
 
 class TestIndexedLinearLabel:

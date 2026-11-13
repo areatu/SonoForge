@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from echo_personal_tool.domain.calculations.chamber_simpson import confirmed_biplane_es_volume_ml
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     IndexedMeasurements,
@@ -99,7 +100,9 @@ def compute_indexed_measurements(
     ra = snapshot.ra_simpson
 
     lav_4c = _chamber_es_volume(la.a4c) if la is not None else None
-    lav_bi = _biplane_es_volume(la.a4c, la.a2c) if la is not None else None
+    # Only a confirmed true biplane result may populate this index; the mean
+    # of two monoplane volumes is not a biplane measurement (F08).
+    lav_bi = confirmed_biplane_es_volume_ml(la)
     lav_area_length = (
         snapshot.la_volume.volume_ml if snapshot.la_volume and snapshot.la_volume.volume_ml is not None else None
     )
@@ -173,20 +176,6 @@ def _chamber_es_volume(metrics: LvViewMetrics | None) -> float | None:
         return metrics.esv_ml
     if metrics.edv_ml is not None and metrics.edv_ml > 0.0:
         return metrics.edv_ml
-    return None
-
-
-def _biplane_es_volume(
-    a4c: LvViewMetrics | None,
-    a2c: LvViewMetrics | None,
-) -> float | None:
-    values: list[float] = []
-    for metrics in (a4c, a2c):
-        esv = _chamber_es_volume(metrics)
-        if esv is not None:
-            values.append(esv)
-    if len(values) == 2:
-        return sum(values) / 2.0
     return None
 
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.calculations.chamber_simpson import (
-    biplane_es_volume_ml,
+    confirmed_biplane_es_volume_ml,
     es_volume_from_view,
 )
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
@@ -35,7 +35,6 @@ from echo_personal_tool.domain.models.linear_measurement import (
 from echo_personal_tool.domain.models.measurements import (
     DopplerFlowResult,
     DopplerResults,
-    IndexedMeasurements,
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.services.indexed_results_formatter import (
@@ -245,7 +244,6 @@ def chamber_volume_status_lines(
         la = snapshot.la_simpson
         if view.upper() == "A4C":
             lines.append(line("la.lav_a4c", "LAV 4C", es_volume_from_view(la.a4c)))
-        lines.append(line("la.lav_bp", "LAV Bi", biplane_es_volume_ml(la.a4c, la.a2c)))
     elif chamber == "RA" and snapshot.ra_simpson is not None:
         ra = snapshot.ra_simpson
         lines.append(line("ra.vol", "RAV 4C", es_volume_from_view(ra.a4c) or ra.max_volume_ml))
@@ -411,7 +409,7 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
             _push(
                 rows, _label("panel.lav_4c_short"), "la.lav_a4c", volume(lav_4c), volume_unit, param_id="la_vol_index"
             )
-        lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
+        lav_bi = confirmed_biplane_es_volume_ml(la)
         if lav_bi is not None:
             _push(rows, _label("panel.lav_bi_short"), "la.lav_bp", volume(lav_bi), volume_unit, param_id="la_vol_index")
         if la.area_cm2 is not None:
@@ -674,12 +672,14 @@ def _is_outside(norm: NormRange | None, value: float) -> bool:
     return False
 
 
-def _best_lav_index(indexed: IndexedMeasurements) -> float | None:
-    for candidate in (
-        indexed.lav_bi_index_ml_m2,
-        indexed.lav_area_length_index_ml_m2,
-        indexed.lav_4c_index_ml_m2,
-    ):
+def _best_lav_index(snapshot: MeasurementSnapshot) -> float | None:
+    indexed = snapshot.indexed
+    if indexed is None:
+        return None
+    # A recorded biplane index is trusted only together with a confirmed true
+    # biplane result; the mean of monoplane volumes is not that method (F08).
+    biplane = indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(snapshot.la_simpson) else None
+    for candidate in (biplane, indexed.lav_area_length_index_ml_m2, indexed.lav_4c_index_ml_m2):
         if candidate is not None:
             return candidate
     return None
