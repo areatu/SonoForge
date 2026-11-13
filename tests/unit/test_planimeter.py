@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from echo_personal_tool.domain.calculations.planimeter import (
     closed_polygon_area_cm2,
+    closed_polygon_area_px2,
     closed_polygon_volume_ml,
+    closed_polygon_volume_px3,
     format_area_result,
     format_volume_result,
     is_planimeter_polygon,
@@ -96,12 +100,41 @@ class TestClosedPolygonAreaCm2:
         assert result == pytest.approx(0.25)  # 5x5 mm → 25 mm² → 0.25 cm²
 
 
+class TestClosedPolygonPixelArea:
+    def test_square_100_px2_is_not_1_px2(self) -> None:
+        c = _rect_contour(width=10.0, height=10.0)
+        assert closed_polygon_area_px2(c) == pytest.approx(100.0)
+
+    def test_anisotropic_spacing_uses_rows_and_columns(self) -> None:
+        c = _rect_contour(width=10.0, height=10.0)
+        # 10 px * 0.2 mm wide by 10 px * 0.5 mm high = 10 mm² = 0.1 cm².
+        assert closed_polygon_area_cm2(c, (0.5, 0.2)) == pytest.approx(0.1)
+
+    def test_non_finite_spacing_is_not_a_measurement(self) -> None:
+        c = _rect_contour(width=10.0, height=10.0)
+        for spacing in ((float("nan"), 1.0), (1.0, float("inf")), (0.0, 1.0)):
+            assert closed_polygon_area_cm2(c, spacing) is None
+
+
 class TestClosedPolygonVolumeMl:
     def test_returns_volume_for_closed_contour(self) -> None:
         c = _rect_contour(width=20.0, height=20.0)
         result = closed_polygon_volume_ml(c, (1.0, 1.0))
         assert result is not None
         assert result > 0.0
+
+    def test_pixel_volume_is_cubic_pixels_not_millilitres(self) -> None:
+        c = _rect_contour(width=20.0, height=20.0)
+        volume_px3 = closed_polygon_volume_px3(c)
+        volume_ml = closed_polygon_volume_ml(c, (1.0, 1.0))
+        assert volume_px3 is not None
+        assert volume_ml is not None
+        assert volume_px3 == pytest.approx(volume_ml * 1000.0)
+        assert volume_px3 == pytest.approx(20 * (math.pi / 4) * 20 * 20 * 1)
+
+    def test_non_finite_spacing_is_not_a_measurement(self) -> None:
+        c = _rect_contour(width=20.0, height=20.0)
+        assert closed_polygon_volume_ml(c, (float("nan"), 1.0)) is None
 
     def test_returns_none_for_open_arc(self) -> None:
         c = _rect_contour(open_arc=True)
@@ -119,10 +152,16 @@ class TestFormatAreaResult:
         result = format_area_result(c, (1.0, 1.0), spacing_calibrated=True)
         assert "cm²" in result
 
-    def test_uncalibrated_format(self) -> None:
+    def test_uncalibrated_format_keeps_the_pixel_value(self) -> None:
         c = _rect_contour(width=10.0, height=10.0)
         result = format_area_result(c, (1.0, 1.0), spacing_calibrated=False)
-        assert "px²" in result
+        assert "100.00 px²" in result
+        assert "1.00 px²" not in result
+
+    def test_physical_format_uses_cm2(self) -> None:
+        c = _rect_contour(width=10.0, height=10.0)
+        result = format_area_result(c, (0.5, 0.2), spacing_calibrated=True)
+        assert "0.10 cm²" in result
 
     def test_custom_label(self) -> None:
         c = _rect_contour(width=10.0, height=10.0, label="Левое предсердие")
@@ -141,7 +180,7 @@ class TestFormatVolumeResult:
         result = format_volume_result(c, (1.0, 1.0), spacing_calibrated=True)
         assert "mL" in result
 
-    def test_uncalibrated_format(self) -> None:
+    def test_uncalibrated_format_keeps_the_pixel_value(self) -> None:
         c = _rect_contour(width=20.0, height=20.0)
         result = format_volume_result(c, (1.0, 1.0), spacing_calibrated=False)
-        assert "px³" in result
+        assert "6283 px³" in result

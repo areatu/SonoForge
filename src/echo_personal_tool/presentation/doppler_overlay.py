@@ -104,8 +104,10 @@ def peak_marker_caption(marker: DopplerPeakMarker) -> str:
     vel_text, unit = format_velocity_measurement(measurement_id, magnitude, marker.mode)
     text = f"{marker.label} {vel_text} {unit}"
     if flow_site_from_peak_label(marker.label) is not None:
-        pg_text = format_measurement("doppler.pg_peak", pressure_gradient_mmhg(magnitude), "mmHg")
-        text += f" · PGmax {pg_text} mmHg"
+        pg = pressure_gradient_mmhg(magnitude)
+        if pg is not None:
+            pg_text = format_measurement("doppler.pg_peak", pg, "mmHg")
+            text += f" · PGmax {pg_text} mmHg"
     return text
 
 

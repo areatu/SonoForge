@@ -20,6 +20,13 @@ from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
     measurement_for_caliper,
 )
+from echo_personal_tool.domain.measurement_units import (
+    area_for_display,
+    volume_for_display,
+)
+from echo_personal_tool.domain.measurement_units import (
+    volume_unit as display_volume_unit,
+)
 from echo_personal_tool.domain.models.linear_measurement import (
     _LABEL_I18N_KEY,
     AREA_LABELS,
@@ -217,6 +224,34 @@ def _push_velocity(
     )
 
 
+def chamber_volume_status_lines(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    chamber: str,
+    view: str,
+) -> tuple[str, ...]:
+    """Status-bar volume lines for an atrial contour, in the display unit (#546)."""
+    if snapshot is None:
+        return ()
+    calibrated = snapshot.spacing_calibrated
+    unit = display_volume_unit(calibrated=calibrated)
+
+    def line(measurement_id: str, label: str, value: float | None) -> str | None:
+        display = volume_for_display(value, calibrated=calibrated)
+        return None if display is None else f"{label}: {format_measurement(measurement_id, display, unit)} {unit}"
+
+    lines: list[str | None] = []
+    if chamber == "LA" and snapshot.la_simpson is not None:
+        la = snapshot.la_simpson
+        if view.upper() == "A4C":
+            lines.append(line("la.lav_a4c", "LAV 4C", es_volume_from_view(la.a4c)))
+        lines.append(line("la.lav_bp", "LAV Bi", biplane_es_volume_ml(la.a4c, la.a2c)))
+    elif chamber == "RA" and snapshot.ra_simpson is not None:
+        ra = snapshot.ra_simpson
+        lines.append(line("ra.vol", "RAV 4C", es_volume_from_view(ra.a4c) or ra.max_volume_ml))
+    return tuple(item for item in lines if item is not None)
+
+
 def _build_doppler_rows(
     rows: list[OverlayRow],
     snapshot: MeasurementSnapshot,
@@ -298,7 +333,14 @@ def _build_doppler_rows(
 
 
 def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -> None:
-    volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
+    calibrated = snapshot.spacing_calibrated
+    volume_unit = display_volume_unit(calibrated=calibrated)
+
+    def volume(value: float | None) -> float | None:
+        return volume_for_display(value, calibrated=calibrated)
+
+    def area(value: float | None) -> float | None:
+        return area_for_display(value, calibrated=calibrated)
 
     lvef = snapshot.lvef
     if lvef is not None:
@@ -307,7 +349,7 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
                 rows,
                 _view("kdo", "4C"),
                 view_measurement_id("kdo", "4C"),
-                lvef.a4c.edv_ml,
+                volume(lvef.a4c.edv_ml),
                 volume_unit,
                 param_id="lvedvi",
             )
@@ -316,7 +358,7 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
                 rows,
                 _view("kso", "4C"),
                 view_measurement_id("kso", "4C"),
-                lvef.a4c.esv_ml,
+                volume(lvef.a4c.esv_ml),
                 volume_unit,
                 param_id="lvesvi",
             )
@@ -325,7 +367,7 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
                 rows,
                 _view("kdo", "2C"),
                 view_measurement_id("kdo", "2C"),
-                lvef.a2c.edv_ml,
+                volume(lvef.a2c.edv_ml),
                 volume_unit,
                 param_id="lvedvi",
             )
@@ -334,25 +376,27 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
                 rows,
                 _view("kso", "2C"),
                 view_measurement_id("kso", "2C"),
-                lvef.a2c.esv_ml,
+                volume(lvef.a2c.esv_ml),
                 volume_unit,
                 param_id="lvesvi",
             )
         if lvef.edv_bi_ml is not None:
-            _push(rows, _label("panel.kdo_lv_bp"), "lv.edv_bp", lvef.edv_bi_ml, volume_unit, param_id="lvedvi")
+            _push(rows, _label("panel.kdo_lv_bp"), "lv.edv_bp", volume(lvef.edv_bi_ml), volume_unit, param_id="lvedvi")
         if lvef.esv_bi_ml is not None:
-            _push(rows, _label("panel.kso_lv_bp"), "lv.esv_bp", lvef.esv_bi_ml, volume_unit, param_id="lvesvi")
+            _push(rows, _label("panel.kso_lv_bp"), "lv.esv_bp", volume(lvef.esv_bi_ml), volume_unit, param_id="lvesvi")
         _push(rows, tr("panel.lvef"), "lv.ef_bp", lvef.lvef_percent, "%", param_id="lvef")
         if lvef.sv_ml is not None:
-            _push(rows, _label("result.lv_sv_simpson"), "lv.sv", lvef.sv_ml, volume_unit, param_id="lv.sv")
+            _push(rows, _label("result.lv_sv_simpson"), "lv.sv", volume(lvef.sv_ml), volume_unit, param_id="lv.sv")
 
     teich = snapshot.teichholz
     if teich is not None:
-        _push(rows, _label("result.lvedv_teich"), "lv.edv_teich", teich.edv_ml, volume_unit, param_id="lvedvi")
-        _push(rows, _label("result.lvesv_teich"), "lv.esv_teich", teich.esv_ml, volume_unit, param_id="lvesvi")
+        # Teichholz volumes come from millimetre calipers, not from the pixel
+        # spacing, so they stay in mL even when the image is uncalibrated.
+        _push(rows, _label("result.lvedv_teich"), "lv.edv_teich", teich.edv_ml, "mL", param_id="lvedvi")
+        _push(rows, _label("result.lvesv_teich"), "lv.esv_teich", teich.esv_ml, "mL", param_id="lvesvi")
         _push(rows, _label("result.lvef_teich"), "lv.ef_teich", teich.lvef_percent, "%", param_id="lvef")
         if teich.sv_ml is not None:
-            _push(rows, _label("result.lv_sv_teich"), "lv.sv", teich.sv_ml, volume_unit, param_id="lv.sv")
+            _push(rows, _label("result.lv_sv_teich"), "lv.sv", teich.sv_ml, "mL", param_id="lv.sv")
 
     if snapshot.lvm_g is not None:
         _push(rows, _label("panel.lv_mass"), "lv.mass", snapshot.lvm_g, "g", param_id="lvm")
@@ -364,24 +408,39 @@ def _build_chamber_rows(rows: list[OverlayRow], snapshot: MeasurementSnapshot) -
     if la is not None:
         lav_4c = es_volume_from_view(la.a4c)
         if lav_4c is not None:
-            _push(rows, _label("panel.lav_4c_short"), "la.lav_a4c", lav_4c, volume_unit, param_id="la_vol_index")
+            _push(
+                rows, _label("panel.lav_4c_short"), "la.lav_a4c", volume(lav_4c), volume_unit, param_id="la_vol_index"
+            )
         lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
         if lav_bi is not None:
-            _push(rows, _label("panel.lav_bi_short"), "la.lav_bp", lav_bi, volume_unit, param_id="la_vol_index")
+            _push(rows, _label("panel.lav_bi_short"), "la.lav_bp", volume(lav_bi), volume_unit, param_id="la_vol_index")
         if la.area_cm2 is not None:
-            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _push(rows, _label("panel.s_la"), "la.area", la.area_cm2, area_unit, param_id="la_vol_index")
+            _push(
+                rows,
+                _label("panel.s_la"),
+                "la.area",
+                area(la.area_cm2),
+                "cm²" if calibrated else "px²",
+                param_id="la_vol_index",
+            )
     elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
-        _push(rows, tr("result.lav"), "la.lav_al", snapshot.la_volume.volume_ml, volume_unit, param_id="la_vol_index")
+        # Area-length is only computed with a physical spacing; its result is mL.
+        _push(rows, tr("result.lav"), "la.lav_al", snapshot.la_volume.volume_ml, "mL", param_id="la_vol_index")
 
     ra = snapshot.ra_simpson
     if ra is not None:
         rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
         if rav is not None:
-            _push(rows, _label("result.rav_4c"), "ra.vol", rav, volume_unit, param_id="ra_area")
+            _push(rows, _label("result.rav_4c"), "ra.vol", volume(rav), volume_unit, param_id="ra_area")
         if ra.area_cm2 is not None:
-            area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _push(rows, _label("panel.s_ra"), "ra.area", ra.area_cm2, area_unit, param_id="ra_area")
+            _push(
+                rows,
+                _label("panel.s_ra"),
+                "ra.area",
+                area(ra.area_cm2),
+                "cm²" if calibrated else "px²",
+                param_id="ra_area",
+            )
 
     if snapshot.rv_fac_percent is not None:
         _push(rows, _label("result.fac"), "rv.fac", snapshot.rv_fac_percent, "%", param_id="fac")

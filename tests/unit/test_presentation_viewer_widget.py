@@ -947,6 +947,31 @@ def _state_for(path, *, frame: int = 0, total: int = 1):
     )
 
 
+class TestVesselAccept:
+    def test_invalid_metrics_are_not_stored_as_zero(self, viewer) -> None:
+        """A non-finite PSV must reach the model as ``None``, never a fake 0.0."""
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.calculations.vessel_metrics import VesselMetrics
+
+        accepted = []
+        viewer.vessel_accept_requested.connect(accepted.append)
+        with (
+            patch.object(viewer, "is_vessel_available", return_value=True),
+            patch.object(viewer, "current_instance_uid", return_value="uid"),
+            patch.object(
+                viewer.doppler.overlay, "get_vessel_metrics", return_value=VesselMetrics(None, None, None, False)
+            ),
+            patch.object(viewer.doppler.overlay, "get_vessel_values", return_value=(float("nan"), 10.0)),
+        ):
+            assert viewer.accept_vessel_measurement() is True
+
+        assert len(accepted) == 1
+        assert accepted[0].ri is None
+        assert accepted[0].sd is None
+        assert accepted[0].mv_approx is None
+
+
 class TestReadOnlyStateGetters:
     """The state a caller may read without reaching into the widget (each getter against its public mutator)."""
 

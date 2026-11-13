@@ -216,9 +216,11 @@ class TestLiveProgressLabel:
         _click(viewer, (0.0, 0.0), (100.0, 100.0))
         _click(viewer, (10.0, 0.0), (200.0, 100.0))
         _click(viewer, (10.0, 10.0), (200.0, 200.0))
-        # Triangle 10x10/2 = 50 px² → 0.50 cm² with the default 1 px spacing.
-        assert "0.50" in viewer._measurement_label.text()
+        # Uncalibrated: the label must keep the pixel value, not label mm² as px².
+        # Triangle 10x10/2 = 50 px².
+        text = viewer._measurement_label.text()
+        assert "50.00 px²" in text
 
         _click(viewer, (0.0, 10.0), (100.0, 200.0))
-        # Full 10x10 square = 100 px² → 1.00 cm².
-        assert "1.00" in viewer._measurement_label.text()
+        # Full 10x10 square = 100 px².
+        assert "100.00 px²" in viewer._measurement_label.text()

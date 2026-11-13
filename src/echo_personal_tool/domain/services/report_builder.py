@@ -27,6 +27,7 @@ from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
     measurement_for_caliper,
 )
+from echo_personal_tool.domain.measurement_units import area_for_display, volume_for_display
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.models.value_origin import (
@@ -796,6 +797,7 @@ def _append_left_ventricle_report_values(
     *,
     sex: str,
     volume_unit: str,
+    calibrated: bool,
     length_unit: str,
     length_scale: float,
 ) -> None:
@@ -803,6 +805,9 @@ def _append_left_ventricle_report_values(
 
     def scaled(value: float | None) -> float | None:
         return None if value is None else value * length_scale
+
+    def display_volume(value: float | None) -> float | None:
+        return volume_for_display(value, calibrated=calibrated)
 
     lvef = snapshot.lvef
     if lvef is not None:
@@ -835,8 +840,8 @@ def _append_left_ventricle_report_values(
             ed_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="ed")
             es_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="es")
             for label_key, kind, volume, origin in (
-                ("domain.report.kdo_lv", "kdo", metrics.edv_ml, ed_here),
-                ("domain.report.kso_lv", "kso", metrics.esv_ml, es_here),
+                ("domain.report.kdo_lv", "kdo", display_volume(metrics.edv_ml), ed_here),
+                ("domain.report.kso_lv", "kso", display_volume(metrics.esv_ml), es_here),
             ):
                 item = _value(
                     tr(label_key, view=view_label),
@@ -850,8 +855,8 @@ def _append_left_ventricle_report_values(
                 if item:
                     values.append(item)
         for label_key, measurement_id, volume, origin in (
-            ("domain.report.kdo_lv", "lv.edv_bp", lvef.edv_bi_ml, ed_origin),
-            ("domain.report.kso_lv", "lv.esv_bp", lvef.esv_bi_ml, es_origin),
+            ("domain.report.kdo_lv", "lv.edv_bp", display_volume(lvef.edv_bi_ml), ed_origin),
+            ("domain.report.kso_lv", "lv.esv_bp", display_volume(lvef.esv_bi_ml), es_origin),
         ):
             item = _value(
                 tr(label_key, view="BP"),
@@ -879,7 +884,7 @@ def _append_left_ventricle_report_values(
         item = _value(
             tr("domain.report.sv"),
             "lv.sv",
-            lvef.sv_ml,
+            display_volume(lvef.sv_ml),
             volume_unit,
             sex=sex,
             group=GROUP_LEFT_VENTRICLE,
@@ -949,10 +954,23 @@ def _append_left_ventricle_report_values(
 
 
 def _append_chamber_report_values(
-    values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str, volume_unit: str, area_unit: str
+    values: list[ReportValue],
+    snapshot: MeasurementSnapshot,
+    *,
+    sex: str,
+    volume_unit: str,
+    area_unit: str,
+    calibrated: bool,
 ) -> None:
     """Append atrial and right-ventricular measurements."""
     la = snapshot.la_simpson
+
+    def display_volume(value: float | None) -> float | None:
+        return volume_for_display(value, calibrated=calibrated)
+
+    def display_area(value: float | None) -> float | None:
+        return area_for_display(value, calibrated=calibrated)
+
     if la is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import (
             biplane_es_volume_ml,
@@ -966,7 +984,7 @@ def _append_chamber_report_values(
             item = _value(
                 _label_catalog(measurement_id),
                 measurement_id,
-                volume,
+                display_volume(volume),
                 volume_unit,
                 sex=sex,
                 group=GROUP_LEFT_ATRIUM,
@@ -974,11 +992,13 @@ def _append_chamber_report_values(
             )
             if item:
                 values.append(item)
-        item = _value(_label_catalog("la.area"), "la.area", la.area_cm2, area_unit, sex=sex, group=GROUP_LEFT_ATRIUM)
+        item = _value(
+            _label_catalog("la.area"), "la.area", display_area(la.area_cm2), area_unit, sex=sex, group=GROUP_LEFT_ATRIUM
+        )
         if item:
             values.append(item)
     elif snapshot.la_volume is not None and snapshot.la_volume.volume_ml is not None:
-        item = _value("LAV", "la.lav_al", snapshot.la_volume.volume_ml, volume_unit, sex=sex, group=GROUP_LEFT_ATRIUM)
+        item = _value("LAV", "la.lav_al", snapshot.la_volume.volume_ml, "mL", sex=sex, group=GROUP_LEFT_ATRIUM)
         if item:
             values.append(item)
 
@@ -986,12 +1006,25 @@ def _append_chamber_report_values(
     if ra is not None:
         from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
 
-        item = _value(_label_catalog("ra.area"), "ra.area", ra.area_cm2, area_unit, sex=sex, group=GROUP_RIGHT_ATRIUM)
+        item = _value(
+            _label_catalog("ra.area"),
+            "ra.area",
+            display_area(ra.area_cm2),
+            area_unit,
+            sex=sex,
+            group=GROUP_RIGHT_ATRIUM,
+        )
         if item:
             values.append(item)
         rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
         item = _value(
-            _label("result.rav_4c"), "ra.vol", rav, volume_unit, sex=sex, group=GROUP_RIGHT_ATRIUM, norm_label="RAV"
+            _label("result.rav_4c"),
+            "ra.vol",
+            display_volume(rav),
+            volume_unit,
+            sex=sex,
+            group=GROUP_RIGHT_ATRIUM,
+            norm_label="RAV",
         )
         if item:
             values.append(item)
@@ -1242,7 +1275,10 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
 def _append_planimeter_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, sex: str) -> None:
     """Append traced planimetry values with their measurement lineage."""
     for planimeter_item in snapshot.planimeter:
-        measurement_id = "planimeter.area" if planimeter_item.kind == "area" else "planimeter.length"
+        measurement_id = {
+            "area": "planimeter.area",
+            "volume": "planimeter.volume",
+        }.get(planimeter_item.kind, "planimeter.length")
         entry = _value(
             planimeter_item.label,
             measurement_id,
@@ -1577,9 +1613,17 @@ def build_report_groups(
         length_scale = 1.0
 
     _append_left_ventricle_report_values(
-        values, snapshot, sex=sex, volume_unit=volume_unit, length_unit=length_unit, length_scale=length_scale
+        values,
+        snapshot,
+        sex=sex,
+        volume_unit=volume_unit,
+        calibrated=calibrated,
+        length_unit=length_unit,
+        length_scale=length_scale,
     )
-    _append_chamber_report_values(values, snapshot, sex=sex, volume_unit=volume_unit, area_unit=area_unit)
+    _append_chamber_report_values(
+        values, snapshot, sex=sex, volume_unit=volume_unit, area_unit=area_unit, calibrated=calibrated
+    )
     _append_doppler_report_values(values, snapshot, sex=sex)
     provenance_notes_list = _append_indexed_report_values(values, snapshot, sex=sex)
     _append_strain_report_values(values, snapshot, sex=sex)

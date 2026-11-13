@@ -15,3 +15,8 @@ def test_pressure_gradient_200_cm_s() -> None:
 
 def test_pressure_gradient_zero() -> None:
     assert pressure_gradient_mmhg(0.0) == 0.0
+
+
+def test_pressure_gradient_non_finite_input_is_not_a_result() -> None:
+    for velocity in (float("nan"), float("inf"), float("-inf")):
+        assert pressure_gradient_mmhg(velocity) is None

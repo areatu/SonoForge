@@ -189,11 +189,27 @@ class TestFormatResultsOverlay:
         result = format_results_overlay(snap)
         assert "Grade II" in result
 
-    def test_spacing_uncalibrated(self) -> None:
+    def test_spacing_uncalibrated_keeps_pixel_values(self) -> None:
         lvef = LvefResult(a4c=LvViewMetrics(edv_ml=100.0), lvef_percent=55.0)
         snap = _snap(lvef=lvef, spacing_calibrated=False)
         result = format_results_overlay(snap)
-        assert "px³" in result
+        assert "100000 px³" in result
+        assert "100 mL" not in result
+
+    def test_uncalibrated_atrial_area_keeps_pixel_value(self) -> None:
+        la = ChamberSimpsonResult(chamber="LA", area_cm2=20.0)
+        ra = ChamberSimpsonResult(chamber="RA", area_cm2=10.0)
+        snap = _snap(la_simpson=la, ra_simpson=ra, spacing_calibrated=False)
+        result = format_results_overlay(snap)
+        assert "2000.00 px²" in result
+        assert "1000.00 px²" in result
+        assert "cm²" not in result
+
+    def test_calibrated_atrial_area_stays_cm2(self) -> None:
+        la = ChamberSimpsonResult(chamber="LA", area_cm2=20.0)
+        snap = _snap(la_simpson=la, spacing_calibrated=True)
+        result = format_results_overlay(snap)
+        assert "20.00 cm²" in result
 
 
 class TestFormatResultsOverlayHtml:
