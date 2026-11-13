@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `fix(dicom)`: #541 + #550 — декодер отдаёт корректные пиксели для всех поддержанных форматов и публикует cine только целиком ([полностью](changelog.d/040-fix-dicom-decode-contract-541-550.md))
+
 - `fix(dicom)`: #543/#544 — file-aware immutable pixel cache и строгая полнота cine ([полностью](changelog.d/039-fix-dicom-cine-543-544.md))
 
 - `test(ci)`: #556 — отдельный Qt/OpenGL-free regression lane и сохранение GUI hygiene ([полностью](changelog.d/038-test-pure-core-556.md))
