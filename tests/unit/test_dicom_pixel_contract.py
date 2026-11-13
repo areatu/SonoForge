@@ -18,8 +18,11 @@ from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.pixels.utils import pixel_array
 from pydicom.uid import ExplicitVRBigEndian, ExplicitVRLittleEndian, generate_uid
 
-from echo_personal_tool.infrastructure.dicom_session import DicomSession
-from tests.fixtures.generate_synthetic_dicom import write_synthetic_pixel_dicom
+from echo_personal_tool.infrastructure.dicom_session import DicomFrameDecodeError, DicomSession
+from tests.fixtures.generate_synthetic_dicom import (
+    write_synthetic_jpeg_multiframe_dicom,
+    write_synthetic_pixel_dicom,
+)
 
 
 def _reference_frames(path: Path) -> np.ndarray:
@@ -191,5 +194,65 @@ def test_unsupported_layouts_do_not_take_the_fast_path(
     try:
         session.open(path)
         assert session._uncompressed_layout() is None
+    finally:
+        session.release()
+
+
+def test_bulk_decode_publishes_only_after_every_frame_succeeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write_synthetic_jpeg_multiframe_dicom(tmp_path / "jpeg.dcm", frame_count=6, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    original = session._decode_single_frame
+
+    def fail_mid_cine(index: int) -> np.ndarray:
+        if index == 3:
+            raise ValueError("injected frame failure")
+        return original(index)
+
+    monkeypatch.setattr(session, "_decode_single_frame", fail_mid_cine)
+    with pytest.raises(DicomFrameDecodeError) as caught:
+        session.decode_all_frames()
+
+    assert caught.value.frame_index == 3
+    assert session._frames is None
+    assert not session.is_decoded
+
+    monkeypatch.setattr(session, "_decode_single_frame", original)
+    frames = session.decode_all_frames()
+
+    assert frames.shape == (6, 32, 32)
+    assert not frames.flags.writeable
+    assert session.is_decoded
+    session.release()
+
+
+def test_first_frame_failure_is_a_typed_decode_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = write_synthetic_jpeg_multiframe_dicom(tmp_path / "jpeg.dcm", frame_count=3, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+
+    def fail_first(index: int) -> np.ndarray:
+        raise ValueError("injected first frame failure")
+
+    monkeypatch.setattr(session, "_decode_single_frame", fail_first)
+    with pytest.raises(DicomFrameDecodeError) as caught:
+        session.decode_all_frames()
+
+    assert caught.value.frame_index == 0
+    assert session._frames is None
+    assert not session.is_decoded
+    session.release()
+
+
+def test_compressed_bulk_frames_are_the_same_as_single_frames(tmp_path: Path) -> None:
+    path = write_synthetic_jpeg_multiframe_dicom(tmp_path / "jpeg.dcm", frame_count=4, rows=32, cols=32)
+    session = DicomSession()
+    try:
+        session.open(path)
+        bulk = session.decode_all_frames()
+        singles = np.stack([session.decode_single_frame(index) for index in range(4)])
+        np.testing.assert_array_equal(bulk, singles)
     finally:
         session.release()

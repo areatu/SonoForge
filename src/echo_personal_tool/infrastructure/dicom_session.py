@@ -22,7 +22,7 @@ import logging
 import struct
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -120,6 +120,36 @@ _JPEG2000_SYNTAXES = frozenset(
 )
 
 _MAX_DECODE_WORKERS = 4
+
+
+class DicomFrameDecodeError(RuntimeError):
+    """A frame failed during bulk decode; no partial cine was published (#550).
+
+    ``frame_index`` is the first frame that raised. The session stays undecoded, so a
+    retry decodes from scratch instead of returning uninitialised pixels.
+    """
+
+    def __init__(self, frame_index: int, cause: BaseException) -> None:
+        super().__init__(f"failed to decode DICOM frame {frame_index}: {cause}")
+        self.frame_index = frame_index
+
+
+# What the two pixel backends can raise for a corrupt or unsupported frame. Keeping the
+# tuple explicit leaves KeyboardInterrupt/SystemExit alone and lets the bulk decoder wrap
+# every ordinary decoder failure with its frame index.
+_DECODE_FAILURES = (
+    ValueError,
+    RuntimeError,
+    OSError,
+    MemoryError,
+    NotImplementedError,
+    TypeError,
+    IndexError,
+    KeyError,
+    AttributeError,
+    struct.error,
+    pydicom.errors.InvalidDicomError,
+)
 
 
 # The direct view is only valid for little-endian native pixel data. Big endian
@@ -885,25 +915,51 @@ class DicomSession:
                 self._first_frame = self._frames[0]
                 return self._frames
 
-        # SLOW PATH: compressed (JPEG-2000) — parallel decode
-        first_frame = getattr(self, "_first_frame", None)
-        if first_frame is None:
-            first_frame = self._decode_single_frame(0)
-        self._frames = np.empty((self._frame_count,) + first_frame.shape, dtype=first_frame.dtype)
-        self._frames[0] = first_frame
+        # SLOW PATH: compressed (JPEG-2000) — parallel decode into a staging buffer.
+        # Nothing is published until every frame succeeded: a failure must not leave a
+        # full-length array with uninitialised cells behind (#550).
+        self._frames = None
+        try:
+            first_frame = getattr(self, "_first_frame", None)
+            if first_frame is None:
+                first_frame = self._decode_single_frame(0)
+        except DicomFrameDecodeError:
+            raise
+        except _DECODE_FAILURES as exc:
+            raise DicomFrameDecodeError(0, exc) from exc
+
+        staging = np.empty((self._frame_count,) + first_frame.shape, dtype=first_frame.dtype)
+        staging[0] = first_frame
 
         remaining = list(range(1, self._frame_count))
         if not remaining:
+            staging.flags.writeable = False
+            self._frames = staging
             return self._frames
 
-        max_workers = min(len(remaining), _MAX_DECODE_WORKERS)
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {pool.submit(self._decode_single_frame, i): i for i in remaining}
-            for future in as_completed(futures):
-                idx = futures[future]
-                self._frames[idx] = future.result()
-
-        return self._frames
+        futures: dict[Future[np.ndarray], int] = {}
+        published = False
+        try:
+            max_workers = min(len(remaining), _MAX_DECODE_WORKERS)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {pool.submit(self._decode_single_frame, i): i for i in remaining}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        staging[idx] = future.result()
+                    except DicomFrameDecodeError:
+                        raise
+                    except _DECODE_FAILURES as exc:
+                        raise DicomFrameDecodeError(idx, exc) from exc
+            staging.flags.writeable = False
+            self._frames = staging
+            published = True
+            return self._frames
+        finally:
+            if not published:
+                for future in futures:
+                    future.cancel()
+                self._frames = None
 
     def _require_metadata(self) -> pydicom.Dataset:
         """Metadata is loaded by `open()`; decoding without it is a bug (#325)."""
