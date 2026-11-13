@@ -258,6 +258,58 @@ def test_disk_export_survives_batch_and_forgets_cache_session(dialog, tmp_path):
     accepted.assert_called_once()
 
 
+def test_disk_partial_failure_exports_successful_studies(dialog, tmp_path):
+    """A failed study must not switch the rest of a disk batch to cache mode."""
+
+    pool = dialog._characterization_pool
+    dialog._cache.session_path.return_value = tmp_path
+    plan = [(tmp_path / "src.dcm", tmp_path / "Instance" / "1" / "x.dcm")]
+    options = MagicMock(name="options")
+
+    with (
+        patch.object(dialog, "_ensure_selection_ready", return_value=True),
+        patch.object(dialog, "_collect_all_checked_series", return_value=[("study-1", ["a"]), ("study-2", ["b"])]),
+        patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            return_value=str(tmp_path),
+        ),
+        patch.object(dialog, "accept") as accepted,
+        patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
+    ):
+        dialog._on_save_to_disk()
+        assert len(pool.workers) == 1
+
+        pool.workers[0].signals.failed.emit("study-1", "disk error")
+        assert len(pool.workers) == 2
+
+        with (
+            patch.object(dialog, "_session_export_plan", return_value=plan),
+            patch("echo_personal_tool.presentation.dicom_export_dialog.DicomExportDialog") as export_dialog,
+            patch("echo_personal_tool.presentation.dicom_export_dialog.load_preview_frame", return_value=None),
+            patch("echo_personal_tool.presentation.ui_animations.exec_animated") as exec_animated,
+            patch.object(dialog, "_start_export_worker") as start_export,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
+        ):
+            exec_animated.return_value = QDialog.DialogCode.Accepted
+            export_dialog.return_value.chosen_options.return_value = options
+            export_dialog.return_value.evaluation_record.return_value = "files=1"
+
+            pool.workers[1].signals.done.emit("test-session", "study-2")
+
+            assert start_export.call_args.args == (plan, options)
+            assert dialog._downloading is True
+            assert dialog.result_data() is None
+            assert dialog.download_batch.saved == 1
+            assert dialog.download_batch.failed == 1
+            assert dialog._partial_export is True
+
+            dialog._on_export_finished(SimpleNamespace(exported=1, failed=0, unverified=0, lines=(), cancelled=False))
+
+    assert dialog.completed_disk_download_path() == tmp_path
+    assert dialog.result_data() is None
+    accepted.assert_called_once()
+
+
 def test_new_batch_does_not_inherit_previous_counters_or_studies(dialog):
     pool = dialog._characterization_pool
     old = _metadata("study-old")
