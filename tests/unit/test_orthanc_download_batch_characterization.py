@@ -299,10 +299,11 @@ def test_disk_partial_failure_exports_successful_studies(dialog, tmp_path):
             assert start_export.call_args.args == (plan, options)
             assert dialog._downloading is True
             assert dialog.result_data() is None
+            assert dialog.download_batch.saved == 1
+            assert dialog.download_batch.failed == 1
+            assert dialog._partial_export is True
 
-            dialog._on_export_finished(
-                SimpleNamespace(exported=1, failed=0, unverified=0, lines=(), cancelled=False)
-            )
+            dialog._on_export_finished(SimpleNamespace(exported=1, failed=0, unverified=0, lines=(), cancelled=False))
 
     assert dialog.completed_disk_download_path() == tmp_path
     assert dialog.result_data() is None

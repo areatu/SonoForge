@@ -2499,7 +2499,7 @@ class OrthancStudyDialog(QDialog):
         worker.signals.progress.connect(self._on_progress)
         worker.signals.status.connect(self._on_status)
         worker.signals.done.connect(self._on_single_study_done_to_disk)
-        worker.signals.failed.connect(self._on_single_study_failed)
+        worker.signals.failed.connect(lambda uid, message: self._on_single_study_failed(uid, message, to_disk=True))
         worker.signals.partial_failed.connect(self._on_partial_instance_failure)
         worker.signals.cancelled.connect(self._on_cancelled)
         worker.signals.series_done.connect(self._on_series_done)
@@ -2912,7 +2912,7 @@ class OrthancStudyDialog(QDialog):
         log.warning("[DLG] partial instance download: study=%s message=%s", study_uid[:16], message)
         self.download_batch.add_warning(self._clip(message, _DIALOG_TEXT_LIMIT))
 
-    def _on_single_study_failed(self, _uid: str, message: str) -> None:
+    def _on_single_study_failed(self, _uid: str, message: str, *, to_disk: bool = False) -> None:
         if not self._is_alive():
             return
         log_boundary_event(log, "orthanc.download", "io", "OSError", level=logging.WARNING)
@@ -2926,7 +2926,10 @@ class OrthancStudyDialog(QDialog):
                 message=message,
             )
         )
-        self._start_next_download()
+        if to_disk:
+            self._start_next_download_to_disk()
+        else:
+            self._start_next_download()
 
     def _on_partial_done(self) -> None:
         """Some queued studies failed but at least one succeeded.
