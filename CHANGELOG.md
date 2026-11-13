@@ -31,6 +31,7 @@
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
 - `fix(orthanc)`: #554 — атомарная запись в кэш (`0600`/`0700` при создании, temp+fsync+rename), валидация session id и символьных ссылок, fault-injection тесты ([полностью](changelog.d/039-fix-orthanc-cache-554.md))
+- `fix(dicom)`: #543/#544 — file-aware immutable pixel cache и строгая полнота cine ([полностью](changelog.d/039-fix-dicom-cine-543-544.md))
 
 - `test(ci)`: #556 — отдельный Qt/OpenGL-free regression lane и сохранение GUI hygiene ([полностью](changelog.d/038-test-pure-core-556.md))
 
