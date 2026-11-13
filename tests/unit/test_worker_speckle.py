@@ -46,7 +46,10 @@ def _write_dicom_cine(tmp_path, n_frames: int = 10):
     ds.Rows = 32
     ds.Columns = 32
     ds.BitsAllocated = 8
+    ds.BitsStored = 8
+    ds.HighBit = 7
     ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
     ds.PixelRepresentation = 0
     ds.NumberOfFrames = n_frames
     ds.PixelData = np.random.randint(0, 256, (n_frames, 32, 32), dtype=np.uint8).tobytes()
