@@ -53,3 +53,8 @@ tests/security/test_model_integrity.py
 # QH-4a / A-12: real sanitizer + support ZIP structured PHI/secret sentinels.
 # Not a guarantee for arbitrary free-form clinical text or raw crash dumps.
 tests/security/test_qh4a_diagnostics.py
+
+# #554 — the managed DICOM cache never publishes a partial instance under a
+# ready `*.dcm` name, sets restrictive permissions at creation, and refuses an
+# invalid session identifier or a symlinked path component below the root.
+tests/security/test_orthanc_cache_write_safety.py
