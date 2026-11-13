@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.abc
 import json
 import sys
 from pathlib import Path
@@ -28,6 +29,8 @@ def pytest_runtest_teardown(item, nextitem):  # noqa: ARG001
     objects between tests.
     """
     yield
+    if item.config.getoption("--pure-core"):
+        return
     try:
         from PySide6.QtCore import QCoreApplication, QEvent
         from PySide6.QtWidgets import QApplication
@@ -135,3 +138,51 @@ def error_404() -> dict:
 def error_408() -> dict:
     with open(ORTHANC_FIXTURES / "errors" / "408_timeout.json") as f:
         return json.load(f)
+
+
+class _NoQtImports(importlib.abc.MetaPathFinder):
+    """Reject, rather than stub, Qt in the explicitly isolated regression lane."""
+
+    def __init__(self):
+        self.attempts = []
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in {"PySide6", "PyQt6", "PyQt5", "PySide2", "pytestqt"}:
+            self.attempts.append(fullname)
+            raise ImportError(f"Qt import forbidden in --pure-core: {fullname}")
+        return None
+
+
+def pytest_addoption(parser):
+    parser.addoption("--pure-core", action="store_true", help="Run the Qt-free regression manifest only")
+
+
+def pytest_configure(config):
+    if not config.getoption("--pure-core"):
+        return
+    if any(name.split(".")[0] in {"PySide6", "PyQt6", "PyQt5", "PySide2", "pytestqt"} for name in sys.modules):
+        raise pytest.UsageError("--pure-core requires a fresh process with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1")
+    guard = _NoQtImports()
+    sys.meta_path.insert(0, guard)
+    config._pure_core_guard = guard
+    config.add_cleanup(lambda: sys.meta_path.remove(guard))
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--pure-core"):
+        return
+    allowed = set(json.loads((ROOT / "tests/pure_core_manifest.json").read_text())["modules"])
+    unexpected = sorted({item.path.relative_to(ROOT).as_posix() for item in items} - allowed)
+    if unexpected:
+        raise pytest.UsageError("Outside pure-core manifest: " + ", ".join(unexpected))
+    if not items:
+        raise pytest.UsageError("The pure-core lane must not be empty")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    guard = getattr(session.config, "_pure_core_guard", None)
+    if guard is not None and guard.attempts:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_sep("!", "Forbidden Qt imports: " + ", ".join(sorted(set(guard.attempts))))
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED

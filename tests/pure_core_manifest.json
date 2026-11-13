@@ -1,0 +1,13 @@
+{
+  "modules": [
+    "tests/unit/test_pure_core_harness.py",
+    "tests/unit/test_frame_cache.py",
+    "tests/unit/test_frame_cache_memory_budget.py",
+    "tests/unit/test_pixel_spacing_resolver.py",
+    "tests/unit/test_planimeter.py",
+    "tests/unit/test_planimeter_formatter.py",
+    "tests/unit/test_vessel_metrics.py",
+    "tests/unit/test_chamber_simpson.py",
+    "tests/unit/test_pixel_utils_display_range.py"
+  ]
+}

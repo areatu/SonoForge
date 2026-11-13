@@ -5,6 +5,30 @@
 Тесты SonoForge: юнит, интеграционные, приёмочные, регрессионные, миграционные,
 безопасность, совместимость и бенчмарки.
 
+## Qt-free domain/imaging regression (#556)
+
+Отдельный ограниченный набор из `tests/pure_core_manifest.json` запускается без
+PySide6, pytest-qt, Xvfb и OpenGL. Это не замена полной unit/GUI suite и не
+фильтр `-m "not gui"`: некоторые немаркированные тесты требуют QtCore.
+
+```bash
+python -m venv .venv-core
+.venv-core/bin/pip install pytest pytest-timeout numpy scipy pydicom opencv-python-headless
+.venv-core/bin/python scripts/run_pure_core_tests.py -q
+```
+
+Для воспроизводимых версий используйте `package==$(python
+.github/scripts/locked_version.py package)`, как в job `test-pure-core`.
+На Windows запускайте `.venv-core\Scripts\python.exe`.
+Runner отключает autoload сторонних pytest-плагинов, явно включает timeout и
+передаёт `--pure-core`. Import guard запрещает Qt: даже пойманный optional
+ImportError делает прогон красным. Другие модули в этом режиме запрещены;
+расширяйте manifest только проверенными Qt-free тестами. `--pure-core` без
+runner требует свежего процесса и `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`.
+Обычная suite сохраняет QSettings isolation, GC/theme/WebEngine hygiene и
+ожидание QThreadPool; чистый режим не подменяет Qt заглушками.
+
+
 ## Структура
 
 | Папка | Описание |
