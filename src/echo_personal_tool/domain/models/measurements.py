@@ -181,7 +181,14 @@ class LaVolumeResult:
 
 @dataclass(frozen=True)
 class ChamberSimpsonResult:
-    """Simpson monoplane/biplane volume metrics for LA, RA, or RV."""
+    """Simpson monoplane / mean-of-monoplane metrics for LA, RA, or RV.
+
+    Two views currently produce the arithmetic mean of two monoplane volumes
+    (``simpson_mean_monoplan``); that is not a biplane disk method.  A true
+    biplane result may only be consumed through ``biplane_es_ml`` together
+    with ``biplane_verified`` — the protective gate for F08 until the real
+    coupled-disk calculation lands.
+    """
 
     chamber: str
     a4c: LvViewMetrics | None = None
@@ -190,6 +197,11 @@ class ChamberSimpsonResult:
     max_volume_ml: float | None = None
     ef_percent: float | None = None
     method: str | None = None
+    #: ES volume produced by a true biplane disk method. Never the mean of
+    #: two monoplane volumes; ``None`` in documents written before F08.
+    biplane_es_ml: float | None = None
+    #: True only when ``biplane_es_ml`` came from the real biplane method.
+    biplane_verified: bool = False
 
 
 @dataclass(frozen=True)

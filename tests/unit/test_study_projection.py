@@ -115,6 +115,29 @@ def test_chambers_map_from_simpson_area_length_and_indexes() -> None:
     projection = build_study_projection(snapshot)
     assert projection.get("la.lav_a4c").value == 60.0
     assert projection.get("la.lav_a2c").value == 50.0
+    # The mean of two monoplane volumes is not a biplane value or index.
+    assert projection.get("la.lav_bp") is None
+    assert projection.get("la.lavi").value == 33.3
+
+
+def test_confirmed_biplane_result_fills_the_biplane_projection() -> None:
+    snapshot = MeasurementSnapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_biplan",
+            a4c=LvViewMetrics(esv_ml=60.0),
+            a2c=LvViewMetrics(esv_ml=50.0),
+            biplane_es_ml=55.0,
+            biplane_verified=True,
+        ),
+        indexed=IndexedMeasurements(
+            bsa_m2=1.8,
+            lav_bi_index_ml_m2=30.5,
+            lav_4c_index_ml_m2=33.3,
+            lav_area_length_index_ml_m2=35.5,
+        ),
+    )
+    projection = build_study_projection(snapshot)
     assert projection.get("la.lav_bp").value == 55.0
     assert projection.get("la.lavi").value == 30.5
 

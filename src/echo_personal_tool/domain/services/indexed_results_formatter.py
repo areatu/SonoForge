@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.calculations.chamber_simpson import confirmed_biplane_es_volume_ml
 from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.domain.models.measurements import IndexedMeasurements, MeasurementSnapshot
 from echo_personal_tool.domain.services.ase_reference_norms import (
@@ -54,7 +55,7 @@ def build_indexed_overlay_rows(snapshot: MeasurementSnapshot) -> tuple[IndexedOv
 
     rows: list[IndexedOverlayRow] = []
 
-    lav_info = _best_lav_index_with_id(indexed)
+    lav_info = _best_lav_index_with_id(snapshot)
     if lav_info is not None:
         lav_id, lav_index = lav_info
         rows.append(
@@ -249,9 +250,15 @@ def _lvedd_abnormal(snapshot: MeasurementSnapshot) -> bool:
     return False
 
 
-def _best_lav_index_with_id(indexed: IndexedMeasurements) -> tuple[str, float] | None:
+def _best_lav_index_with_id(snapshot: MeasurementSnapshot) -> tuple[str, float] | None:
+    indexed: IndexedMeasurements | None = snapshot.indexed
+    if indexed is None:
+        return None
+    # The biplane index is allowed only when a true biplane result confirms it;
+    # a legacy averaged-monoplane index must fall through to area-length/4C.
+    biplane = indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(snapshot.la_simpson) else None
     for measurement_id, candidate in (
-        ("la.lavi_bp", indexed.lav_bi_index_ml_m2),
+        ("la.lavi_bp", biplane),
         ("la.lavi_al", indexed.lav_area_length_index_ml_m2),
         ("la.lavi_a4c", indexed.lav_4c_index_ml_m2),
     ):

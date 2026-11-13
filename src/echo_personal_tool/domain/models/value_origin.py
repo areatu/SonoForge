@@ -40,6 +40,9 @@ METHOD_NOT_EVALUATED = "not_evaluated"
 #: Simpson biplane / monoplane volumes, EF and stroke volume.
 METHOD_SIMPSON_BIPLANE = "simpson_biplan"
 METHOD_SIMPSON_MONOPLANE = "simpson_monoplan"
+#: Mean of two monoplane chamber volumes (LA/RA/RV).  This is *not* a biplane
+#: disk method: the two views are averaged, not coupled disk by disk (F08).
+METHOD_SIMPSON_MEAN_MONOPLANE = "simpson_mean_monoplan"
 #: Simpson family in general (chamber volumes of LA / RA / RV).
 METHOD_SIMPSON = "simpson"
 #: Teichholz volume / EF / stroke volume from the M-mode calipers.

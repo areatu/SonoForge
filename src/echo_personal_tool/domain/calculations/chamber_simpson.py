@@ -1,11 +1,24 @@
-"""Simpson monoplane/biplane volumes for LA, RA, and RV (same mechanics as LV)."""
+"""Simpson monoplane volumes and their mean for LA, RA, and RV.
+
+Averaging two monoplane volumes is not a biplane disk calculation: the true
+biplane method couples the corresponding disks of both views.  Until that
+method is implemented (F08 / issue 548), two views are reported as
+``simpson_mean_monoplan`` and the biplane indicator stays empty.
+"""
 
 from __future__ import annotations
+
+import math
 
 from echo_personal_tool.domain.calculations.lvef_simpson import _build_view_metrics
 from echo_personal_tool.domain.calculations.simpson_contours import group_simpson_contours
 from echo_personal_tool.domain.models import Contour, LvViewMetrics
 from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
+from echo_personal_tool.domain.models.value_origin import (
+    METHOD_SIMPSON_BIPLANE,
+    METHOD_SIMPSON_MEAN_MONOPLANE,
+    METHOD_SIMPSON_MONOPLANE,
+)
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 
 _SUPPORTED_CHAMBERS = {"LA", "RA", "RV"}
@@ -50,7 +63,7 @@ def calculate_chamber(
         esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
         if edv_ml > 0.0:
             ef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-            method = "simpson_biplan" if len(per_view_volumes) == 2 else "simpson_monoplan"
+            method = METHOD_SIMPSON_MEAN_MONOPLANE if len(per_view_volumes) == 2 else METHOD_SIMPSON_MONOPLANE
 
     max_volume_ml = _max_volume_ml(a4c, a2c)
     area_cm2 = _area_cm2_from_contours(grouped_contours, pixel_spacing)
@@ -108,16 +121,49 @@ def es_volume_from_view(metrics: LvViewMetrics | None) -> float | None:
     return None
 
 
-def biplane_es_volume_ml(
+def mean_es_volume_ml(
     a4c: LvViewMetrics | None,
     a2c: LvViewMetrics | None,
 ) -> float | None:
-    """Average ES (or ED) volumes when both views are available."""
+    """Arithmetic mean of two available ES volumes — descriptive only.
+
+    Deliberately does not carry a biplane name: the mean of two monoplane
+    volumes is not the biplane disk method and must not be indexed or compared
+    with biplane reference ranges.
+    """
     values: list[float] = []
     for metrics in (a4c, a2c):
-        volume = es_volume_from_view(metrics)
-        if volume is not None:
+        volume = metrics.esv_ml if metrics is not None else None
+        if volume is not None and math.isfinite(volume) and volume > 0.0:
             values.append(volume)
     if len(values) == 2:
         return sum(values) / 2.0
     return None
+
+
+def confirmed_biplane_es_volume_ml(result: ChamberSimpsonResult | None) -> float | None:
+    """The biplane ES volume only when a true biplane method produced it.
+
+    ``biplane_verified`` is part of the result, not of the current UI state:
+    legacy documents without the flag keep loading, but their averaged
+    monoplane value can never feed a biplane index (F08 / issue 548).  The
+    method id must name the true biplane method as well: a verified-looking
+    value with an unknown method is still not a clinical biplane result.
+    """
+    if result is None or result.method != METHOD_SIMPSON_BIPLANE:
+        return None
+    if not result.biplane_verified or result.biplane_es_ml is None:
+        return None
+    value = result.biplane_es_ml
+    if not math.isfinite(value) or value <= 0.0:
+        return None
+    return value
+
+
+def confirmed_biplane_index_ml_m2(index: float | None, result: ChamberSimpsonResult | None) -> float | None:
+    """Index only a confirmed true biplane volume; an averaged one has no index."""
+    if confirmed_biplane_es_volume_ml(result) is None:
+        return None
+    if index is None or not math.isfinite(index) or index <= 0.0:
+        return None
+    return index

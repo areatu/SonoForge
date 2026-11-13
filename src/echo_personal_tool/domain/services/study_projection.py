@@ -10,7 +10,9 @@
 
 * линейные измерения → ключи калиперов (:data:`CALIPER_TO_MEASUREMENT`);
 * ``lvef`` → объёмы Симпсона по позициям и биплан;
-* ``la_simpson`` / ``la_volume`` → объёмы ЛП и иОЛП;
+* ``la_simpson`` / ``la_volume`` → объёмы ЛП и иОЛП; «биплан» заполняется
+  только подтверждённым настоящим биплановым результатом, а не средним двух
+  моноплановых объёмов (F08);
 * ``doppler`` → спектральные и тканевые скорости, интервалы и VTI по сайтам;
 * ``calculations`` → производные (FS, SV/SVi, AVA, AVAi, DVI, градиент ТР, PASP)
   и вход ``rap`` чипов ДПП.
@@ -32,7 +34,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 
-from ..calculations.chamber_simpson import biplane_es_volume_ml, es_volume_from_view
+from ..calculations.chamber_simpson import confirmed_biplane_es_volume_ml, es_volume_from_view
 from ..measurement_catalog import REQ_SPATIAL, measurement_for_caliper
 from ..models.measurements import DopplerResults, MeasurementSnapshot
 from ..protocols import ProjectionValue, StudyProjection
@@ -234,10 +236,13 @@ def _add_chambers(snapshot: MeasurementSnapshot, add: Callable[[str, float | Non
     if la is not None:
         add("la.lav_a4c", es_volume_from_view(la.a4c))
         add("la.lav_a2c", es_volume_from_view(la.a2c))
-        add("la.lav_bp", biplane_es_volume_ml(la.a4c, la.a2c))
+        add("la.lav_bp", confirmed_biplane_es_volume_ml(la))
     indexed = snapshot.indexed
     if indexed is not None:
-        lavi = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2 or indexed.lav_area_length_index_ml_m2
+        # A legacy averaged-monoplane index may still sit in an old snapshot;
+        # it is not a biplane index and must not win over a verified source.
+        lav_bi = indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(la) is not None else None
+        lavi = lav_bi or indexed.lav_4c_index_ml_m2 or indexed.lav_area_length_index_ml_m2
         add("la.lavi", lavi)
 
 

@@ -47,7 +47,7 @@ from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements, resolve_bsa_basis
-from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
+from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber, confirmed_biplane_index_ml_m2
 from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
 from echo_personal_tool.domain.calculations.la_area_length import (
@@ -2177,7 +2177,7 @@ class AppController(QObject):
         doppler_record_status = self._doppler_record_status(session, doppler_current)
         diastology_grade = None
         if doppler is not None and indexed is not None:
-            lav_i = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2
+            lav_i = confirmed_biplane_index_ml_m2(indexed.lav_bi_index_ml_m2, la_simpson) or indexed.lav_4c_index_ml_m2
             diastology_grade = grade_diastolic_function(
                 e_over_e_prime=doppler.e_over_e_prime,
                 lav_index_ml_m2=lav_i,

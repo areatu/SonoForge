@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
 from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_when_abnormal,
+    build_indexed_overlay_rows,
 )
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
@@ -110,3 +111,23 @@ def test_overlay_lvmi_still_abnormal_only() -> None:
     )
     text = format_results_overlay(snapshot)
     assert "ИММЛЖ" not in text
+
+
+def test_unconfirmed_biplane_index_falls_back_to_a4c() -> None:
+    snapshot = MeasurementSnapshot(
+        la_simpson=ChamberSimpsonResult(
+            chamber="LA",
+            method="simpson_mean_monoplan",
+            a4c=LvViewMetrics(esv_ml=40.0),
+            a2c=LvViewMetrics(esv_ml=50.0),
+        ),
+        indexed=IndexedMeasurements(
+            bsa_m2=2.0,
+            lav_bi_index_ml_m2=30.0,
+            lav_4c_index_ml_m2=20.0,
+        ),
+    )
+    rows = build_indexed_overlay_rows(snapshot)
+    assert [(row.measurement_id, row.value) for row in rows if row.measurement_id.startswith("la.lavi")] == [
+        ("la.lavi_a4c", 20.0)
+    ]

@@ -117,7 +117,7 @@ The application calculates:
 LVEF_percent = (EDV − ESV) / EDV × 100
 ```
 
-A biplane LV result requires compatible A4C and A2C ED/ES contours. If a complete biplane result is not available, the implementation can expose a monoplanar result or per-view values. Chamber Simpson for LA/RA/RV uses the same 20-disk mechanics where the implemented action supplies the required contours. A chamber volume may be shown from the available phase according to that calculation module; do not infer a missing ED/ES phase.
+A biplane LV result requires compatible A4C and A2C ED/ES contours. If a complete biplane result is not available, the implementation can expose a monoplanar result or per-view values. Chamber Simpson for LA/RA/RV uses the same 20-disk mechanics for a single view only. Two views currently produce the **mean of two monoplane volumes** (`simpson_mean_monoplan`), not a true biplane method: the disks are not coupled, so the value is not labelled “biplane”, is not indexed as a biplane LAVi, and is not compared with biplane reference ranges. `la.lav_bp` appears only after the coupled calculation is implemented (F08). A chamber volume may be shown from the available phase according to that calculation module; do not infer a missing ED/ES phase.
 
 ### 2.6 Teichholz, LV mass, RWT, and fractional shortening
 
@@ -223,7 +223,7 @@ indexed_linear_mm_m² = length_mm / BSA_m²
 LVMI_g_m² = LV mass_g / BSA_m²
 ```
 
-It can index Simpson EDV/ESV per view and combined values, Teichholz EDV/ESV, LAV (4C, biplane, or area-length), RAV, LV mass, and selected linear labels. The overlay always exposes available LAVi/RAVi and may expose other indexed values according to the reference-range/abnormality formatter; the PDF includes calculated fields when present.
+It can index Simpson EDV/ESV per view and combined values, Teichholz EDV/ESV, LAV (4C or area-length; a biplane LAVi only for a confirmed true biplane result), RAV, LV mass, and selected linear labels. The overlay always exposes available LAVi/RAVi and may expose other indexed values according to the reference-range/abnormality formatter; the PDF includes calculated fields when present.
 
 BSA indexing cannot repair a wrong contour, a wrong calibration, or an incorrect patient metric. A change in height/weight changes indexed values but not absolute geometry.
 

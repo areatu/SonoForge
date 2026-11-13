@@ -270,7 +270,7 @@ The `Measures` tab is an accordion menu. Depending on language and experimental 
 | `General` | `Caliper`, `Auto-HR`, `Doppler HR`, area, volume, diameter comparison, and area comparison. |
 | `LV` / `LV Auto` | LV dimensions, IVS/LVEDD/LVPW sequence, Simpson 4C/2C ED/ES, and LV automatic workflow. |
 | `Aorta` | AV, Annulus, Ao Sinus, Ao Junction, Prox Ao. |
-| `Left Atrium` | LA diameter, LAV 4C, LAV 4C AI+, LAV 4C Auto when enabled, and LAV biplane. |
+| `Left Atrium` | LA diameter, LAV 4C, LAV 4C AI+, LAV 4C Auto when enabled. A true biplane LAV appears only when the coupled biplane method is available. |
 | `Right Atrium` | RA diameter and RAV. |
 | `Right Ventricle` | RVOT, RV basal/mid, TAPSE, RV s', and RV FAC. |
 | `Diastolic`, `MV`, and `TV` | E/A, DT, IVRT, e' septal/lateral, peaks, TR, trace, and valve VTI actions. |
