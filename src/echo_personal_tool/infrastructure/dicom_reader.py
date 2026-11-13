@@ -21,8 +21,9 @@ _CACHE_MAX_BYTES = 64 * 1024 * 1024  # 64 MB
 
 class _DecodedPixelCache:
     """Thread-safe LRU cache for decoded DICOM frames with byte-based limit.
-    get() returns zero-copy reference.
-    put() stores an OWNED WRITABLE copy — never a view — to survive release_heavy()."""
+    get() returns an immutable zero-copy reference.
+    put() copies into an immutable bytes backing to survive release_heavy() and
+    prevent callers from re-enabling ndarray writeability. Copy to edit pixels."""
 
     def __init__(self, max_bytes: int = _CACHE_MAX_BYTES) -> None:
         self._max_bytes = max_bytes
@@ -44,8 +45,10 @@ class _DecodedPixelCache:
                 identity = None
         with self._lock:
             self._discard_stale(resolved, identity)
+            if identity is None:
+                return None
             key = (identity, frame_index)
-            if identity is not None and key in self._cache:
+            if key in self._cache:
                 self._cache.move_to_end(key)
                 return self._cache[key]
         return None
@@ -64,7 +67,7 @@ class _DecodedPixelCache:
                 self._cache.move_to_end(key)
                 return
 
-            owned = np.array(pixels, copy=True)
+            owned = np.frombuffer(pixels.tobytes(order="C"), dtype=pixels.dtype).reshape(pixels.shape)
             entry_bytes = owned.nbytes
             while self._current_bytes + entry_bytes > self._max_bytes and self._cache:
                 _, evicted = self._cache.popitem(last=False)
@@ -82,7 +85,11 @@ _pixel_cache = _DecodedPixelCache()
 
 
 class DicomReaderImpl:
-    """Infrastructure implementation of IDicomReader."""
+    """Infrastructure implementation of IDicomReader.
+
+    Shared cached pixels are immutable; callers needing edits must copy().
+    Isolated preview pixels have no shared cache and retain their own storage.
+    """
 
     def __init__(self, *, isolated: bool = False) -> None:
         self._isolated = isolated

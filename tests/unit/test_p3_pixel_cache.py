@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl, _pixel_cache
 
@@ -116,3 +117,46 @@ def test_pixel_cache_clear(tmp_path: Path) -> None:
 
     _pixel_cache.clear()
     assert _pixel_cache.get(dcm_path, 0) is None
+
+
+def test_cached_pixels_reject_inplace_write_and_writeability_reset(tmp_path):
+    path = _make_test_dicom(tmp_path)
+    reader = DicomReaderImpl()
+    pixels = reader.read_pixels(path)
+    expected = pixels.copy()
+    with pytest.raises(ValueError):
+        pixels[0, 0] = 999
+    with pytest.raises(ValueError):
+        pixels.setflags(write=True)
+    np.testing.assert_array_equal(reader.read_pixels(path), expected)
+    editable = pixels.copy()
+    editable[0, 0] = 999
+    np.testing.assert_array_equal(reader.read_pixels(path), expected)
+
+
+def test_cache_does_not_share_storage_with_producer(tmp_path):
+    from echo_personal_tool.infrastructure.dicom_reader import _DecodedPixelCache
+
+    path = tmp_path / "owned.dcm"
+    path.touch()
+    source = np.arange(24, dtype=np.uint16).reshape(4, 6)[:, ::2]
+    expected = source.copy()
+    cache = _DecodedPixelCache()
+    cache.put(path, 0, source)
+    source[:] = 0
+    cached = cache.get(path, 0)
+    assert cached is not None
+    assert not cached.flags.writeable
+    assert cached.flags.c_contiguous
+    np.testing.assert_array_equal(cached, expected)
+    with pytest.raises(ValueError):
+        cached.base.setflags(write=True)
+
+
+def test_isolated_preview_edits_do_not_change_shared_pixels(tmp_path):
+    path = _make_test_dicom(tmp_path)
+    reader = DicomReaderImpl()
+    expected = reader.read_pixels(path).copy()
+    preview = DicomReaderImpl(isolated=True).read_pixels(path)
+    preview[0, 0] = 999
+    np.testing.assert_array_equal(reader.read_pixels(path), expected)

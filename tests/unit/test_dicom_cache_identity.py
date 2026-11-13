@@ -1,6 +1,7 @@
 """File-generation regressions for reader and session caches (#543)."""
 
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -8,12 +9,16 @@ import pydicom
 import pytest
 
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl, _DecodedPixelCache
-from echo_personal_tool.infrastructure.dicom_session import DicomSession
+from echo_personal_tool.infrastructure.dicom_session import DicomSession, release_stale_sessions
 from echo_personal_tool.infrastructure.file_identity import FileIdentity
 from tests.unit.test_p3_pixel_cache import _make_test_dicom
 
 
 def _replace_pixels(path: Path, value: int, *, atomic: bool) -> None:
+    # Windows may refuse replacement/truncation of a mapped source. Release the
+    # session map there; the independent decoded cache must still invalidate.
+    if sys.platform == "win32":
+        release_stale_sessions()
     dataset = pydicom.dcmread(path)
     dataset.PixelData = np.full((dataset.Rows, dataset.Columns), value, dtype=np.uint16).tobytes()
     target = path.with_suffix(".replacement") if atomic else path
