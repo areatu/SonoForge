@@ -8,7 +8,9 @@ import numpy as np
 import pydicom
 from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.encaps import encapsulate, encapsulate_extended
+from pydicom.filewriter import dcmwrite
 from pydicom.uid import (
+    ExplicitVRBigEndian,
     ExplicitVRLittleEndian,
     JPEG2000Lossless,
     JPEGBaseline8Bit,
@@ -342,6 +344,103 @@ def write_synthetic_jpeg2000_multiframe_dicom(
         ds.ExtendedOffsetTableLengths = eot_lengths
     ds["PixelData"].VR = "OB"
     ds.save_as(path, write_like_original=False)
+    return path
+
+
+def write_synthetic_pixel_dicom(
+    path: Path,
+    pixels: np.ndarray,
+    *,
+    transfer_syntax: str = ExplicitVRLittleEndian,
+    photometric_interpretation: str | None = None,
+    planar_configuration: int = 0,
+    bits_stored: int | None = None,
+    high_bit: int | None = None,
+    pixel_representation: int | None = None,
+    float_pixel_data: bool = False,
+) -> Path:
+    """Write ``pixels`` as an uncompressed US DICOM with explicit pixel metadata.
+
+    ``pixels`` is ``(frames, rows, cols)`` for grayscale or ``(frames, rows, cols,
+    samples)`` for color. The dtype controls ``BitsAllocated`` and the default
+    ``PixelRepresentation``. ``bits_stored`` packs values into the low bits, which
+    exercises the sign-extension/masking path of the reference decoder. Planar
+    configuration 1 stores each sample plane contiguously.
+
+    This is a test fixture for the decoder contract (#541): it must be possible to
+    describe signedness, bit depth, color layout and endianness without going through
+    the production writer.
+    """
+    array = np.asarray(pixels)
+    if array.ndim == 3:
+        frame_count, rows, cols = array.shape
+        samples = 1
+    elif array.ndim == 4:
+        frame_count, rows, cols, samples = array.shape
+    else:
+        raise ValueError(f"pixels must be (N,H,W) or (N,H,W,C), got {array.shape}")
+    if samples not in (1, 3):
+        raise ValueError(f"only 1 or 3 samples are supported, got {samples}")
+
+    bits_allocated = array.dtype.itemsize * 8
+    bits_stored = bits_allocated if bits_stored is None else bits_stored
+    if high_bit is None:
+        high_bit = bits_stored - 1
+    if pixel_representation is None:
+        pixel_representation = 1 if np.issubdtype(array.dtype, np.signedinteger) else 0
+    if photometric_interpretation is None:
+        photometric_interpretation = "MONOCHROME2" if samples == 1 else "RGB"
+
+    raw = np.transpose(array, (0, 3, 1, 2)) if samples > 1 and planar_configuration == 1 else array
+    if bits_stored < bits_allocated:
+        raw = raw.astype(np.int64) & ((1 << bits_stored) - 1)
+    little_endian = transfer_syntax != ExplicitVRBigEndian
+    byte_order = "<" if little_endian else ">"
+    raw = raw.astype(np.dtype(f"{byte_order}u{bits_allocated // 8}"))
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    study_uid = generate_uid()
+    series_uid = generate_uid()
+    sop_uid = generate_uid()
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = pydicom.uid.UltrasoundImageStorage
+    file_meta.MediaStorageSOPInstanceUID = sop_uid
+    file_meta.TransferSyntaxUID = transfer_syntax
+
+    ds: FileDataset = FileDataset(str(path), {}, file_meta=file_meta, preamble=b"\0" * 128)
+    ds.is_little_endian = little_endian
+    ds.is_implicit_VR = transfer_syntax == "1.2.840.10008.1.2"
+    ds.SOPClassUID = pydicom.uid.UltrasoundImageStorage
+    ds.SOPInstanceUID = sop_uid
+    ds.StudyInstanceUID = study_uid
+    ds.SeriesInstanceUID = series_uid
+    ds.Modality = "US"
+    ds.SeriesDescription = "Synthetic pixel contract"
+    ds.StudyDate = "20240601"
+    ds.StudyTime = "120000"
+    ds.PatientName = "Synthetic^Patient"
+    ds.PatientID = "SYN001"
+    ds.SamplesPerPixel = samples
+    ds.PhotometricInterpretation = photometric_interpretation
+    if samples > 1:
+        ds.PlanarConfiguration = planar_configuration
+    ds.Rows = rows
+    ds.Columns = cols
+    ds.BitsAllocated = bits_allocated
+    ds.BitsStored = bits_stored
+    ds.HighBit = high_bit
+    ds.PixelRepresentation = pixel_representation
+    ds.PixelSpacing = [0.3, 0.3]
+    ds.NumberOfFrames = frame_count
+    if float_pixel_data:
+        ds.FloatPixelData = raw.tobytes()
+    else:
+        ds.PixelData = raw.tobytes()
+
+    if transfer_syntax == ExplicitVRBigEndian:
+        dcmwrite(path, ds, enforce_file_format=True, implicit_vr=False, little_endian=False)
+    else:
+        ds.save_as(path, write_like_original=False)
     return path
 
 
