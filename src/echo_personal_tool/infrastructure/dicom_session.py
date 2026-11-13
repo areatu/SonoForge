@@ -45,6 +45,7 @@ from echo_personal_tool.infrastructure.dicom_frame_geometry import (
     pixel_data_layout,
     read_value,
 )
+from echo_personal_tool.infrastructure.file_identity import FileIdentity
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -73,13 +74,12 @@ def _synchronized(method: _F) -> _F:
     return cast(_F, wrapper)
 
 
-def _stat_signature(path: Path) -> tuple[int, int] | None:
-    """(size, mtime_ns) of *path*, or None when it cannot be stat'ed."""
+def _stat_signature(path: Path) -> FileIdentity | None:
+    """Shared file generation, or None when it cannot be stat'ed."""
     try:
-        info = path.stat()
+        return FileIdentity.capture(path)
     except OSError:
         return None
-    return (info.st_size, info.st_mtime_ns)
 
 
 def _cleanup_all_sessions() -> None:
@@ -470,7 +470,7 @@ class DicomSession:
         # with the same file, so its buffers must not be swapped underneath a decoder.
         self._lock = threading.RLock()
         self._open_path: Path | None = None
-        self._open_stat: tuple[int, int] | None = None
+        self._open_stat: FileIdentity | None = None
         self._raw_bytes: bytes | None = None
         self._metadata: pydicom.Dataset | None = None
         self._frame_count: int = 0
@@ -512,7 +512,7 @@ class DicomSession:
     def _stat_matches(self, resolved: Path) -> bool:
         """True when the file on disk is still the one this session parsed."""
         if self._open_stat is None:
-            return True
+            return False
         return _stat_signature(resolved) == self._open_stat
 
     def open(self, path: Path | str) -> None:
