@@ -239,8 +239,8 @@ def _add_chambers(snapshot: MeasurementSnapshot, add: Callable[[str, float | Non
         add("la.lav_bp", confirmed_biplane_es_volume_ml(la))
     indexed = snapshot.indexed
     if indexed is not None:
-        # A legacy averaged-monoplane index may still sit in an old snapshot;
-        # it is not a biplane index and must not win over a verified source.
+        # An averaged-monoplane index may still sit in an old snapshot; it is
+        # not a biplane index and must not win over a verified source.
         lav_bi = indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(la) is not None else None
         lavi = lav_bi or indexed.lav_4c_index_ml_m2 or indexed.lav_area_length_index_ml_m2
         add("la.lavi", lavi)

@@ -1,17 +1,19 @@
-"""Simpson monoplane volumes and their mean for LA, RA, and RV.
+"""Simpson volumes for LA, RA, and RV, including the true LA biplane method.
 
-Averaging two monoplane volumes is not a biplane disk calculation: the true
-biplane method couples the corresponding disks of both views.  Until that
-method is implemented (F08 / issue 548), two views are reported as
-``simpson_mean_monoplan`` and the biplane indicator stays empty.
+The true biplane method couples the corresponding disks of A4C and A2C taken
+at the same phase.  It is implemented for the left atrium, where biplane
+disk summation is a guideline-validated 2D volume.  RA and RV keep the
+single-plane volume (or the explicitly descriptive mean of two monoplanes):
+the formula being available does not make biplane RV EF a validated 2D
+measurement.
 """
 
 from __future__ import annotations
 
 import math
 
-from echo_personal_tool.domain.calculations.lvef_simpson import _build_view_metrics
-from echo_personal_tool.domain.calculations.simpson_contours import group_simpson_contours
+from echo_personal_tool.domain.calculations.lvef_simpson import _build_view_metrics, biplane_volume_ml
+from echo_personal_tool.domain.calculations.simpson_contours import ContourGeometryMM, group_simpson_contours
 from echo_personal_tool.domain.models import Contour, LvViewMetrics
 from echo_personal_tool.domain.models.measurements import ChamberSimpsonResult
 from echo_personal_tool.domain.models.value_origin import (
@@ -22,6 +24,10 @@ from echo_personal_tool.domain.models.value_origin import (
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 
 _SUPPORTED_CHAMBERS = {"LA", "RA", "RV"}
+#: Only the LA has a guideline-validated 2D biplane disk volume.  RA volume
+#: is single-plane and RV EF is not a validated 2D biplane measurement, so the
+#: formula must not silently upgrade those chambers to a different method.
+_BIPLANE_CHAMBERS = frozenset({"LA"})
 
 
 def calculate_chamber(
@@ -49,21 +55,33 @@ def calculate_chamber(
     if a4c is None and a2c is None:
         return None
 
-    per_view_volumes: dict[str, tuple[float, float]] = {}
-    for view, metrics in (("A4C", a4c), ("A2C", a2c)):
-        if metrics is None:
-            continue
-        if metrics.edv_ml is not None and metrics.esv_ml is not None:
-            per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
-
     ef_percent: float | None = None
     method: str | None = None
-    if per_view_volumes:
-        edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        if edv_ml > 0.0:
-            ef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-            method = METHOD_SIMPSON_MEAN_MONOPLANE if len(per_view_volumes) == 2 else METHOD_SIMPSON_MONOPLANE
+    biplane_ed_ml = _biplane_phase_volume_ml(grouped_mm, chamber=chamber_key, phase="ed")
+    biplane_es_ml = _biplane_phase_volume_ml(grouped_mm, chamber=chamber_key, phase="es")
+    if biplane_es_ml is not None and biplane_ed_ml is not None and biplane_es_ml > biplane_ed_ml:
+        # Both phases exist but contradict each other: do not publish a
+        # confirmed biplane volume from an impossible ED/ES pair.
+        biplane_es_ml = None
+    if biplane_es_ml is not None:
+        method = METHOD_SIMPSON_BIPLANE
+        if biplane_ed_ml is not None:
+            ef_percent = (biplane_ed_ml - biplane_es_ml) / biplane_ed_ml * 100.0
+    else:
+        # No true biplane result: keep the explicitly descriptive mean (or a
+        # single-plane value).  It must not inherit the biplane method id.
+        per_view_volumes: dict[str, tuple[float, float]] = {}
+        for view, metrics in (("A4C", a4c), ("A2C", a2c)):
+            if metrics is None:
+                continue
+            if metrics.edv_ml is not None and metrics.esv_ml is not None:
+                per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
+        if per_view_volumes:
+            edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
+            esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
+            if edv_ml > 0.0:
+                ef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
+                method = METHOD_SIMPSON_MEAN_MONOPLANE if len(per_view_volumes) == 2 else METHOD_SIMPSON_MONOPLANE
 
     max_volume_ml = _max_volume_ml(a4c, a2c)
     area_cm2 = _area_cm2_from_contours(grouped_contours, pixel_spacing)
@@ -76,7 +94,34 @@ def calculate_chamber(
         max_volume_ml=max_volume_ml,
         ef_percent=ef_percent,
         method=method,
+        biplane_es_ml=biplane_es_ml,
+        biplane_verified=biplane_es_ml is not None,
     )
+
+
+def _biplane_phase_volume_ml(
+    grouped_mm: dict[str, dict[str, ContourGeometryMM]],
+    *,
+    chamber: str,
+    phase: str,
+) -> float | None:
+    """Coupled-disk volume for one phase, only when both views are comparable."""
+    if chamber not in _BIPLANE_CHAMBERS:
+        return None
+    geometry_a = grouped_mm["A4C"].get(phase)
+    geometry_b = grouped_mm["A2C"].get(phase)
+    if geometry_a is None or geometry_b is None:
+        return None
+    points_a, annulus_a = geometry_a
+    points_b, annulus_b = geometry_b
+    # Paired disks need an anatomical long axis in both views.  A closed
+    # freehand polygon has only a y-span fallback and is not a biplane input.
+    if annulus_a is None or annulus_b is None:
+        return None
+    volume = biplane_volume_ml(points_a, annulus_a, points_b, annulus_b)
+    if volume is None or not math.isfinite(volume) or volume <= 0.0:
+        return None
+    return volume
 
 
 def _area_cm2_from_contours(
