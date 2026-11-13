@@ -1,5 +1,2 @@
-### Tests / CI
-
-- Add a guarded Qt/OpenGL-free domain/imaging regression lane (#556), with an
-  explicit module manifest and locked minimal CI dependencies. Preserve Qt
-  settings isolation and worker cleanup in the default suite.
+- `test(ci)`: #556 — добавлен отдельный Qt/OpenGL-free regression lane для domain/imaging и frame cache: явный manifest, runner с запретом Qt imports и минимальные locked зависимости в CI. Обычная suite сохраняет QSettings isolation, thread-pool draining и GC/theme/WebEngine hygiene; pool захватывается до подмены globalInstance тестом.
+  Проверка: в минимальном окружении без PySide6/pytest-qt — 117 passed; workflow unittest suite — 33 passed. Новый lane не заменяет полную unit/GUI suite и не изменяет производственные алгоритмы.
