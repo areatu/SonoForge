@@ -46,7 +46,10 @@ def synthetic_dicom_cine(tmp_path):
     ds.Rows = 32
     ds.Columns = 32
     ds.BitsAllocated = 8
+    ds.BitsStored = 8
+    ds.HighBit = 7
     ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
     ds.PixelRepresentation = 0
     ds.NumberOfFrames = 10
     ds.PixelData = np.random.randint(0, 256, (10, 32, 32), dtype=np.uint8).tobytes()
