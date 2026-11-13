@@ -30,6 +30,8 @@
 
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
+- `docs(tracker)`: #538 — трекер синхронизирован с `main`: закрыты #510/#512/#514/#516/#518/#524, вопрос о FPS-правке вынесен в #539 ([полностью](changelog.d/037-docs-tracker-p24-538.md))
+
 - `ci(ratchets)`: #536 — private-access ratchet видит контуры/зум и Orthanc-диалог: группы `ViewerWidget` (410 обращений в 30 файлах) и `OrthancStudyDialog` (497 в 4) ([полностью](changelog.d/036-ci-private-access-groups-536.md))
 
 - `fix(orthanc)`: #534 — cache-сессия очищается при отмене загрузки и при любом завершении disk-экспорта ([полностью](changelog.d/035-fix-orthanc-cache-cleanup-534.md))
