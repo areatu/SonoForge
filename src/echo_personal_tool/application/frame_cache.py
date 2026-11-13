@@ -1,15 +1,18 @@
 """In-memory frame store for the active DICOM instance.
 
-Supports sparse storage with LRU eviction: frames far from the current
-playback position are dropped to reduce RAM usage. The full frame array
-can be reconstructed via the ``frames`` property when needed (e.g.
-speckle tracking).
+Two storage modes are explicit.  A *full* cine is one immutable backing
+allocation under a separate full-cine reservation; the sparse mode keeps
+independent frames around the playhead under the ordinary byte budget.
+``memory_stats()`` reports logical bytes, owned backing bytes, pinned bytes and
+the observed peak so callers can see a view pinning a large parent instead of
+trusting a shrinking sum of ``frame.nbytes``.
 """
 
 from __future__ import annotations
 
 import bisect
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +46,32 @@ class FrameProjection:
     frame_indices: tuple[int, ...]
     frames: np.ndarray
 
+    @property
+    def nbytes(self) -> int:
+        """Temporary projection size, outside the cache's owned budget."""
+        return int(self.frames.nbytes)
+
+
+@dataclass(frozen=True)
+class FrameMemoryStats:
+    """What the frame store actually holds, not just the sum of views.
+
+    ``logical_bytes`` is the sum of the frame views; ``owned_bytes`` counts
+    each backing allocation once, so views into one full cine are not counted
+    N times and a view that pins a large parent is still visible after most of
+    its siblings were evicted.  ``pinned_bytes`` is the logical size of the
+    explicitly pinned frames.  ``peak_bytes`` is the high-water mark observed
+    by the cache itself.
+    """
+
+    frame_count: int
+    logical_bytes: int
+    owned_bytes: int
+    pinned_bytes: int
+    peak_bytes: int
+    budget_bytes: int
+    mode: str
+
 
 class FrameCache:
     def __init__(
@@ -50,6 +79,7 @@ class FrameCache:
         *,
         evict_window: int = _DEFAULT_EVICT_WINDOW,
         max_cache_bytes: int = _MAX_CACHE_MEMORY_BYTES,
+        max_full_cine_bytes: int | None = None,
     ) -> None:
         effective = max(max_cache_bytes, _MIN_FRAME_SIZE_BYTES)
         if effective != max_cache_bytes:
@@ -64,10 +94,21 @@ class FrameCache:
         self._current_index: int = 0
         self._evict_window: int = evict_window
         self._max_cache_bytes: int = effective
+        # A full immutable cine is a separate reservation from the sparse
+        # window budget: analysing a whole clip is a deliberate operation,
+        # not another prefetch that can be silently evicted.
+        self._max_full_cine_bytes: int = (
+            _MAX_CACHE_MEMORY_BYTES if max_full_cine_bytes is None else max(1, int(max_full_cine_bytes))
+        )
         self._pinned: set[int] = set()
         self._sorted_keys: list[int] = []
         self._cached_frames: np.ndarray | None = None
         self._memory_bytes: int = 0
+        self._logical_bytes: int = 0
+        #: Strong references to each distinct backing allocation, keyed by id.
+        #: The value is (root array, number of stored views that reference it).
+        self._owners: dict[int, tuple[np.ndarray, int]] = {}
+        self._peak_memory_bytes: int = 0
 
     def _has_full_cine(self) -> bool:
         return (
@@ -82,9 +123,13 @@ class FrameCache:
         if not self._frame_store:
             return None
         indices = tuple(self._sorted_keys)
-        pixels = (
-            self.require_full_cine() if self._has_full_cine() else np.stack([self._frame_store[i] for i in indices])
-        )
+        if self._has_full_cine():
+            pixels = self.require_full_cine()
+        else:
+            pixels = np.stack([self._frame_store[i] for i in indices])
+            # The caller owns this temporary projection until it drops it; it
+            # is not cache-owned memory, but the peak must not hide it.
+            self._note_peak(self._memory_bytes + pixels.nbytes)
         return FrameProjection(indices, pixels)
 
     @property
@@ -105,7 +150,9 @@ class FrameCache:
         playback keeps reading single frames. Views make it one copy with two shapes.
         """
         stacked = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        self._note_peak(self._memory_bytes + stacked.nbytes)
         self._frame_store = {i: stacked[i] for i in range(self._total_frames)}
+        self._reset_owners_from_store()
         return stacked
 
     def is_ready(self, path: Path) -> bool:
@@ -123,6 +170,12 @@ class FrameCache:
             pass
         else:
             raise ValueError(f"Expected frames shape (N,H,W) or (N,H,W,C), got {arr.shape}")
+        owned_bytes = self._root_array(arr).nbytes
+        if owned_bytes > self._max_full_cine_bytes:
+            raise ValueError(
+                f"Full cine needs {owned_bytes} owned bytes, above the full-cine reservation "
+                f"of {self._max_full_cine_bytes}; decode a frame range instead"
+            )
         self.source_path = Path(path).resolve()
         self._frame_store = {i: arr[i] for i in range(arr.shape[0])}
         self._total_frames = arr.shape[0]
@@ -130,7 +183,39 @@ class FrameCache:
         self._sorted_keys = sorted(self._frame_store.keys())
         self._cached_frames = None
         self._pinned.clear()
-        self._memory_bytes = sum(f.nbytes for f in self._frame_store.values())
+        self._peak_memory_bytes = 0
+        self._reset_owners_from_store()
+
+    def load_sparse(self, path: Path, frames: np.ndarray, *, indices: Iterable[int] | None = None) -> None:
+        """Admit only selected independent frames, never the whole cine.
+
+        This is the sparse counterpart of :meth:`load`: the caller may still
+        have decoded a full array (the source API is the caller's business),
+        but the cache keeps copies of only the requested cycles and the large
+        parent is not retained.  ``indices`` defaults to the first evict
+        window's worth of frames.
+        """
+        arr = np.ascontiguousarray(frames)
+        if arr.ndim not in (3, 4) or (arr.ndim == 4 and arr.shape[-1] not in (3, 4)):
+            raise ValueError(f"Expected frames shape (N,H,W) or (N,H,W,C), got {arr.shape}")
+        total = arr.shape[0]
+        requested: Iterable[int] = range(min(total, max(1, self._evict_window))) if indices is None else indices
+        selected = sorted({int(index) for index in requested if 0 <= int(index) < total})
+        self.source_path = Path(path).resolve()
+        self._total_frames = total
+        self._current_index = 0
+        self._frame_store = {}
+        self._sorted_keys = []
+        self._cached_frames = None
+        self._pinned.clear()
+        self._owners.clear()
+        self._memory_bytes = 0
+        self._logical_bytes = 0
+        self._peak_memory_bytes = 0
+        for index in selected:
+            self._store_frame(index, np.array(arr[index], copy=True, order="C"))
+        if self._memory_bytes > self._max_cache_bytes:
+            self._evict_to_memory_limit()
 
     def get(self, index: int) -> np.ndarray:
         if self._total_frames == 0:
@@ -152,13 +237,9 @@ class FrameCache:
         self._total_frames = total
 
     def put(self, index: int, frame: np.ndarray) -> None:
-        frame_bytes = frame.nbytes
         if index not in self._frame_store:
             bisect.insort(self._sorted_keys, index)
-        else:
-            self._memory_bytes -= self._frame_store[index].nbytes
-        self._frame_store[index] = frame
-        self._memory_bytes += frame_bytes
+        self._store_frame(index, frame)
         self._cached_frames = None
         # Evict frames outside the window to prevent unbounded growth
         # from stale prefetch loads or scroll overshoot.
@@ -167,6 +248,91 @@ class FrameCache:
         # Enforce memory cap: evict oldest frames if over limit.
         if self._memory_bytes > self._max_cache_bytes:
             self._evict_to_memory_limit()
+
+    @staticmethod
+    def _root_array(frame: np.ndarray) -> np.ndarray:
+        """The allocation that owns *frame*, not the view itself."""
+        root = frame
+        while isinstance(root.base, np.ndarray) and root.base is not root:
+            root = root.base
+        return root
+
+    def _note_peak(self, value: int | None = None) -> None:
+        candidate = self._memory_bytes if value is None else value
+        if candidate > self._peak_memory_bytes:
+            self._peak_memory_bytes = candidate
+
+    def _register_owner(self, frame: np.ndarray) -> None:
+        root = self._root_array(frame)
+        key = id(root)
+        existing = self._owners.get(key)
+        if existing is None:
+            self._owners[key] = (root, 1)
+            self._memory_bytes += root.nbytes
+            self._note_peak()
+            return
+        self._owners[key] = (existing[0], existing[1] + 1)
+
+    def _unregister_owner(self, frame: np.ndarray) -> None:
+        root = self._root_array(frame)
+        key = id(root)
+        existing = self._owners.get(key)
+        if existing is None:
+            return
+        count = existing[1] - 1
+        if count > 0:
+            self._owners[key] = (existing[0], count)
+            return
+        del self._owners[key]
+        self._memory_bytes = max(0, self._memory_bytes - root.nbytes)
+
+    def _reset_owners_from_store(self) -> None:
+        self._owners.clear()
+        self._memory_bytes = 0
+        self._logical_bytes = 0
+        for frame in self._frame_store.values():
+            self._logical_bytes += frame.nbytes
+            self._register_owner(frame)
+        self._note_peak()
+
+    def _store_frame(self, index: int, frame: np.ndarray) -> None:
+        previous = self._frame_store.get(index)
+        if previous is not None:
+            self._unregister_owner(previous)
+            self._logical_bytes -= previous.nbytes
+        self._frame_store[index] = frame
+        self._register_owner(frame)
+        self._logical_bytes += frame.nbytes
+        self._note_peak()
+
+    def _drop_frame(self, index: int, *, remove_key: bool) -> None:
+        frame = self._frame_store.pop(index, None)
+        if frame is None:
+            return
+        self._unregister_owner(frame)
+        self._logical_bytes = max(0, self._logical_bytes - frame.nbytes)
+        if remove_key:
+            try:
+                self._sorted_keys.remove(index)
+            except ValueError:
+                pass
+
+    def _compact_shared_backing(self) -> None:
+        """Turn the remaining views into independent frames when a shared parent is pinned.
+
+        Evicting most views of a full cine leaves one allocation alive as long
+        as *one* view survives.  Copying the survivors is the only way to let
+        the large parent go; the full→sparse transition therefore pays this
+        bounded copy once instead of reporting a falling logical size while RSS
+        stays flat.
+        """
+        if not self._frame_store or self._memory_bytes <= self._logical_bytes:
+            return
+        self._note_peak(self._memory_bytes + self._logical_bytes)
+        copies = {index: np.array(frame, copy=True, order="C") for index, frame in self._frame_store.items()}
+        self._cached_frames = None
+        self._frame_store = copies
+        self._reset_owners_from_store()
 
     def _forward_arc(self, length: int) -> set[int]:
         """Indexes of the next `length` frames from the current playhead,
@@ -212,14 +378,9 @@ class FrameCache:
                 break
             if k in keep or k in self._pinned:
                 continue
-            frame = self._frame_store.pop(k, None)
-            if frame is not None:
-                self._memory_bytes -= frame.nbytes
-            try:
-                self._sorted_keys.remove(k)
-            except ValueError:
-                pass
+            self._drop_frame(k, remove_key=True)
         self._cached_frames = None
+        self._compact_shared_backing()
 
     def clear(self) -> None:
         self.source_path = None
@@ -230,22 +391,53 @@ class FrameCache:
         self._sorted_keys.clear()
         self._cached_frames = None
         self._memory_bytes = 0
+        self._logical_bytes = 0
+        self._owners.clear()
+        self._peak_memory_bytes = 0
 
     def frame_count(self) -> int:
         return self._total_frames
 
     def memory_bytes(self) -> int:
-        """Bytes held by the cached frames.
+        """Owned backing bytes, counting each shared parent allocation once.
 
-        ``_memory_bytes`` is maintained by every mutation of the store, so this is O(1);
-        re-summing the store made diagnostics walk the whole cache on every call.
+        This is deliberately not ``sum(frame.nbytes)``: N views into one full
+        cine are one allocation, and after eviction a remaining view can still
+        pin that allocation.  The counter is maintained by every mutation, so
+        this is O(1).
         """
         return self._memory_bytes
+
+    def logical_bytes(self) -> int:
+        """Sum of the stored frame views (may be smaller than owned bytes)."""
+        return self._logical_bytes
+
+    def peak_memory_bytes(self) -> int:
+        """High-water mark of owned bytes observed by this cache."""
+        return self._peak_memory_bytes
+
+    def memory_stats(self) -> FrameMemoryStats:
+        """Snapshot for diagnostics: logical vs owned vs pinned bytes and mode."""
+        pinned = sum(frame.nbytes for index, frame in self._frame_store.items() if index in self._pinned)
+        return FrameMemoryStats(
+            frame_count=len(self._frame_store),
+            logical_bytes=self._logical_bytes,
+            owned_bytes=self._memory_bytes,
+            pinned_bytes=pinned,
+            peak_bytes=self._peak_memory_bytes,
+            budget_bytes=self._max_cache_bytes,
+            mode="full" if self._has_full_cine() else "sparse",
+        )
 
     @property
     def memory_budget(self) -> int:
         """Byte ceiling for the cached frames (see set_memory_budget)."""
         return self._max_cache_bytes
+
+    @property
+    def full_cine_reservation_bytes(self) -> int:
+        """Separate ceiling for one immutable full cine (load/require_full_cine)."""
+        return self._max_full_cine_bytes
 
     def set_memory_budget(self, budget_bytes: int) -> None:
         """Raise or lower the byte ceiling.
@@ -343,8 +535,32 @@ class FrameCache:
                 "Reload full cine before speckle tracking."
             )
         if self._cached_frames is None:
-            self._cached_frames = self._stack_full_cine()
+            shared = self._single_shared_backing()
+            self._cached_frames = shared if shared is not None else self._stack_full_cine()
         return self._cached_frames
+
+    def _single_shared_backing(self) -> np.ndarray | None:
+        """The one parent array when every stored frame is already its view."""
+        if len(self._owners) != 1 or len(self._frame_store) != self._total_frames:
+            return None
+        root = next(iter(self._owners.values()))[0]
+        if root.ndim >= 3 and root.shape[0] == self._total_frames and root.nbytes == self._logical_bytes:
+            return root
+        return None
+
+    def _decode_into_full_buffer(self, decode_frame: Callable[[int], np.ndarray]) -> np.ndarray:
+        """Fill one preallocated cine buffer instead of list + np.stack.
+
+        ``np.stack(frames)`` holds every decoded frame *and* the stacked copy
+        at the same time, so the peak is twice the cine.  Preallocation keeps
+        the decoded frame count at one while still producing one owned array.
+        """
+        first = np.asarray(decode_frame(0))
+        result = np.empty((self._total_frames,) + first.shape, dtype=first.dtype)
+        result[0] = first
+        for index in range(1, self._total_frames):
+            result[index] = np.asarray(decode_frame(index))
+        return result
 
     def load_all_frames(self) -> np.ndarray:
         """Load all frames from source if not already cached.
@@ -372,26 +588,21 @@ class FrameCache:
 
             reader = get_thread_video_reader(source)
             reader.open(source)
-            frames = []
-            for i in range(self._total_frames):
-                frames.append(reader.read_frame(i))
-            result = np.stack(frames)
+            result = self._decode_into_full_buffer(reader.read_frame)
         else:
             # DICOM — load frame by frame
             from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
             session = get_thread_dicom_session(source)
             session.open(source)
-            frames = []
-            for i in range(self._total_frames):
-                frames.append(session.decode_single_frame(i))
-            result = np.stack(frames)
+            result = self._decode_into_full_buffer(session.decode_single_frame)
 
         # Cache all frames — store only in _cached_frames to avoid duplication
+        self._note_peak(self._memory_bytes + result.nbytes)
         self._cached_frames = result
         self._frame_store = {i: result[i] for i in range(result.shape[0])}
         self._sorted_keys = sorted(self._frame_store.keys())
-        self._memory_bytes = sum(f.nbytes for f in self._frame_store.values())
+        self._reset_owners_from_store()
 
         return result
 
@@ -468,8 +679,7 @@ class FrameCache:
             return
         to_drop_set = set(to_drop)
         for k in to_drop:
-            frame = self._frame_store.pop(k, None)
-            if frame is not None:
-                self._memory_bytes -= frame.nbytes
+            self._drop_frame(k, remove_key=False)
         self._sorted_keys = [k for k in keys if k not in to_drop_set]
         self._cached_frames = None
+        self._compact_shared_backing()

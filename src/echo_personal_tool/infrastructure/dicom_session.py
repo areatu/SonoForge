@@ -21,7 +21,7 @@ import functools
 import logging
 import struct
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from io import BytesIO
@@ -886,6 +886,27 @@ class DicomSession:
         frame = self._decode_single_frame(0)
         self._first_frame = np.ascontiguousarray(frame)
         return self._first_frame
+
+    @_synchronized
+    def decode_frames(self, indices: Iterable[int]) -> dict[int, np.ndarray]:
+        """Decode only the requested frames, without materialising the full cine.
+
+        Analysis that needs a handful of cycles (optical-flow refinement, a
+        selected phase) must not allocate ``N * frame_size`` merely because the
+        source is a long study.  Each returned array is an owned single-frame
+        decode; callers that need the whole cine still use
+        :meth:`decode_all_frames` deliberately.
+        """
+        if self._open_path is None:
+            raise RuntimeError("DICOM is not open; call open() first")
+        selected = sorted({int(index) for index in indices})
+        for index in selected:
+            if index < 0 or index >= self._frame_count:
+                raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
+        if self._frames is not None and all(index < self._frames.shape[0] for index in selected):
+            return {index: cast(np.ndarray, self._frames[index]).copy() for index in selected}
+        self._ensure_pixel_data()
+        return {index: self._decode_single_frame(index) for index in selected}
 
     @_synchronized
     def decode_all_frames(self) -> np.ndarray:

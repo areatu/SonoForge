@@ -142,7 +142,9 @@ def test_bench_eviction_reclaims_memory(benchmark, tmp_path: Path) -> None:
     """Verify eviction reduces memory_bytes()."""
     n = 200
     frames = _make_frames(n, 128, 128, dtype=np.uint16)
-    cache = FrameCache(evict_window=20)
+    # Force eviction: with the default 2 GB budget the whole cine fits and
+    # set_current() intentionally leaves it resident.
+    cache = FrameCache(evict_window=20, max_cache_bytes=frames.nbytes // 2)
     cache.load(tmp_path / "c.dcm", frames)
     full_mem = cache.memory_bytes()
 
@@ -150,5 +152,37 @@ def test_bench_eviction_reclaims_memory(benchmark, tmp_path: Path) -> None:
         cache.set_current(100)
         current = cache.memory_bytes()
         assert current < full_mem
+        assert cache.peak_memory_bytes() >= full_mem
 
     benchmark(_evict_and_check)
+
+
+@_BENCH
+def test_bench_twenty_tab_switches_plateau(tmp_path: Path) -> None:
+    """RSS after 20 tab switches: peak per tab, plateau after workers finish.
+
+    The unit suite proves the buffers are collectible; this benchmark records
+    the process-level RSS and the cache's own high-water mark, which is the
+    acceptance evidence for #545 on the machine that runs it.
+    """
+    rss_start = _mem_mb()
+    peaks: list[int] = []
+
+    def _one_tab(tab: int) -> None:
+        frames = _make_frames(24, 256, 256, dtype=np.uint16)
+        cache = FrameCache(evict_window=4, max_cache_bytes=1_500_000)
+        cache.load(tmp_path / f"tab-{tab}.dcm", frames)
+        cache.set_current(tab % 24)
+        peaks.append(cache.peak_memory_bytes())
+        cache.clear()
+        del cache, frames
+
+    for tab in range(20):
+        _one_tab(tab)
+    rss_end = _mem_mb()
+    assert len(peaks) == 20
+    print(
+        f"\n  RSS: {rss_start:.1f} -> {rss_end:.1f} MB, "
+        f"max per-tab cache peak {max(peaks) / 1e6:.1f} MB, "
+        f"final cache peak {peaks[-1] / 1e6:.1f} MB"
+    )

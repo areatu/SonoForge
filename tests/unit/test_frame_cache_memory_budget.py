@@ -33,7 +33,7 @@ def test_evict_to_memory_limit_triggers_on_exceed() -> None:
     cache = FrameCache(max_cache_bytes=1_000_000, evict_window=100)
 
     for i in range(10):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     # 10 frames × 250_000 = 2_500_000 > 1_000_000 cap → eviction triggered
     assert cache._memory_bytes < 2_500_000
@@ -49,7 +49,7 @@ def test_evict_to_memory_limit_keeps_playback_window() -> None:
     frame = np.zeros((800, 1276, 3), dtype=np.uint8)  # ~3 MB
     cache.set_current(40)
     for i in range(79):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     assert cache.memory_bytes() <= 30_000_000
     # Frames around the playhead (needed for smooth playback) survive;
@@ -66,7 +66,7 @@ def test_low_memory_cache_evicts_aggressively() -> None:
     small_cache = FrameCache(max_cache_bytes=1_000_000, evict_window=2)
 
     for i in range(10):
-        small_cache.put(i, frame)
+        small_cache.put(i, frame.copy())
 
     assert small_cache.memory_bytes() <= 1_000_000
 
@@ -106,5 +106,5 @@ def test_frame_cache_memory_bytes_reflects_actual_usage() -> None:
     cache.put(0, frame_1mb)
     assert cache.memory_bytes() == frame_1mb.nbytes
 
-    cache.put(1, frame_1mb)
+    cache.put(1, frame_1mb.copy())
     assert cache.memory_bytes() == frame_1mb.nbytes * 2

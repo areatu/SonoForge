@@ -231,7 +231,7 @@ def test_frame_cache_put_then_get(tmp_path: Path) -> None:
     cache.set_total_frames(path, 3)
     for i in range(3):
         frame = np.full((2, 2), i, dtype=np.uint8)
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
     for i in range(3):
         assert np.array_equal(cache.get(i), np.full((2, 2), i, dtype=np.uint8))
 
@@ -336,7 +336,7 @@ def test_average_frame_bytes_and_capacity_track_observed_size() -> None:
 
     frame = np.zeros((512, 512), dtype=np.uint8)  # 262144 bytes
     cache.put(0, frame)
-    cache.put(1, frame)
+    cache.put(1, frame.copy())
 
     assert cache.average_frame_bytes() == pytest.approx(262144.0)
     assert cache.capacity_frames() == 15  # 4_000_000 // 262_144
@@ -360,7 +360,7 @@ def test_window_eviction_runs_when_large_frames_exceed_budget(tmp_path: Path) ->
     cache.set_total_frames(path, total=n)
 
     for i in range(n):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     # The whole cine (15.7 MB) does not fit the 4 MB budget, so eviction applies: only a
     # neighbourhood of the playhead survives instead of all 60 frames.
@@ -404,7 +404,7 @@ def test_memory_limit_eviction_keeps_frames_behind_playhead() -> None:
     cache.set_current(19)
     frame = np.zeros((512, 512), dtype=np.uint8)
     for i in range(20):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     # The budget holds ~2 frames at this size: the playhead and the frame behind it, so
     # rewinding or looping from the last frame does not immediately miss.
@@ -421,7 +421,7 @@ def test_memory_limit_eviction_still_keeps_the_forward_arc() -> None:
     cache.set_current(5)
     frame = np.zeros((512, 512), dtype=np.uint8)
     for i in range(10):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     # The frames the playhead is about to show must survive the backward arc sharing
     # the budget: playback stalling would be worse than a rewind miss.
@@ -465,14 +465,14 @@ def test_set_evict_window_widens_the_retained_neighbourhood(tmp_path: Path) -> N
     cache = FrameCache(evict_window=4, max_cache_bytes=16_000_000)
     cache.set_total_frames(path, total=200)  # far more than the budget could retain
     for i in range(40):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     assert cache.is_loaded(4)
     assert not cache.is_loaded(20)  # a 4-frame window dropped it
 
     cache.set_evict_window(30)
     for i in range(40):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
 
     assert cache.is_loaded(20)
     assert cache.memory_bytes() <= 16_000_000
@@ -485,10 +485,10 @@ def test_memory_bytes_tracks_the_store_without_rescanning(tmp_path: Path) -> Non
     frame = np.zeros((64, 64), dtype=np.uint8)
 
     for i in range(6):
-        cache.put(i, frame)
+        cache.put(i, frame.copy())
         assert cache.memory_bytes() == (i + 1) * frame.nbytes
 
-    cache.put(2, frame)  # replace, do not add
+    cache.put(2, frame.copy())  # replace, do not add
     assert cache.memory_bytes() == 6 * frame.nbytes
 
     cache.set_current(0)
