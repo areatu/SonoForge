@@ -315,6 +315,8 @@ DICOM metadata mapping reads, among other fields:
 
 DICOM tag inspector values are not automatically measurement inputs unless a specific parser uses them. The interesting tag overlay is a display preference.
 
+The reader accepts ordinary DICOM Part 10 (128-byte preamble plus `DICM`) and a narrow fallback for a dataset without a preamble: the file opens only when its header is readable and carries valid SOP Class/Instance and Study/Series UIDs; arbitrary binaries remain corrupt. DICOMDIR is recognised as an index and does not appear in the gallery as a clip, while SR/PR and encapsulated documents are unsupported types rather than damaged images. Big-endian raw datasets are not supported.
+
 ### 5.2 Measurement state
 
 Contours, linear measurements, vessel records, Doppler markers/calibration, M-Mode calibration, cine ROI, patient metrics, and strain report are stored in study session records. Linear and vessel fields are filtered to the current SOP Instance for the current snapshot; Doppler can aggregate raw DTOs across instances/frames in the study. Simpson biplane may combine compatible views from more than one instance, while physical spacing is resolved in the current calculation context.
