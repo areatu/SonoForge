@@ -47,6 +47,7 @@ from echo_personal_tool.presentation.window_chrome.caption_drag import CaptionDr
 
 if TYPE_CHECKING:
     from echo_personal_tool.application.profile_settings import ProfileCapabilities
+    from echo_personal_tool.domain.models.calibration import CalibrationContext
 
 #: Height of the patient line at 100 % (spec §4.1). It grows with the font.
 PATIENT_LINE_HEIGHT_PX = 42
@@ -197,6 +198,12 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._study_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self._status_label = _ElidingStatusLabel()
+
+        # Persistent spatial-calibration indicator (#555, 6.2).
+        self._calibration_label = self._make_calibration_label()
+        self._calibration_context: CalibrationContext | None = None
+        self._calibration_reason = ""
+        self._calibration_visible = False
 
         self._progress_bar = QProgressBar()
         self._progress_bar.setMaximumWidth(text_width(self, "100 %", padding=48, minimum=120))
@@ -558,6 +565,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         metrics_layout.setContentsMargins(0, 0, 0, 0)
         metrics_layout.setSpacing(8)
         left_layout.addWidget(self._metrics_host, 0)
+        left_layout.addWidget(self._calibration_label, 0)
         left_layout.addWidget(self._status_label, 0)
         left_layout.addWidget(self._progress_bar, 0)
         if btn_heart_rate is not None:
@@ -843,11 +851,60 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._study_label.setText(tr("system_bar.no_study_loaded"))
+        self._render_calibration()
         for button in self._action_captions:
             if isinstance(button, QToolButton):
                 button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._capture_action_captions()
         self._fit_action_captions()
+
+    @staticmethod
+    def _make_calibration_label() -> QLabel:
+        label = QLabel()
+        label.setObjectName("calibrationBadge")
+        label.setProperty("tone", "error")
+        label.setVisible(False)
+        return label
+
+    def set_calibration_status(
+        self, calibration: CalibrationContext | None, reason: str = "", *, visible: bool = True
+    ) -> None:
+        """Show the persistent scale badge; ``visible=False`` hides it."""
+        self._calibration_context = calibration
+        self._calibration_reason = reason
+        self._calibration_visible = bool(visible)
+        self._render_calibration()
+
+    def _render_calibration(self) -> None:
+        from echo_personal_tool.presentation.calibration_status import (
+            details,
+            reason_text,
+            summary,
+            tone,
+            unavailable_text,
+        )
+
+        if not self._calibration_visible:
+            self._calibration_label.setVisible(False)
+            return
+        calibration = self._calibration_context
+        if calibration is None:
+            text = unavailable_text(self._calibration_reason)
+            tone_name = "error"
+            tooltip = reason_text(self._calibration_reason)
+            accessible = text
+        else:
+            text = summary(calibration)
+            tone_name = tone(calibration)
+            tooltip = details(calibration)
+            accessible = text
+        self._calibration_label.setText(text)
+        self._calibration_label.setToolTip(tooltip)
+        self._calibration_label.setAccessibleName(accessible)
+        self._calibration_label.setProperty("tone", tone_name)
+        self._calibration_label.style().unpolish(self._calibration_label)
+        self._calibration_label.style().polish(self._calibration_label)
+        self._calibration_label.setVisible(True)
 
     def set_status_message(self, message: str) -> None:
         self._status_label.set_full_text(message)

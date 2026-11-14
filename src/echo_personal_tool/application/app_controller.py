@@ -2144,15 +2144,14 @@ class AppController(QObject):
             rv_fac_percent=rv_fac_percent,
             linear_measurements=linear_measurements,
             spacing_calibrated=spacing_calibrated,
+            unreviewed_contours=sum(1 for c in contours if c.review_pending),
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
         )
-        # one BSA for the whole study. A value typed in the
-        # calculators is the deliberate clinical choice and wins over the Du
-        # Bois estimate — for the indexed panel exactly as for every calculator
-        # output, the report and the PDF.
+        # One BSA for the whole study: a typed value wins over Du Bois for the
+        # indexed panel exactly as for every calculator output, report and PDF.
         manual_bsa = self._calculator_inputs.manual(self._resolve_study_uid(state.instance)).get("bsa")
         bsa_basis = resolve_bsa_basis(
             height_cm=session.height_cm,
@@ -2199,6 +2198,7 @@ class AppController(QObject):
             diastology_grade=diastology_grade,
             linear_measurements=linear_measurements,
             spacing_calibrated=spacing_calibrated,
+            unreviewed_contours=sum(1 for c in contours if c.review_pending),
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
             indexed=indexed,

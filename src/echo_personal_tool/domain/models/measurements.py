@@ -301,6 +301,10 @@ class MeasurementSnapshot:
     diastology_grade: str | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     spacing_calibrated: bool = True
+    #: Contours still waiting for a human review (#555). Physical calculations
+    #: already ignore them; the export must say so instead of printing a draft
+    #: value as if it were confirmed.
+    unreviewed_contours: int = 0
     height_cm: float | None = None
     weight_kg: float | None = None
     indexed: IndexedMeasurements | None = None

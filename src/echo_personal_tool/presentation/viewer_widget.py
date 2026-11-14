@@ -240,13 +240,9 @@ _COLOR_INSTANCE_MEMORY = 64
 _ZOOM_CURSOR_HOTSPOT = (9, 9)
 
 # ── Contour point placement / "finish" gesture ───────────────────────
-# Qt reports a second click as a double-click purely on *time*: it ignores how
-# far apart the two clicks are. The viewer used to treat every double-click as
-# "close the contour", so placing points faster than the double-click interval
-# silently swallowed the second click (the polygon got one point less and often
-# closed by itself). The gesture is therefore recognised here, with a spatial
-# condition of its own, and every click that is *not* a finish gesture places a
-# point — including clicks Qt flagged as double.
+# Qt flags a double-click by time alone, ignoring distance; a fast second point
+# used to close the contour. The gesture is recognised here with its own spatial
+# condition, so a click that is not a deliberate finish still adds a point.
 #: Max time between two clicks of a deliberate finish double-click.
 _CONTOUR_FINISH_MAX_INTERVAL_MS = 400.0
 #: Max on-screen distance between the two clicks of a finish double-click.
@@ -390,16 +386,10 @@ class ContourViewBox(pg.ViewBox):
                 self._viewer_widget.clear_armed_next()
             ev.accept()
             return
-        # The armed second half of a paired tool (ТЗ п. 2): the operator has
-        # scrolled to the systolic frame, and this click both starts the tool and
-        # places its first point — the handlers below see a running tool.
-        # A click that grabs a node of an existing contour keeps dragging it:
-        # correcting the previous measurement must not spawn the next one.
-        # Item 13 of the 2026-11-06 list: the gate is the frame, not the anatomy
-        # of the click.  A press anywhere on the frame the chain was armed on —
-        # inside or outside the influence zone of the line — belongs to the
-        # contour that was just drawn, so it edits instead of starting the ES
-        # step on the ED frame (which also used to eat the pair).
+        # The armed second half of a paired tool starts here and places its first
+        # point. A click on an existing node keeps dragging instead. The frame,
+        # not the anatomy, is the gate: anywhere on the ED frame edits the ED
+        # contour rather than starting ES (which used to eat the pair).
         if ev.button() == Qt.MouseButton.LeftButton and self._viewer_widget is not None:
             if self._viewer_widget.armed_next() is not None:
                 if self._viewer_widget._handle_contour_zone_press(ev):
@@ -2532,17 +2522,10 @@ class ViewerWidget(QWidget):
             self.display.invalidate_cached_levels()
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
-        # NOTE: _cached_levels_key is deliberately NOT written here. It records the slider
-        # values the cached display levels belong to, so only the display owner may set it.
-        # Stamping it per frame made the freshness check inside the display owner trivially
-        # true (and, with the key order the two methods used to disagree on, permanently
-        # false), so the W/L window was either frozen or recomputed on every frame.
-
-        # NOTE: no per-frame derived-data cache keyed on the frame's memory
-        # address.  Decoded and PHI-masked frames are fresh temporaries; the
-        # allocator recycles their addresses, so an address-keyed cache
-        # false-hits after the first frame and the viewer keeps re-rendering an
-        # older frame (frozen playback, stale/artefact frames on scroll).
+        # _cached_levels_key belongs to the display owner: stamping it per frame
+        # made the W/L cache permanently fresh or stale (two key orders disagreed).
+        # No cache keyed on the frame's memory address either: decoded/PHI-masked
+        # frames are temporaries, so recycled addresses false-hit.
         if self._color_display_active:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             self._current_frame = to_grayscale_array(frame)
@@ -3332,11 +3315,9 @@ class ViewerWidget(QWidget):
         self._position_vessel_sensitivity_overlay()
 
     def _position_vessel_sensitivity_overlay(self) -> None:
-        # The overlay is a top-level Qt.Tool window, so move() takes *global*
-        # coordinates.  The right edge of a maximised/fullscreen host window
-        # (presenter mode) can push the strip past the monitor edge, where it
-        # silently reappears on the second display — clamp it to the screen
-        # the viewer actually lives on.
+        # A top-level Qt.Tool overlay takes global coordinates; clamp it to the
+        # screen of the host so fullscreen presenter mode cannot push it to the
+        # second display.
         geo = self._graphics.geometry()
         vw = self._vessel_sensitivity.width()
         vh = self._vessel_sensitivity.height()
@@ -7076,6 +7057,12 @@ class ViewerWidget(QWidget):
     ) -> tuple[float, float] | None:
         if label in self._vertical_caliper_labels:
             return None
+        state = self._current_state
+        if state is not None and state.instance is not None and state.instance.calibrations:
+            # A line crossing a region boundary has no single physical scale.
+            bbox = (min(start[0], end[0]), min(start[1], end[1]), max(start[0], end[0]), max(start[1], end[1]))
+            selected = state.calibration_for_geometry(bbox).context
+            return selected.spacing if selected is not None else None
         panels = self._resolve_frame_panels()
         mid_x = (start[0] + end[0]) / 2.0
         mid_y = (start[1] + end[1]) / 2.0

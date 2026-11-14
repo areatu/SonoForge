@@ -324,6 +324,17 @@ class ReportDocument:
     #: Kept in the document so CSV/JSON exports and the header of the sheet name
     #: the same thing as the PDF.
     profile_id: str = ""
+    #: Export status (#555): a draft is not a signed-off protocol. The PDF,
+    #: JSON and CSV print it, so nobody mistakes an early export for final.
+    draft: bool = False
+    #: Export-level warnings (no scale, stale record, unreviewed contours),
+    #: already localized. Kept in the document so every format prints the same.
+    notices: tuple[str, ...] = ()
+
+    @property
+    def status_text(self) -> str:
+        """Localized export status, the same words in PDF, JSON and CSV."""
+        return tr("report.status.draft" if self.draft else "report.status.final")
 
     @property
     def has_measurements(self) -> bool:
@@ -1778,6 +1789,28 @@ def _calculation_values(calculations: CalculationsSnapshot) -> list[ReportValue]
     return rows
 
 
+def review_notices(snapshot: MeasurementSnapshot | None, *, draft: bool = False) -> tuple[str, ...]:
+    """Warnings every export format must carry (#555, 6.2)."""
+    notices: list[str] = []
+    if draft:
+        notices.append(tr("report.notice.draft"))
+    if snapshot is None:
+        return tuple(notices)
+    if not snapshot.spacing_calibrated:
+        notices.append(tr("report.notice.uncalibrated"))
+    if snapshot.unreviewed_contours:
+        notices.append(tr_plural("report.notice.unreviewed", snapshot.unreviewed_contours))
+    for family in ("simpson", "doppler", "derived", "bsa"):
+        status = getattr(snapshot, f"{family}_record_status", None)
+        if status is not None and getattr(status, "needs_attention", False):
+            notices.append(tr(f"report.notice.stale.{family}"))
+    return tuple(notices)
+
+
+def _with_export_status(document: ReportDocument, snapshot: MeasurementSnapshot | None, draft: bool) -> ReportDocument:
+    return replace(document, draft=draft, notices=review_notices(snapshot, draft=draft))
+
+
 def build_report_document(
     snapshot: MeasurementSnapshot | None,
     patient: PatientInfo | None = None,
@@ -1788,6 +1821,7 @@ def build_report_document(
     include_inputs: bool = True,
     hidden_keys: Iterable[str] = (),
     study_profile_id: str = "",
+    draft: bool = False,
 ) -> ReportDocument:
     """Assemble the full report: patient header plus grouped measurements.
 
@@ -1820,17 +1854,21 @@ def build_report_document(
     if not profile_id:
         # No format asked for: keep the pre-item-7 document byte for byte, so
         # the dialog and every older caller print what they printed before.
-        return without_values(
-            ReportDocument(
-                patient=info,
-                groups=build_report_groups(
-                    snapshot,
-                    sex=sex,
-                    length_display_unit=length_display_unit,
-                    include_inputs=include_inputs,
+        return _with_export_status(
+            without_values(
+                ReportDocument(
+                    patient=info,
+                    groups=build_report_groups(
+                        snapshot,
+                        sex=sex,
+                        length_display_unit=length_display_unit,
+                        include_inputs=include_inputs,
+                    ),
                 ),
+                hidden_keys,
             ),
-            hidden_keys,
+            snapshot,
+            draft,
         )
     chosen = profile(profile_id)
     groups = chosen.groups(
@@ -1841,14 +1879,18 @@ def build_report_document(
             include_inputs=include_inputs,
         )
     )
-    return without_values(
-        ReportDocument(
-            patient=info,
-            groups=groups,
-            title=profile_title(chosen.id, tr),
-            profile_id=chosen.id,
+    return _with_export_status(
+        without_values(
+            ReportDocument(
+                patient=info,
+                groups=groups,
+                title=profile_title(chosen.id, tr),
+                profile_id=chosen.id,
+            ),
+            hidden_keys,
         ),
-        hidden_keys,
+        snapshot,
+        draft,
     )
 
 

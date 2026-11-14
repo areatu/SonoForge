@@ -191,6 +191,7 @@ files = [
     "src/echo_personal_tool/presentation/__init__.py",
     "src/echo_personal_tool/presentation/anonymization_filter.py",
     "src/echo_personal_tool/presentation/calibration_snap.py",
+    "src/echo_personal_tool/presentation/calibration_status.py",
     "src/echo_personal_tool/presentation/caliper_label_item.py",
     "src/echo_personal_tool/presentation/cine_phase_geometry.py",
     "src/echo_personal_tool/presentation/cine_phase_strip.py",

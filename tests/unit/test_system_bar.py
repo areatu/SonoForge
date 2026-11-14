@@ -44,6 +44,27 @@ def test_system_bar_study_context_and_status(qtbot) -> None:
     assert bar._actions_widget is not None
 
 
+def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtbot) -> None:
+    """#555: the badge is permanent, but only a measured scale is green."""
+    from PySide6.QtWidgets import QLabel
+
+    from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
+
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    badge = bar.findChild(QLabel, "calibrationBadge")
+    assert badge is not None and not badge.isVisible()
+
+    context = CalibrationContext(spacing=(0.1, 0.1), source="manual", confidence=CalibrationConfidence.ASSUMED)
+    bar.set_calibration_status(context, "", visible=True)
+    bar.show()
+
+    assert badge.isVisible()
+    assert badge.property("tone") == "warn"
+    assert badge.text()
+    assert badge.toolTip()
+
+
 def test_system_bar_pacs_menu_holds_load_and_send(qtbot) -> None:
     """«PACS ▾» groups the two server actions (spec §4.1); both emit their signals."""
     bar = SystemBar()

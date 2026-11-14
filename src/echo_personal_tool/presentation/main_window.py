@@ -471,8 +471,7 @@ class MainWindow(QMainWindow):
         self._viewer.contour_landmark_rejected.connect(self._on_contour_landmark_rejected)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
         self._viewer.linear_measurements_changed.connect(self._controller.on_linear_measurements_changed)
-        # Contour/caliper edits are stored with emit=False (no state_changed):
-        # the presentation viewer needs this explicit forward to re-render.
+        # Edits stored with emit=False still need an explicit presenter forward.
         self._viewer.contours_changed.connect(self._presenter.forward_contours)
         self._viewer.linear_measurements_changed.connect(self._presenter.forward_linear_measurements)
         # Doppler markers/VTI traces/calibration/vessel live viewer-locally
@@ -3141,11 +3140,8 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(pixel_size=preferences.ui_font_size))
-        # Item 14 of the 2026-11-06 list: a full theme pass rebuilds the global
-        # stylesheet and re-polishes every widget of the shell, which is the
-        # freeze the owner sees on Win10 after «Применить».  Nothing of it is
-        # needed when the three inputs did not change — and that is the common
-        # case: most settings have nothing to do with the theme.
+        # A full theme pass rebuilds and re-polishes the whole shell (the Win10
+        # freeze after «Применить»); skip it when the three inputs did not change.
         theme_key = (preferences.ui_font_size, preferences.theme_mode, preferences.accent_palette)
         if theme_key != getattr(self, "_applied_theme_key", None):
             self._applied_theme_key = theme_key
@@ -4802,6 +4798,9 @@ class MainWindow(QMainWindow):
         from dataclasses import replace as _replace
 
         panel = self._tool_panel.properties_panel
+        self._system_bar.set_calibration_status(
+            state.effective_calibration, state.calibration_reason, visible=state.instance is not None
+        )
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
             self._viewer.doppler.set_dicom_mode(None)
@@ -4850,7 +4849,7 @@ class MainWindow(QMainWindow):
                     doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
                     doppler_partial=doppler is not None and not doppler.is_complete(),
                 )
-            panel.update_from_snapshot(snap)
+            panel.update_from_snapshot(snap, state=state)
             # DICOM acquisition mode for Doppler display units (Э2); the
             # manual override in the Measures menu wins over it.
             self._viewer.doppler.set_dicom_mode(spectral_doppler_mode(snap))
