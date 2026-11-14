@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
+from typing import Any
 
 
 class CalibrationScope(str, Enum):
@@ -49,9 +50,18 @@ CALIBRATION_REGION_REQUIRED = "region_required"
 CALIBRATION_CROSSES_REGION = "crosses_region"
 CALIBRATION_AMBIGUOUS = "ambiguous_region"
 CALIBRATION_FRAME_MISMATCH = "frame_mismatch"
+CALIBRATION_MIXED = "mixed_calibration"
 
 #: The only physical unit produced by the current spatial resolver.
 MM_PER_PIXEL = "mm_per_pixel"
+
+#: Stable assumption codes.  ``ASSUMED`` calibration is usable, but the code
+#: says *why* it is weaker than a measured spatial scale; the UI/report must
+#: state it rather than silently presenting the number as calibrated (#547).
+ASSUMPTION_ISOTROPIC = "isotropic_manual"
+ASSUMPTION_IMAGER_PLANE = "imager_plane"
+ASSUMPTION_NOMINAL_SCAN = "nominal_scanned"
+ASSUMPTION_SECONDS_AS_LENGTH = "seconds_as_length"
 
 
 @dataclass(frozen=True)
@@ -116,6 +126,9 @@ class CalibrationContext:
     units: str = MM_PER_PIXEL
     revision: int = 0
     assumed_isotropic: bool = False
+    #: Why an ``ASSUMED`` scale is only an assumption (one of
+    #: ``ASSUMPTION_*``).  ``None`` for measured/derived scales.
+    assumption: str | None = None
 
     def __post_init__(self) -> None:
         if self.units != MM_PER_PIXEL:
@@ -130,6 +143,11 @@ class CalibrationContext:
             raise ValueError("calibration spacing must be finite and positive")
         if self.revision < 0:
             raise ValueError("calibration revision must not be negative")
+        if self.assumption is not None:
+            if self.confidence is CalibrationConfidence.MEASURED:
+                raise ValueError("a measured calibration cannot carry an assumption")
+            if not self.assumption:
+                raise ValueError("assumption code must not be empty")
         if self.scope is CalibrationScope.FRAME:
             if self.frame_index is None or self.frame_index < 0:
                 raise ValueError("frame-scoped calibration needs a frame index")
@@ -154,6 +172,11 @@ class CalibrationContext:
     @property
     def is_calibrated(self) -> bool:
         return self.confidence is not CalibrationConfidence.UNKNOWN
+
+    @property
+    def needs_assumption_note(self) -> bool:
+        """True when the UI/report must state how weak this scale is."""
+        return self.assumption is not None or self.assumed_isotropic or self.confidence is CalibrationConfidence.ASSUMED
 
     def applies_to_frame(self, frame_index: int | None) -> bool:
         if self.scope is not CalibrationScope.FRAME:
@@ -185,6 +208,7 @@ class CalibrationContext:
             self.units,
             self.revision,
             self.assumed_isotropic,
+            self.assumption,
         )
 
 
@@ -273,6 +297,58 @@ def select_calibration(
     return CalibrationSelection(reason=CALIBRATION_AMBIGUOUS)
 
 
+def points_bbox(points: Any) -> tuple[float, float, float, float] | None:
+    """Axis-aligned bbox of an iterable of ``(x, y)`` points.
+
+    Returns ``None`` for an empty or non-numeric geometry, so a caller can ask
+    for an instance-level fallback instead of inventing a region.
+    """
+    try:
+        xs = [float(point[0]) for point in points]
+        ys = [float(point[1]) for point in points]
+    except (IndexError, TypeError, ValueError):
+        return None
+    if not xs or not ys or not all(isfinite(value) for value in (*xs, *ys)):
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def select_calibration_for_points(
+    contexts: tuple[CalibrationContext, ...],
+    points: Any,
+    *,
+    frame_index: int | None = None,
+) -> CalibrationSelection:
+    """Select a calibration for the geometry, not just the frame.
+
+    A contour/area/volume must use the panel it was drawn on.  Without a usable
+    bbox this deliberately falls back to the frame/instance context and lets
+    :func:`select_calibration` refuse an ambiguous multi-region frame.
+    """
+    return select_calibration(contexts, frame_index=frame_index, bbox=points_bbox(points))
+
+
+def select_common_calibration(selections: tuple[CalibrationSelection, ...]) -> CalibrationSelection:
+    """One calibration shared by every input of a combined physical result.
+
+    Simpson volumes combine ED/ES and often A4C/A2C contours.  If those were
+    drawn under different scales (different frame, panel, revision or source),
+    there is no single volume that can be attributed to one calibration: the
+    caller must refuse the result instead of picking the first one (#547).
+    """
+    if not selections:
+        return CalibrationSelection(reason=CALIBRATION_NONE)
+    for selection in selections:
+        if selection.context is None:
+            return selection
+    first = selections[0].context
+    assert first is not None
+    signature = first.signature()
+    if any(selection.context is None or selection.context.signature() != signature for selection in selections[1:]):
+        return CalibrationSelection(reason=CALIBRATION_MIXED)
+    return CalibrationSelection(context=first)
+
+
 def invalidate_dependents(context: CalibrationContext, *, reason: str = "recalibrated") -> CalibrationContext:
     """Return the next revision of a calibration after an explicit change.
 
@@ -292,4 +368,5 @@ def invalidate_dependents(context: CalibrationContext, *, reason: str = "recalib
         units=context.units,
         revision=context.revision + 1,
         assumed_isotropic=context.assumed_isotropic,
+        assumption=context.assumption,
     )

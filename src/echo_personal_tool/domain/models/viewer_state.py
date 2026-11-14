@@ -10,6 +10,7 @@ from echo_personal_tool.domain.models.calibration import (
     CalibrationScope,
     CalibrationSelection,
     select_calibration,
+    select_calibration_for_points,
 )
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
@@ -89,6 +90,29 @@ class ViewerState:
         if not contexts and self.effective_calibration is not None:
             return CalibrationSelection(context=self.effective_calibration)
         return select_calibration(contexts, frame_index=self.current_frame_index, bbox=bbox)
+
+    def calibration_for_points(
+        self,
+        points: object,
+        *,
+        frame_index: int | None = None,
+    ) -> CalibrationSelection:
+        """Select the panel scale under a contour/caliper geometry (#547).
+
+        This is the entry point area/volume consumers must use: the frame alone
+        is not enough when one composite frame carries panels with different
+        scales.  A manual override applies to the whole instance by design.
+        """
+        contexts = self.instance.calibrations if self.instance is not None else ()
+        if self.manual_calibration is not None:
+            return CalibrationSelection(context=self.manual_calibration)
+        if not contexts and self.effective_calibration is not None:
+            return CalibrationSelection(context=self.effective_calibration)
+        return select_calibration_for_points(
+            contexts,
+            points,
+            frame_index=self.current_frame_index if frame_index is None else frame_index,
+        )
 
     @property
     def calibration_reason(self) -> str:
