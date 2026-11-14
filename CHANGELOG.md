@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `ci(security)`: #563 — dependency-audit evidence и SBOM из runtime-графа ([полностью](changelog.d/044-security-dependency-audit-563.md))
+
 Не выпущено: ниже — индекс, полный текст каждой записи — по ссылке.
 
 - `feat(simpson)`: #548 — настоящий биплановый объём ЛП из сопряжённых дисков A4C/A2C одной фазы; RA/RV остаются моноплановыми ([полностью](changelog.d/043-feat-simpson-la-biplane-548.md))
