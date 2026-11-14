@@ -1,5 +1,8 @@
 """DICOM datasets without the Part 10 preamble (#551).
 
+The ``zz`` prefix keeps this new file at the end of the sorted GUI-shard file
+list, so existing files do not move between shards when this test file lands.
+
 A dataset may be stored without the 128-byte preamble and ``DICM`` prefix. Such
 a file is still valid DICOM when its header carries the required identity and
 image tags; it must not be rejected by the reader. The fallback is deliberately
