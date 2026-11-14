@@ -17,9 +17,28 @@ from functools import partial
 from typing import Any
 
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, ViewerState
-from echo_personal_tool.domain.models.calibration import select_calibration_for_points
+from echo_personal_tool.domain.models.calibration import (
+    CALIBRATION_AMBIGUOUS,
+    CALIBRATION_CROSSES_REGION,
+    CALIBRATION_FRAME_MISMATCH,
+    CALIBRATION_MIXED,
+    CALIBRATION_REGION_REQUIRED,
+    select_calibration_for_points,
+)
 
 Spacing = tuple[float, float]
+
+#: A selection with one of these reasons is a refusal, not a missing scale:
+#: borrowing the active/instance scale would silently measure another panel.
+_AMBIGUOUS_REASONS = frozenset(
+    {
+        CALIBRATION_AMBIGUOUS,
+        CALIBRATION_CROSSES_REGION,
+        CALIBRATION_FRAME_MISMATCH,
+        CALIBRATION_MIXED,
+        CALIBRATION_REGION_REQUIRED,
+    }
+)
 
 
 def spacing_for_points(state: ViewerState | None, points: Any) -> tuple[Spacing | None, bool]:
@@ -30,14 +49,18 @@ def spacing_for_points(state: ViewerState | None, points: Any) -> tuple[Spacing 
     second element here is ``True`` only for a usable calibrated scale.
     """
     if state is None:
-        return None, False
-    context = state.calibration_for_points(points).context
-    if context is None or not context.is_calibrated or context.spacing is None:
-        return None, False
-    row, col = context.spacing
-    if not (math.isfinite(row) and math.isfinite(col) and row > 0.0 and col > 0.0):
-        return None, False
-    return context.spacing, True
+        return (1.0, 1.0), False
+    selection = state.calibration_for_points(points)
+    context = selection.context
+    if context is not None and context.spacing is not None:
+        row, col = context.spacing
+        if math.isfinite(row) and math.isfinite(col) and row > 0.0 and col > 0.0:
+            return context.spacing, True
+    if selection.reason in _AMBIGUOUS_REASONS:
+        return None, True
+    # The legacy uncalibrated path: geometry still runs on pixel coordinates
+    # and the formatter prints px/px²/px³.
+    return (1.0, 1.0), False
 
 
 def resolve_contour_spacing(
@@ -58,7 +81,7 @@ def resolve_contour_spacing(
     if session is not None and uid:
         manual = dict(session.calibration_by_instance).get(uid)
         if manual is not None:
-            return manual.spacing, manual.is_calibrated
+            return manual.spacing, manual.spacing is not None
     instance = instance_for(uid) if uid else state.instance
     contexts = instance.calibrations if instance is not None else ()
     if contexts:
@@ -67,12 +90,15 @@ def resolve_contour_spacing(
             contour.points,
             frame_index=contour.frame_index if contour.frame_index is not None else state.current_frame_index,
         )
-        if selection.context is None:
+        if selection.context is not None:
+            return selection.context.spacing, selection.context.spacing is not None
+        if selection.reason in _AMBIGUOUS_REASONS:
             return None, True
-        return selection.context.spacing, selection.context.is_calibrated
+        # ``calibration_missing``: the geometry is outside every panel, so the
+        # instance-level fallback below is safe.
     if instance is not None:
         if instance.calibration is not None:
-            return instance.calibration.spacing, instance.calibration.is_calibrated
+            return instance.calibration.spacing, instance.calibration.spacing is not None
         if instance.pixel_spacing is not None:
             return instance.pixel_spacing, True
     descriptor = sources.get(uid, {})

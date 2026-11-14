@@ -635,10 +635,13 @@ class TestOnContourCompleted:
     def test_area_chamber(self, main_window):
         from echo_personal_tool.domain.models import Contour
 
-        contour = MagicMock(spec=Contour)
-        contour.chamber = "AREA"
-        contour.is_open_arc = True
-        contour.source = "manual"
+        contour = Contour(
+            phase="GEN",
+            chamber="AREA",
+            points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)],
+            mitral_annulus=((0.0, 0.0), (10.0, 0.0)),
+            source="manual",
+        )
         # Replace snapshot with one that has contours
         new_state = replace(main_window._controller.state_manager.snapshot, contours=(contour,))
         main_window._controller.state_manager.snapshot = new_state
@@ -655,7 +658,7 @@ class TestOnContourCompleted:
         ):
             main_window._on_contour_completed(contour)
 
-        format_line.assert_called_once_with(contour, None, spacing_calibrated=False)
+        format_line.assert_called_once_with(contour, (1.0, 1.0), spacing_calibrated=False)
         show_status.assert_called_once_with(tr("status.ready_done", line="Area 4.2 cm²"))
         refresh_overlays.assert_called_once_with()
         sync_overlay.assert_called_once()
