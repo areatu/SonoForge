@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
-from echo_personal_tool.application.contour_calibration import spacing_for_points
+from echo_personal_tool.application.contour_calibration import spacing_for_points as spacing_for_points
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
