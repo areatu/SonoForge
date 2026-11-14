@@ -22,7 +22,12 @@ from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, contour_key
 from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
-from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
+from echo_personal_tool.domain.models.calibration import (
+    CalibrationConfidence,
+    CalibrationContext,
+    CalibrationSelection,
+    select_common_calibration,
+)
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -183,14 +188,22 @@ def _resolve_calibration_for_persistence(
     marked UNKNOWN instead of inventing a confident source.
     """
     if data.manual_calibration is not None:
-        return data.manual_calibration
+        source_uids = {contour.sop_instance_uid for contour in data.contours if contour.sop_instance_uid}
+        # The active manual context can stand for the record only when every
+        # contour comes from that one clip.
+        if len(source_uids) <= 1:
+            return data.manual_calibration
     by_instance = dict(data.calibration_by_instance)
+    contexts: list[CalibrationContext] = []
     for contour in data.contours:
-        if not contour.sop_instance_uid:
-            continue
-        context = by_instance.get(contour.sop_instance_uid)
+        context = by_instance.get(contour.sop_instance_uid or "")
         if context is not None:
-            return context
+            contexts.append(context)
+    if contexts:
+        # One record carries one calibration.  Contours drawn under different
+        # revisions/scopes have no common provenance; recording the first one
+        # would make every later freshness check a lie (#547).
+        return select_common_calibration(tuple(CalibrationSelection(context=context) for context in contexts)).context
     spacing = _resolve_pixel_spacing_for_persistence(data, sources)
     if spacing is None:
         return None
@@ -210,21 +223,31 @@ def _resolve_pixel_spacing_for_persistence(data: StudyMeasurementData, sources: 
     manual per-instance, then DICOM source.
     """
     if data.manual_pixel_spacing is not None:
-        return data.manual_pixel_spacing
-    if data.manual_spacing_by_instance:
-        # Most recent per-instance override
-        return data.manual_spacing_by_instance[-1][1]
-    # Fall back to DICOM source spacing of first contour's instance
+        source_uids = {contour.sop_instance_uid for contour in data.contours if contour.sop_instance_uid}
+        if len(source_uids) <= 1:
+            return data.manual_pixel_spacing
+    by_instance = dict(data.manual_spacing_by_instance)
+    # One record stores one spacing for all its contours.  If the contours do
+    # not all resolve to the same scale there is no honest single value: return
+    # ``None`` and let the caller skip the physical result instead of measuring
+    # one clip's contour with another clip's scale.
+    spacings: list[tuple[float, float]] = []
     for contour in data.contours:
-        spacing = sources.get(contour.sop_instance_uid, {}).get("spacing")
-        if spacing:
-            return tuple(spacing)
-    # Fallback: first source's spacing
-    for desc in sources.values():
-        spacing = desc.get("spacing")
-        if spacing:
-            return tuple(spacing)
-    return None
+        uid = contour.sop_instance_uid or ""
+        manual = by_instance.get(uid)
+        if manual is not None:
+            spacings.append((float(manual[0]), float(manual[1])))
+            continue
+        spacing = sources.get(uid, {}).get("spacing")
+        if spacing is None:
+            return None
+        spacings.append((float(spacing[0]), float(spacing[1])))
+    if not spacings:
+        return None
+    first = spacings[0]
+    if any(abs(row - first[0]) > 1e-12 or abs(col - first[1]) > 1e-12 for row, col in spacings[1:]):
+        return None
+    return first
 
 
 def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeasurementData:
@@ -245,9 +268,10 @@ def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeas
             log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
             method = ""
     basis = simpson_basis_from_contours(data.contours, spacing, method=method, calibration=calibration)
-    # No LV contours -> no Simpson result to persist; keep None so legacy
-    # documents stay unverified and empty studies don't invent a provenance.
-    if not basis.contours:
+    # No LV contours -> no Simpson result to persist; an unknown/mixed spacing
+    # means there is no single physical result either.  Keep None so legacy
+    # documents stay unverified instead of freezing a borrowed calibration.
+    if not basis.contours or spacing is None:
         return replace(data, simpson_basis=None)
     return replace(data, simpson_basis=basis)
 
