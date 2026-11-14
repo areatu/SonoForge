@@ -216,21 +216,40 @@ jobs:
           uv export --locked --format requirements-txt --no-hashes --no-emit-project -o /tmp/runtime-requirements.txt
           uv export --locked --all-extras --format requirements-txt --no-hashes --no-emit-project -o /tmp/dev-requirements.txt
       - name: pip-audit runtime contour (blocking)
-        run: pip-audit -r /tmp/runtime-requirements.txt --no-deps --progress-spinner off
+        run: |
+          pip-audit -r /tmp/runtime-requirements.txt --no-deps --progress-spinner off \
+            --format json --output /tmp/pip-audit-runtime.json
       - name: pip-audit dev contour (report only)
         if: always()
         run: |
           pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off \
             --format json --output /tmp/pip-audit-dev.json || true
           pip-audit -r /tmp/dev-requirements.txt --no-deps --progress-spinner off || true
-      - name: Upload dev-contour audit report
+      # #563: the dated evidence is an artifact, so a later reviewer can see
+      # which lock, tool version, command and findings produced the green gate.
+      # It carries package/advisory facts only — no paths, environment or PHI.
+      - name: Build dependency-audit evidence
+        if: always()
+        run: |
+          python tools/security/dependency_audit_evidence.py \
+            --lock uv.lock \
+            --runtime-report /tmp/pip-audit-runtime.json \
+            --dev-report /tmp/pip-audit-dev.json \
+            --runtime-requirements /tmp/runtime-requirements.txt \
+            --dev-requirements /tmp/dev-requirements.txt \
+            --exceptions docs/security/dependency-exceptions.json \
+            --output dependency-audit-evidence.json
+      - name: Upload dependency-audit evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pip-audit-dev-report
-          path: /tmp/pip-audit-dev.json
+          name: dependency-audit-evidence
+          path: |
+            /tmp/pip-audit-runtime.json
+            /tmp/pip-audit-dev.json
+            dependency-audit-evidence.json
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30
 
   # Counters before tests: every pytest job waits for this gate (`needs` below).
   # #473: the unit-test inventory is compared with the *base commit*, not with
