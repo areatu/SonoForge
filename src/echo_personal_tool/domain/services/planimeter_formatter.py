@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
     GENERIC_VOLUME_CHAMBER,
@@ -23,19 +25,35 @@ def planimeter_results_from_contours(
     pixel_spacing: tuple[float, float] | None,
     *,
     spacing_calibrated: bool,
+    calibration_for: Callable[[Contour], tuple[tuple[float, float] | None, bool]] | None = None,
 ) -> tuple[PlanimeterResult, ...]:
-    if pixel_spacing is None:
+    """Collect area/volume results, each with the scale of its own panel.
+
+    ``calibration_for`` is the #547 hook: a study whose contours live in
+    different frames/panels must resolve each contour separately.  The callback
+    returns ``(spacing, calibrated)``; ``calibrated=False`` keeps the result in
+    pixels, and ``spacing=None`` with ``calibrated=True`` means the scale is
+    ambiguous and the contour is skipped rather than measured with a borrowed
+    one.
+    """
+    if calibration_for is None and pixel_spacing is None:
         return ()
     results: list[PlanimeterResult] = []
     for contour in contours:
+        contour_spacing, contour_calibrated = (
+            calibration_for(contour) if calibration_for is not None else (pixel_spacing, spacing_calibrated)
+        )
+        if contour_calibrated and contour_spacing is None:
+            continue
         chamber = contour.chamber.upper()
         label = contour.measurement_label or chamber
         # The contour is the primary source of the area and it carries the
         # clip and frame it was traced on — pass that lineage on (task 4).
         lineage = lineage_from_contour(contour)
         if chamber == GENERIC_AREA_CHAMBER:
-            if spacing_calibrated:
-                area = closed_polygon_area_cm2(contour, pixel_spacing)
+            if contour_calibrated:
+                assert contour_spacing is not None
+                area = closed_polygon_area_cm2(contour, contour_spacing)
                 unit = "cm²"
             else:
                 area = closed_polygon_area_px2(contour)
@@ -43,8 +61,9 @@ def planimeter_results_from_contours(
             if area is not None:
                 results.append(PlanimeterResult(label=label, kind="area", value=area, unit=unit, contour=lineage))
         elif chamber == GENERIC_VOLUME_CHAMBER:
-            if spacing_calibrated:
-                volume = closed_polygon_volume_ml(contour, pixel_spacing)
+            if contour_calibrated:
+                assert contour_spacing is not None
+                volume = closed_polygon_volume_ml(contour, contour_spacing)
                 unit = "mL"
             else:
                 volume = closed_polygon_volume_px3(contour)

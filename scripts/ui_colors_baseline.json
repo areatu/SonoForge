@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 188,
+  "total": 187,
   "roots": [
     "presentation",
     "ui",
@@ -22,7 +22,7 @@
     "presentation/structured_reference_widget.py": 2,
     "presentation/study_loading_overlay.py": 1,
     "presentation/vessel_sensitivity_overlay.py": 6,
-    "presentation/viewer_widget.py": 14,
+    "presentation/viewer_widget.py": 13,
     "ui/bullseye_widget.py": 1,
     "ui/cine_panel.py": 13,
     "ui/control_panel.py": 22,

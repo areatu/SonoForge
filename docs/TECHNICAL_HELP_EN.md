@@ -49,6 +49,10 @@ effective_spacing = manual_spacing if present else dicom_spacing
 
 Manual spacing therefore overrides DICOM-derived spacing for the relevant study/session. A positive DICOM pair or positive manual pair sets `spacing_calibrated = true`.
 
+When one instance carries several scales (per-frame functional groups, several `SequenceOfUltrasoundRegions` panels), one instance-level `pixel_spacing` is not enough. Every consumer — calipers, area/volume contours, Simpson/LA/RA/RV, the persisted Simpson basis — selects a `CalibrationContext` by frame and measurement bbox. A line or contour that crosses a panel boundary, or an ambiguous scoped scale, is refused (the result stays in pixel units) instead of borrowing the neighbouring frame/panel scale. At save time, a record whose contours resolve to different scales does not freeze a `simpson_basis`: the physical result stays unverified until the scale is unambiguous.
+
+Source strength is expressed by `CalibrationConfidence`: `MEASURED` is an explicit spatial DICOM tag, `DERIVED` a deterministic conversion, `ASSUMED` a fallback, and `UNKNOWN` is not a calibration. Every `ASSUMED` context carries an `assumption` code (`isotropic_manual`, `imager_plane`, `nominal_scanned`, `seconds_as_length`) and must not be presented as measured. The “seconds used as length” heuristic is limited to 2D tissue regions.
+
 ### 2.2 Uncalibrated fallback and pixel units
 
 When no valid spacing is available, the controller passes `(1.0, 1.0)` to geometry routines but marks the snapshot as `spacing_calibrated = false`. This allows the same pixel geometry code to run without pretending that one pixel is one millimetre.

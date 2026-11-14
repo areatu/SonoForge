@@ -7,7 +7,7 @@ import logging
 import math
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -28,6 +28,7 @@ from echo_personal_tool.application.composition import (
     in_memory_app_services,
     services_of,
 )
+from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
@@ -1578,8 +1579,17 @@ class AppController(QObject):
             contour_tuple,
             authoritative_instance_uid=instance.sop_instance_uid,
         )
-        spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
-        self._measurement_session.merge_simpson_areas(study_uid, contour_tuple, spacing)
+        active_state = self._state_manager.snapshot
+        spacing = active_state.effective_pixel_spacing or (1.0, 1.0)
+        session = self._measurement_session.get(study_uid)
+        self._measurement_session.merge_simpson_areas(
+            study_uid,
+            contour_tuple,
+            spacing,
+            calibration_for=contour_spacing_resolver(
+                active_state, session, self._instance_metadata, self.measurement_persistence.sources
+            ),
+        )
         self._recompute_measurements()
 
     def on_linear_measurements_changed(self, measurements: object) -> None:
@@ -2067,47 +2077,19 @@ class AppController(QObject):
             session.manual_pixel_spacing,
         )
 
-        def calculation_contours(items: Sequence[Contour]) -> tuple[Contour, ...]:
-            uid = self._resolve_study_uid(state.instance)
-            descriptors = self.measurement_persistence.sources.get(uid or "", {})
-            if not descriptors:
-                return tuple(items)
-            manual = dict(session.manual_spacing_by_instance)
-            output = []
-            for contour in items:
-                source_uid = contour.sop_instance_uid or ""
-                source_spacing = manual.get(source_uid) or descriptors.get(source_uid, {}).get("spacing")
-                if source_spacing is None:
-                    # Without persistence the whole list is used unscaled, so keep the
-                    # contour in its original pixel space instead of dropping it:
-                    # enabling persistence must not change the clinical result.
-                    output.append(contour)
-                    continue
-                row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
-
-                def point(p: tuple[float, float]) -> tuple[float, float]:
-                    return (p[0] * col, p[1] * row)
-
-                output.append(
-                    dataclasses.replace(
-                        contour,
-                        points=[point(p) for p in contour.points],
-                        mitral_annulus=(point(contour.mitral_annulus[0]), point(contour.mitral_annulus[1]))
-                        if contour.mitral_annulus
-                        else None,
-                        apex_landmark=point(contour.apex_landmark) if contour.apex_landmark else None,
-                    )
-                )
-            return tuple(output)
-
-        contours = calculation_contours(contours)
+        spacing_for_contour = contour_spacing_resolver(
+            state, session, self._instance_metadata, self.measurement_persistence.sources
+        )
+        contours = express_contours_on_grid(contours, pixel_spacing, spacing_for_contour)
         lvef = calculate(contours, pixel_spacing)
         if lvef is not None and lvef.method != "simpson_biplan":
             # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
             # Contours from the whole study let BP volumes appear on the overlay even
             # when the current instance holds only a single view.
             lv_study_contours = tuple(c for c in session.contours if c.chamber.upper() == "LV")
-            study_lvef = calculate(calculation_contours(lv_study_contours), pixel_spacing)
+            study_lvef = calculate(
+                express_contours_on_grid(lv_study_contours, pixel_spacing, spacing_for_contour), pixel_spacing
+            )
             if study_lvef is not None and study_lvef.method == "simpson_biplan":
                 lvef = dataclasses.replace(
                     lvef,

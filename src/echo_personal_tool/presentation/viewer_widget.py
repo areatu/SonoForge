@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
+from echo_personal_tool.application.contour_calibration import spacing_for_points as spacing_for_points
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
@@ -2131,7 +2132,7 @@ class ViewerWidget(QWidget):
             return
 
         x0, y0, x1, y1 = roi
-        pen = pg.mkPen("#ff0000", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["state.err"], width=1, style=Qt.PenStyle.DashLine)
         rect_item = pg.PlotDataItem(
             pen=pen,
             connect="all",
@@ -2829,8 +2830,8 @@ class ViewerWidget(QWidget):
         state = self._comparison_state
         if state.kind not in {"area", "ar_jet_area"}:
             return
-        spacing, _ = self._effective_pixel_spacing()
-        if spacing is None or len(contour.points) < 3:
+        spacing, calibrated = spacing_for_points(self._current_state, contour.points)
+        if spacing is None or not calibrated or len(contour.points) < 3:
             self._measurement_label.setText(tr("viewer.acmp_need_calibration"))
             return
         from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
@@ -6194,7 +6195,6 @@ class ViewerWidget(QWidget):
         elif self._auto_calibration_ok():
             self.append_frame_overlay(tr(CALIBRATION_SUCCESS_OVERLAY_KEY))
         frame_index = self._contour_frame_index()
-        spacing, spacing_calibrated = self._effective_pixel_spacing()
         if frame_index is not None:
             for contour in self.contour_state.stored:
                 if contour.frame_index != frame_index:
@@ -6203,20 +6203,22 @@ class ViewerWidget(QWidget):
                 if chamber in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
                     if self._comparison_state.kind in {"area", "ar_jet_area"}:
                         continue
+                    contour_spacing, contour_calibrated = spacing_for_points(self._current_state, contour.points)
                     line = format_planimeter_overlay_line(
                         contour,
-                        spacing,
-                        spacing_calibrated=spacing_calibrated,
+                        contour_spacing,
+                        spacing_calibrated=contour_calibrated,
                     )
                     if line:
                         self.append_frame_overlay(line)
                     continue
                 if contour.is_open_arc:
+                    contour_spacing, contour_calibrated = spacing_for_points(self._current_state, contour.points)
                     self.append_frame_overlay(
                         format_contour_overlay(
                             contour,
-                            spacing,
-                            spacing_calibrated=spacing_calibrated,
+                            contour_spacing,
+                            spacing_calibrated=contour_calibrated,
                             finish_key=shortcut_label("finish_tool"),
                         )
                     )
@@ -6571,7 +6573,7 @@ class ViewerWidget(QWidget):
         if len(self.contour_state.active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return
-        spacing, calibrated = self._effective_pixel_spacing()
+        spacing, calibrated = spacing_for_points(self._current_state, self.contour_state.active_arc_points)
         probe = Contour(
             phase=self.contour_state.active_phase or "GEN",
             view=self.contour_state.active_view,
@@ -6886,9 +6888,6 @@ class ViewerWidget(QWidget):
             return
         frame = state.frame_index
         instance_uid = self.current_instance_uid() or ""
-        spacing, _ = self._effective_pixel_spacing()
-        if spacing is None:
-            return
         from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
 
         # Recompute areas from the *actual* stored contours, not from the
@@ -6904,7 +6903,10 @@ class ViewerWidget(QWidget):
                 continue
             if c.frame_index != frame:
                 continue
-            a = closed_polygon_area_cm2(c, spacing)
+            contour_spacing, contour_calibrated = spacing_for_points(self._current_state, c.points)
+            if contour_spacing is None or not contour_calibrated:
+                continue
+            a = closed_polygon_area_cm2(c, contour_spacing)
             if a is None or a <= 0:
                 continue
             if area1 is None:
@@ -6978,9 +6980,6 @@ class ViewerWidget(QWidget):
             return
         frame = state.frame_index
         instance_uid = self.current_instance_uid() or ""
-        spacing, _ = self._effective_pixel_spacing()
-        if spacing is None:
-            return
         from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
 
         area1: float | None = None
@@ -6990,7 +6989,10 @@ class ViewerWidget(QWidget):
                 continue
             if c.frame_index != frame:
                 continue
-            a = closed_polygon_area_cm2(c, spacing)
+            contour_spacing, contour_calibrated = spacing_for_points(self._current_state, c.points)
+            if contour_spacing is None or not contour_calibrated:
+                continue
+            a = closed_polygon_area_cm2(c, contour_spacing)
             if a is None or a <= 0:
                 continue
             if area1 is None:
@@ -7467,8 +7469,8 @@ class ViewerWidget(QWidget):
         target = ("contour", _contour_picker_reference(contour))
         points = contour.closed_polygon_points()
         value_text = ""
-        spacing = self._current_state.effective_pixel_spacing if self._current_state is not None else None
-        if spacing is not None and points:
+        spacing, calibrated = spacing_for_points(self._current_state, contour.points) if points else (None, False)
+        if spacing is not None and calibrated:
             if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER:
                 volume = closed_polygon_volume_ml(contour, spacing)
                 if volume is not None:
