@@ -173,17 +173,20 @@ jobs:
           uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-linux-amd64.sbom.cdx.json"
+          # #563: describe the locked runtime graph, not the build environment
+          # (which also contains PyInstaller, Hatchling and CycloneDX itself).
+          uv export --locked --no-hashes --no-emit-project -o dist/sbom-runtime-requirements.txt
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
           # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
           # while cyclonedx-py defaults track the latest spec.
-          # --output-reproducible keeps the SBOM byte-stable for a given
-          # environment, so re-running a build does not churn the asset.
-          uv run --no-sync python -m cyclonedx_py environment \
-            --pyproject pyproject.toml \
+          # --output-reproducible keeps the SBOM byte-stable for a given graph,
+          # so re-running a build does not churn the asset.
+          uv run --no-sync python -m cyclonedx_py requirements dist/sbom-runtime-requirements.txt \
             --spec-version 1.6 \
             --output-format JSON \
             --output-reproducible \
             --output-file "$out"
+          python tools/release/verify_sbom_graph.py "$out" dist/sbom-runtime-requirements.txt
           python tools/release/finalize_sbom.py "$out" "$version"
 
       - name: Attest .deb provenance
@@ -361,11 +364,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
           $version = "${{ steps.version.outputs.version }}"
           $out = "dist/SonoForge-$version-windows-x64.sbom.cdx.json"
+          # #563: describe the locked runtime graph, not the build environment.
+          uv export --locked --no-hashes --no-emit-project -o dist/sbom-runtime-requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw "runtime requirements export failed" }
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
           # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
           # while cyclonedx-py defaults track the latest spec.
-          uv run --no-sync python -m cyclonedx_py environment --pyproject pyproject.toml --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
+          uv run --no-sync python -m cyclonedx_py requirements dist/sbom-runtime-requirements.txt --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
           if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
+          python tools/release/verify_sbom_graph.py $out dist/sbom-runtime-requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw "SBOM graph check failed" }
           $sbom = Get-Content $out -Raw | ConvertFrom-Json
           Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), format $($sbom.bomFormat)"
           # actions/attest only accepts CycloneDX with a serialNumber, but
@@ -510,15 +518,17 @@ jobs:
           uv pip install --python .venv "cyclonedx-bom==$(python .github/scripts/locked_version.py cyclonedx-bom)"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-macos-arm64.sbom.cdx.json"
+          # #563: describe the locked runtime graph, not the build environment.
+          uv export --locked --no-hashes --no-emit-project -o dist/sbom-runtime-requirements.txt
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
           # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
           # while cyclonedx-py defaults track the latest spec.
-          uv run --no-sync python -m cyclonedx_py environment \
-            --pyproject pyproject.toml \
+          uv run --no-sync python -m cyclonedx_py requirements dist/sbom-runtime-requirements.txt \
             --spec-version 1.6 \
             --output-format JSON \
             --output-reproducible \
             --output-file "$out"
+          python tools/release/verify_sbom_graph.py "$out" dist/sbom-runtime-requirements.txt
           python tools/release/finalize_sbom.py "$out" "$version"
 
       - name: Attest DMG provenance

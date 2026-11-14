@@ -58,3 +58,8 @@ tests/security/test_qh4a_diagnostics.py
 # ready `*.dcm` name, sets restrictive permissions at creation, and refuses an
 # invalid session identifier or a symlinked path component below the root.
 tests/security/test_orthanc_cache_write_safety.py
+
+# #563 — dependency advisory scan leaves dated, lock-bound evidence; the
+# release SBOM is generated from the locked runtime graph and checked against
+# it, and an exception register cannot age past its review date unnoticed.
+tests/security/test_dependency_audit_evidence.py
