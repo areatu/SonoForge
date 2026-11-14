@@ -13,10 +13,22 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.measurement_catalog import format_measurement
+from echo_personal_tool.domain.models.calibration import CalibrationContext
 from echo_personal_tool.domain.models.properties_snapshot import (
     PropertiesSnapshot,
     RegionSummary,
 )
+from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.presentation.calibration_status import (
+    confidence_text,
+    details,
+    reason_text,
+    scope_text,
+    source_name,
+    source_text,
+    tone,
+)
+from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.display_formats import (
     format_bmi,
     format_fps,
@@ -103,6 +115,7 @@ class PropertiesPanel(QWidget):
         # thread.  Keep the last immutable inputs and only touch widgets on a
         # real change.
         self._last_snapshot: PropertiesSnapshot | None = None
+        self._last_calibration_key: tuple[object, ...] | None = None
         self._last_instance_key: tuple[object, ...] | None = None
         self._last_measurement_key: tuple[object, ...] | None = None
         self._last_contour_key: tuple[object, ...] | None = None
@@ -117,10 +130,24 @@ class PropertiesPanel(QWidget):
         self._measurement_group.hide()
         self._contour_group.hide()
 
-    def update_from_snapshot(self, snapshot: PropertiesSnapshot) -> None:
-        """Update all groups from a PropertiesSnapshot."""
-        if snapshot == self._last_snapshot:
+    def update_from_snapshot(
+        self,
+        snapshot: PropertiesSnapshot,
+        *,
+        state: ViewerState | None = None,
+    ) -> None:
+        """Update all groups from a snapshot and, when given, live viewer state.
+
+        Calibration can change without any DICOM header field changing (manual
+        override, frame switch, region ambiguity), so the deduplication key
+        includes the resolved context and its reason (issue 555, 6.2).
+        """
+        calibration = state.effective_calibration if state is not None else snapshot.calibration
+        reason = state.calibration_reason if state is not None else snapshot.calibration_reason
+        key = (snapshot, calibration, reason)
+        if key == self._last_calibration_key:
             return
+        self._last_calibration_key = key
         self._last_snapshot = snapshot
         self._last_instance_key = None
         self._clear_form(self._instance_form)
@@ -181,7 +208,7 @@ class PropertiesPanel(QWidget):
                 QLabel(f"{format_pixel_spacing_mm(row)}×{format_pixel_spacing_mm(col)} mm"),
             )
         if snapshot.pixel_spacing_source:
-            self._spatial_form.addRow(tr("properties.source"), QLabel(snapshot.pixel_spacing_source))
+            self._spatial_form.addRow(tr("properties.source"), QLabel(source_name(snapshot.pixel_spacing_source)))
         if snapshot.transducer_frequency_mhz is not None:
             self._spatial_form.addRow(
                 tr("properties.transducer_freq"),
@@ -200,8 +227,10 @@ class PropertiesPanel(QWidget):
         else:
             self._regions_group.hide()
 
-        # Calibration status
-        self._add_calibration_row(tr("properties.calibration.depth"), snapshot.depth_calibrated, "DICOM")
+        # Calibration status: the spatial scale first, with its evidence and
+        # scope; M-mode and Doppler stay separate because they are separate
+        # physical axes (issue 555, 6.2).
+        self._add_spatial_calibration_rows(calibration, reason)
         self._add_mmode_calibration_row(snapshot)
         self._add_doppler_calibration_row(snapshot)
         self._calibration_group.show()
@@ -266,13 +295,36 @@ class PropertiesPanel(QWidget):
         if region.ref_y0 is not None:
             self._regions_form.addRow("    ", QLabel(f"RefY0: {region.ref_y0}"))
 
-    def _add_calibration_row(self, label: str, calibrated: bool, source: str) -> None:
-        """Add a calibration status row."""
-        if calibrated:
-            status = tr("properties.calibration.complete", source=source)
-        else:
-            status = tr("properties.calibration.missing")
-        self._calibration_form.addRow(f"{label}", QLabel(status))
+    def _tone_label(self, text: str, tone_name: str) -> QLabel:
+        """A calibration label carrying its semantic colour, never a bare green."""
+        tokens = get_theme_tokens()
+        colour = {
+            "ok": tokens["state.ok"],
+            "warn": tokens["state.warn"],
+            "error": tokens["state.err"],
+        }.get(tone_name, tokens["text.2"])
+        label = QLabel(text)
+        label.setWordWrap(True)
+        label.setStyleSheet(f"color: {colour}; font-weight: 600;")
+        return label
+
+    def _add_spatial_calibration_rows(self, calibration: CalibrationContext | None, reason: str) -> None:
+        """Source, confidence, scope and revision of the spatial scale."""
+        if calibration is None:
+            text = tr("properties.calibration.reason") + " " + reason_text(reason)
+            self._calibration_form.addRow(tr("properties.calibration.spatial"), self._tone_label(text, "error"))
+            self._calibration_form.addRow("", QLabel(tr("properties.calibration.note")))
+            return
+        source = self._tone_label(
+            f"{source_text(calibration)} · {confidence_text(calibration.confidence)}", tone(calibration)
+        )
+        source.setToolTip(details(calibration))
+        self._calibration_form.addRow(tr("properties.calibration.spatial"), source)
+        self._calibration_form.addRow(tr("properties.calibration.scope"), QLabel(scope_text(calibration)))
+        if calibration.revision:
+            self._calibration_form.addRow(tr("properties.calibration.revision"), QLabel(str(calibration.revision)))
+        if calibration.assumed_isotropic or not calibration.is_calibrated:
+            self._calibration_form.addRow("", QLabel(tr("properties.calibration.note")))
 
     def _add_mmode_calibration_row(self, snapshot: PropertiesSnapshot) -> None:
         """Add M-mode calibration status row."""
@@ -350,6 +402,7 @@ class PropertiesPanel(QWidget):
             return
         self._last_instance_key = key
         self._last_snapshot = None
+        self._last_calibration_key = None
         self._clear_form(self._instance_form)
         self._clear_form(self._timing_form)
         self._clear_form(self._spatial_form)
@@ -474,6 +527,7 @@ class PropertiesPanel(QWidget):
     def clear_all(self) -> None:
         """Hide all sections."""
         self._last_snapshot = None
+        self._last_calibration_key = None
         self._last_instance_key = None
         self._last_measurement_key = None
         self._last_contour_key = None

@@ -460,11 +460,13 @@ class TestStylesheetFromTokens:
     # near-white `progress.text` to the readable on-accent ink of each theme
     # (navy/light now carry the dark ink; vscode_dark/vscode_light stay with
     # white).  Re-taken together with the QSS goldens.
+    # 2026-11-12 (6.2 #555): the calibration badge of the patient line adds one
+    # rule per tone.  Re-taken together with the QSS goldens.
     _PRE_TOKEN_QSS_SHA256 = {
-        "dark": "359a9e30e7ea2fc405885f4d226c0557ebe4feaf56e717167b7d3343ddbb82f9",
-        "light": "fad2757f84bac2cb397fe58913f80be46c36a72d0c68b807e838c9a9b6b64db9",
-        "vscode_dark": "c4fd7c22836c7eb4e2b79d9697a7302f755a0b599f08864009e25391f7eb49ad",
-        "vscode_light": "befa8bdcb2dc23046c65ede927c74b1ebabd2dbe44cd833af7d5970dc9c2ff0e",
+        "dark": "644f82595c55046340d959cf35cc86fed6f17fcbc97d7a9153e57d4e1f7b3f04",
+        "light": "30652f995b76835a8ed12e37f0a11fce2523101ebdaac9cb597aa42fd9fdb87a",
+        "vscode_dark": "b3700a1b1a2718d414edbb0f4a23e71c4851390de286a741477fb7a38755e889",
+        "vscode_light": "8a914563ceeb84981a3dfa310491555f576ff36bbc938322692e68c051871e91",
     }
 
     @pytest.mark.parametrize("theme", sorted(_PRE_TOKEN_QSS_SHA256))

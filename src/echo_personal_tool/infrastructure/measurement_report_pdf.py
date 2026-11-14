@@ -150,6 +150,11 @@ def _report_story(
     # the renderer — a generic ultrasound protocol must not be headed «Протокол
     # ЭхоКГ».  An empty title is the echocardiography default of older builds.
     story: list = [Paragraph(_xml_escape(document.title or tr("report.title")), styles["title"])]
+    # The export status travels with the document (#555): a draft or a sheet
+    # with unreviewed/unscaled values never looks like a signed-off protocol.
+    story.append(Paragraph(_xml_escape(document.status_text), styles["note"]))
+    for notice in document.notices:
+        story.append(Paragraph(_xml_escape(notice), styles["note"]))
     story.append(Spacer(1, 4 * mm))
     # An empty field list is a real choice: no header table at all, rather than
     # a table that prints the «Patient» placeholder the empty fallback uses.

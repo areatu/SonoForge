@@ -77,6 +77,7 @@ SCREEN_GOLDENS: Final[dict[str, dict[str, object]]] = {
 PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     "ru": (
         "Протокол эхокардиографии",
+        "Итоговый протокол — подписан",
         "Пациент",
         "Левый желудочек",
         "Показатель",
@@ -92,6 +93,7 @@ PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     ),
     "en": (
         "Echocardiography report",
+        "Final report — signed off",
         "Patient",
         "Left ventricle",
         "Parameter",

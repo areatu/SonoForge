@@ -527,6 +527,30 @@ QPushButton:default:disabled {
 #systemBarContext, #systemBarActions {
     background: transparent;
 }
+/* «Масштаб: …» — the persistent calibration badge (issue 555).  Its colour is the
+   confidence of the scale, not decoration: measured/derived green, assumed
+   amber, absent or unverified red. */
+#calibrationBadge {
+    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 12px;
+    font-weight: 600;
+}
+#calibrationBadge[tone="ok"] {
+    color: #22c55e;
+    border-color: #22c55e;
+}
+#calibrationBadge[tone="warn"] {
+    color: #f59e0b;
+    border-color: #f59e0b;
+}
+#calibrationBadge[tone="error"] {
+    color: #ef4444;
+    border-color: #ef4444;
+}
 /* «Справочник» is an ordinary action of the row: the accent outline it used to
    carry made one of five equal buttons look selected. */
 #systemBar QPushButton#referencesButton {

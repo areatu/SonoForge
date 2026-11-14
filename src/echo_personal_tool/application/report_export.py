@@ -120,7 +120,13 @@ def _document_to_dict(document: ReportDocument) -> dict[str, Any]:
                 ],
             }
         )
-    return {"patient": patient, "groups": groups}
+    return {
+        "patient": patient,
+        "status": "draft" if document.draft else "final",
+        "status_text": document.status_text,
+        "notices": list(document.notices),
+        "groups": groups,
+    }
 
 
 def render_report_json(document: ReportDocument, output_path: Path) -> Path:
@@ -135,7 +141,9 @@ def render_report_json(document: ReportDocument, output_path: Path) -> Path:
 
 def render_report_csv(document: ReportDocument, output_path: Path) -> Path:
     """Write a study report as a flat CSV table (group, label, value, unit, norm)."""
-    header = ["group", "label", "value", "unit", "norm", "pathological", "sample_count"]
+    header = ["group", "label", "value", "unit", "norm", "pathological", "sample_count", "status", "notices"]
+    status = document.status_text
+    notices = " | ".join(document.notices)
     rows: list[list[Any]] = []
     for group in document.groups:
         for value in group.values:
@@ -148,6 +156,8 @@ def render_report_csv(document: ReportDocument, output_path: Path) -> Path:
                     value.norm,
                     "1" if value.pathological else "",
                     value.sample_count if value.sample_count is not None else "",
+                    status,
+                    notices,
                 ]
             )
     tmp = output_path.with_suffix(output_path.suffix + ".tmp")

@@ -683,6 +683,30 @@ def _stylesheet_15_systembar(font_size: int, tokens: dict[str, str], arrow_up: s
 #systemBarContext, #systemBarActions {{
     background: transparent;
 }}
+/* «Масштаб: …» — the persistent calibration badge (issue 555).  Its colour is the
+   confidence of the scale, not decoration: measured/derived green, assumed
+   amber, absent or unverified red. */
+#calibrationBadge {{
+    color: {tokens["text.2"]};
+    background: {tokens["surface.2"]};
+    border: 1px solid {tokens["line.1"]};
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: {max(font_size - 1, 11)}px;
+    font-weight: 600;
+}}
+#calibrationBadge[tone="ok"] {{
+    color: {tokens["state.ok"]};
+    border-color: {tokens["state.ok"]};
+}}
+#calibrationBadge[tone="warn"] {{
+    color: {tokens["state.warn"]};
+    border-color: {tokens["state.warn"]};
+}}
+#calibrationBadge[tone="error"] {{
+    color: {tokens["state.err"]};
+    border-color: {tokens["state.err"]};
+}}
 /* «Справочник» is an ordinary action of the row: the accent outline it used to
    carry made one of five equal buttons look selected. */
 #systemBar QPushButton#referencesButton {{

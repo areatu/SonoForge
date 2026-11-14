@@ -284,6 +284,7 @@ class ReportCoordinator(QObject):
             include_inputs=bool(getattr(preferences, "report_show_inputs", False)),
             hidden_keys=self.hidden_value_keys(),
             study_profile_id=study_profile_id(preferences),
+            draft=not self._finished(tab),
         )
         page = self._page
         marks = page.marked_not_evaluated() if page is not None else frozenset()

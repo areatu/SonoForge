@@ -73,6 +73,9 @@ class PropertiesSnapshot:
     #: Properties panel can show source/scope/confidence without re-reading DICOM.
     calibration: CalibrationContext | None = None
     calibrations: tuple[CalibrationContext, ...] = ()
+    #: Why no calibration can be selected without measurement geometry; a
+    #: stable code of :mod:`domain.models.calibration`, empty when available.
+    calibration_reason: str = ""
 
     @classmethod
     def default(
