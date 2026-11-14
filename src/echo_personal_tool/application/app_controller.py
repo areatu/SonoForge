@@ -7,7 +7,7 @@ import logging
 import math
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -28,6 +28,7 @@ from echo_personal_tool.application.composition import (
     in_memory_app_services,
     services_of,
 )
+from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
@@ -74,7 +75,6 @@ from echo_personal_tool.domain.models import (
     TemporalFusionResult,
     VesselMeasurement,
 )
-from echo_personal_tool.domain.models.calibration import select_calibration_for_points
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
@@ -1586,7 +1586,9 @@ class AppController(QObject):
             study_uid,
             contour_tuple,
             spacing,
-            calibration_for=lambda contour: self._spacing_for_contour(contour, active_state, session),
+            calibration_for=contour_spacing_resolver(
+                active_state, session, self._instance_metadata, self.measurement_persistence.sources
+            ),
         )
         self._recompute_measurements()
 
@@ -2075,54 +2077,19 @@ class AppController(QObject):
             session.manual_pixel_spacing,
         )
 
-        def spacing_for_contour(contour: Contour) -> tuple[tuple[float, float] | None, bool]:
-            return self._spacing_for_contour(contour, state, session)
-
-        def calculation_contours(items: Sequence[Contour]) -> tuple[Contour, ...]:
-            """Express every contour on the active pixel grid, never on a borrowed scale.
-
-            A contour may come from another clip of the study, and that clip may
-            have per-frame/per-panel calibrations.  Its own scale is resolved by
-            frame + geometry; when that is ambiguous the contour is dropped from
-            the physical calculation instead of being measured with the active
-            clip's scale (#547).
-            """
-            output = []
-            for contour in items:
-                source_spacing, source_calibrated = spacing_for_contour(contour)
-                if source_calibrated and source_spacing is None:
-                    continue
-                if source_spacing is None or pixel_spacing is None:
-                    # Legacy contour with no scale at all: keep it in its pixel
-                    # space, as before.  A scoped-but-ambiguous contour was
-                    # already dropped above.
-                    output.append(contour)
-                    continue
-                row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
-
-                def point(p: tuple[float, float]) -> tuple[float, float]:
-                    return (p[0] * col, p[1] * row)
-
-                output.append(
-                    dataclasses.replace(
-                        contour,
-                        points=[point(p) for p in contour.points],
-                        mitral_annulus=(point(contour.mitral_annulus[0]), point(contour.mitral_annulus[1]))
-                        if contour.mitral_annulus
-                        else None,
-                        apex_landmark=point(contour.apex_landmark) if contour.apex_landmark else None,
-                    )
-                )
-            return tuple(output)
-
-        contours = calculation_contours(contours)
+        spacing_for_contour = contour_spacing_resolver(
+            state, session, self._instance_metadata, self.measurement_persistence.sources
+        )
+        contours = express_contours_on_grid(contours, pixel_spacing, spacing_for_contour)
         lvef = calculate(contours, pixel_spacing)
         if lvef is not None and lvef.method != "simpson_biplan":
             # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
             # Contours from the whole study let BP volumes appear on the overlay even
             # when the current instance holds only a single view.
             lv_study_contours = tuple(c for c in session.contours if c.chamber.upper() == "LV")
-            study_lvef = calculate(calculation_contours(lv_study_contours), pixel_spacing)
+            study_lvef = calculate(
+                express_contours_on_grid(lv_study_contours, pixel_spacing, spacing_for_contour), pixel_spacing
+            )
             if study_lvef is not None and study_lvef.method == "simpson_biplan":
                 lvef = dataclasses.replace(
                     lvef,
@@ -2141,9 +2108,6 @@ class AppController(QObject):
         lvm_g = lvm_from_linear(linear_measurements)
         rwt = rwt_from_linear(linear_measurements)
         rv_fac_percent = from_rv_contours(contours, pixel_spacing) if spacing_calibrated else None
-        # ``contours`` has already been expressed on the active pixel grid by
-        # ``calculation_contours`` using each contour's own scale, so the areas
-        # here must be computed in that grid, not with the originals again.
         planimeter = planimeter_results_from_contours(
             contours,
             pixel_spacing,
@@ -2366,50 +2330,6 @@ class AppController(QObject):
             if instance is not None and instance.heart_rate_bpm:
                 return HeartRateCandidate(float(instance.heart_rate_bpm), SOURCE_DICOM, "HeartRate")
         return self._calculator_inputs.hr_estimate(study_uid)
-
-    def _spacing_for_contour(
-        self,
-        contour: Contour,
-        state: ViewerState | None = None,
-        session: StudyMeasurementData | None = None,
-    ) -> tuple[tuple[float, float] | None, bool]:
-        """Scale under *this* contour, or ``(None, True)`` when ambiguous.
-
-        The contour may belong to another clip of the study, and one clip may
-        carry per-frame/panel calibrations.  Resolution therefore uses the
-        contour's own instance, frame and bbox; the active viewer's spacing is
-        only a fallback for legacy records that carry no scoped contexts
-        (#547).  ``(None, True)`` means "would be physical, but the scale is
-        ambiguous" — callers must skip the contour, never borrow a scale.
-        """
-        active = state or self._state_manager.snapshot
-        data = session
-        uid = contour.sop_instance_uid or (active.instance.sop_instance_uid if active.instance is not None else "")
-        if data is not None and uid:
-            manual = dict(data.calibration_by_instance).get(uid)
-            if manual is not None:
-                return manual.spacing, manual.is_calibrated
-        instance = self._instance_metadata(uid) if uid else active.instance
-        contexts = instance.calibrations if instance is not None else ()
-        if contexts:
-            selection = select_calibration_for_points(
-                contexts,
-                contour.points,
-                frame_index=contour.frame_index if contour.frame_index is not None else active.current_frame_index,
-            )
-            if selection.context is None:
-                return None, True
-            return selection.context.spacing, selection.context.is_calibrated
-        if instance is not None:
-            if instance.calibration is not None:
-                return instance.calibration.spacing, instance.calibration.is_calibrated
-            if instance.pixel_spacing is not None:
-                return instance.pixel_spacing, True
-        descriptor = self.measurement_persistence.sources.get(uid, {})
-        spacing = descriptor.get("spacing")
-        if spacing:
-            return (float(spacing[0]), float(spacing[1])), True
-        return None, False
 
     def _instance_metadata(self, sop_instance_uid: str) -> InstanceMetadata | None:
         current = self._current_instance

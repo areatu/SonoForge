@@ -18,12 +18,11 @@ matrix — they pin the *correct* behavior for each path:
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from pydicom.dataset import Dataset
 
-from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.contour_calibration import resolve_contour_spacing
 from echo_personal_tool.application.measurement_persistence import record_simpson_basis
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, StudyMeasurementSessionStore
 from echo_personal_tool.domain.models.calibration import (
@@ -129,16 +128,18 @@ class TestGeometrySelection:
         assert state.effective_pixel_spacing is None
 
 
-class TestControllerConsumer:
-    """The app-level resolver used for contours from any clip of the study."""
+class TestContourResolver:
+    """The resolver used for contours from any clip of the study."""
 
     @staticmethod
-    def _controller(instance: InstanceMetadata) -> AppController:
-        controller = AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
-        controller._current_instance = instance
-        controller._studies = []
-        controller.measurement_persistence = SimpleNamespace(sources={})
-        return controller
+    def _resolve(instance: InstanceMetadata, contour: Contour, state: ViewerState):
+        return resolve_contour_spacing(
+            contour,
+            state=state,
+            session=None,
+            instance_for=lambda _uid: instance,
+            sources={},
+        )
 
     @staticmethod
     def _state(instance: InstanceMetadata) -> ViewerState:
@@ -166,18 +167,16 @@ class TestControllerConsumer:
             confidence=CalibrationConfidence.DERIVED,
         )
         instance = _instance((first, second))
-        controller = self._controller(instance)
         state = self._state(instance)
-        assert controller._spacing_for_contour(_area(_LEFT_AREA, frame=0), state) == ((0.1, 0.1), True)
-        assert controller._spacing_for_contour(_area(_LEFT_AREA, frame=1), state) == ((0.2, 0.2), True)
+        assert self._resolve(instance, _area(_LEFT_AREA, frame=0), state) == ((0.1, 0.1), True)
+        assert self._resolve(instance, _area(_LEFT_AREA, frame=1), state) == ((0.2, 0.2), True)
 
     def test_panel_contour_and_spanning_contour_are_not_borrowed(self) -> None:
         contexts = (_region_context((0.1, 0.1), _LEFT), _region_context((0.2, 0.2), _RIGHT))
         instance = _instance(contexts)
-        controller = self._controller(instance)
         state = self._state(instance)
-        assert controller._spacing_for_contour(_area(_RIGHT_AREA), state) == ((0.2, 0.2), True)
-        assert controller._spacing_for_contour(_area(_SPANNING), state) == (None, True)
+        assert self._resolve(instance, _area(_RIGHT_AREA), state) == ((0.2, 0.2), True)
+        assert self._resolve(instance, _area(_SPANNING), state) == (None, True)
 
 
 class TestCommonCalibration:

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
+from echo_personal_tool.application.contour_calibration import spacing_for_points
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.diagnostics import profiled as _prof
 from echo_personal_tool.application.dicom_io import (
@@ -2829,7 +2830,7 @@ class ViewerWidget(QWidget):
         state = self._comparison_state
         if state.kind not in {"area", "ar_jet_area"}:
             return
-        spacing, calibrated = self._spacing_for_contour(contour)
+        spacing, calibrated = spacing_for_points(self._current_state, contour.points)
         if spacing is None or not calibrated or len(contour.points) < 3:
             self._measurement_label.setText(tr("viewer.acmp_need_calibration"))
             return
@@ -6158,28 +6159,6 @@ class ViewerWidget(QWidget):
                     return spacing, True
         return (1.0, 1.0), False
 
-    def _spacing_for_points(self, points: object) -> tuple[tuple[float, float] | None, bool]:
-        """Panel scale under a geometry, or ``(None, False)`` when ambiguous.
-
-        The frame-only ``_effective_pixel_spacing`` is not enough for a
-        composite frame: a contour drawn in the colour/zoom panel must not be
-        measured with the 2D panel's scale.  Refusing (and showing the value in
-        pixels) is safer than borrowing a neighbouring panel (#547).
-        """
-        if self._current_state is None:
-            return None, False
-        selection = self._current_state.calibration_for_points(points)
-        context = selection.context
-        if context is None or not context.is_calibrated:
-            return None, False
-        row, col = context.spacing
-        if not (math.isfinite(row) and math.isfinite(col) and row > 0.0 and col > 0.0):
-            return None, False
-        return context.spacing, True
-
-    def _spacing_for_contour(self, contour: Contour) -> tuple[tuple[float, float] | None, bool]:
-        return self._spacing_for_points(contour.points)
-
     def _needs_calibration_prompt(self) -> bool:
         if self._current_state is None or self._current_state.instance is None:
             return False
@@ -6224,7 +6203,7 @@ class ViewerWidget(QWidget):
                 if chamber in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
                     if self._comparison_state.kind in {"area", "ar_jet_area"}:
                         continue
-                    contour_spacing, contour_calibrated = self._spacing_for_contour(contour)
+                    contour_spacing, contour_calibrated = spacing_for_points(self._current_state, contour.points)
                     line = format_planimeter_overlay_line(
                         contour,
                         contour_spacing,
@@ -6234,7 +6213,7 @@ class ViewerWidget(QWidget):
                         self.append_frame_overlay(line)
                     continue
                 if contour.is_open_arc:
-                    contour_spacing, contour_calibrated = self._spacing_for_contour(contour)
+                    contour_spacing, contour_calibrated = spacing_for_points(self._current_state, contour.points)
                     self.append_frame_overlay(
                         format_contour_overlay(
                             contour,
@@ -6594,7 +6573,7 @@ class ViewerWidget(QWidget):
         if len(self.contour_state.active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return
-        spacing, calibrated = self._spacing_for_points(self.contour_state.active_arc_points)
+        spacing, calibrated = spacing_for_points(self._current_state, self.contour_state.active_arc_points)
         probe = Contour(
             phase=self.contour_state.active_phase or "GEN",
             view=self.contour_state.active_view,
@@ -6924,7 +6903,7 @@ class ViewerWidget(QWidget):
                 continue
             if c.frame_index != frame:
                 continue
-            contour_spacing, contour_calibrated = self._spacing_for_contour(c)
+            contour_spacing, contour_calibrated = spacing_for_points(self._current_state, c.points)
             if contour_spacing is None or not contour_calibrated:
                 continue
             a = closed_polygon_area_cm2(c, contour_spacing)
@@ -7010,7 +6989,7 @@ class ViewerWidget(QWidget):
                 continue
             if c.frame_index != frame:
                 continue
-            contour_spacing, contour_calibrated = self._spacing_for_contour(c)
+            contour_spacing, contour_calibrated = spacing_for_points(self._current_state, c.points)
             if contour_spacing is None or not contour_calibrated:
                 continue
             a = closed_polygon_area_cm2(c, contour_spacing)
@@ -7490,7 +7469,7 @@ class ViewerWidget(QWidget):
         target = ("contour", _contour_picker_reference(contour))
         points = contour.closed_polygon_points()
         value_text = ""
-        spacing, calibrated = self._spacing_for_contour(contour) if points else (None, False)
+        spacing, calibrated = spacing_for_points(self._current_state, contour.points) if points else (None, False)
         if spacing is not None and calibrated:
             if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER:
                 volume = closed_polygon_volume_ml(contour, spacing)
