@@ -9,6 +9,10 @@ from typing import Any
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models.calibration import (
+    ASSUMPTION_IMAGER_PLANE,
+    ASSUMPTION_ISOTROPIC,
+    ASSUMPTION_NOMINAL_SCAN,
+    ASSUMPTION_SECONDS_AS_LENGTH,
     CALIBRATION_NONE,
     CalibrationConfidence,
     CalibrationContext,
@@ -103,6 +107,7 @@ def manual_calibration_context(
         region=region,
         revision=revision,
         assumed_isotropic=True,
+        assumption=ASSUMPTION_ISOTROPIC,
     )
 
 
@@ -183,6 +188,7 @@ def _pair_context(
     scope: CalibrationScope = CalibrationScope.INSTANCE,
     frame_index: int | None = None,
     region: CalibrationRegion | None = None,
+    assumption: str | None = None,
 ) -> CalibrationContext | None:
     try:
         row = float(first)
@@ -199,6 +205,7 @@ def _pair_context(
             confidence=confidence,
             frame_index=frame_index,
             region=region,
+            assumption=assumption,
         )
     except ValueError:
         return None
@@ -227,6 +234,7 @@ def _from_imager_pixel_spacing(dataset: Dataset) -> list[CalibrationContext]:
             spacing[1],
             source="ImagerPixelSpacing",
             confidence=CalibrationConfidence.ASSUMED,
+            assumption=ASSUMPTION_IMAGER_PLANE,
         )
         return [context] if context is not None else []
     return []
@@ -240,6 +248,7 @@ def _from_nominal_scanned_pixel_spacing(dataset: Dataset) -> list[CalibrationCon
             spacing[1],
             source="NominalScannedPixelSpacing",
             confidence=CalibrationConfidence.ASSUMED,
+            assumption=ASSUMPTION_NOMINAL_SCAN,
         )
         return [context] if context is not None else []
     return []
@@ -307,6 +316,7 @@ def _spacing_context_from_ultrasound_region(region: Dataset) -> CalibrationConte
     if col_mm is None or row_mm is None:
         return None
     confidence = CalibrationConfidence.ASSUMED if assumed else CalibrationConfidence.DERIVED
+    assumption = ASSUMPTION_SECONDS_AS_LENGTH if assumed else None
     bounds = _region_from_dataset(region)
     if bounds is None:
         return _pair_context(
@@ -314,6 +324,7 @@ def _spacing_context_from_ultrasound_region(region: Dataset) -> CalibrationConte
             col_mm,
             source="SequenceOfUltrasoundRegions",
             confidence=confidence,
+            assumption=assumption,
         )
     return _pair_context(
         row_mm,
@@ -322,6 +333,7 @@ def _spacing_context_from_ultrasound_region(region: Dataset) -> CalibrationConte
         confidence=confidence,
         scope=CalibrationScope.REGION,
         region=bounds,
+        assumption=assumption,
     )
 
 

@@ -505,14 +505,28 @@ class StudyMeasurementSessionStore:
         study_uid: str,
         incoming: tuple[Contour, ...],
         pixel_spacing: tuple[float, float],
+        *,
+        calibration_for: Callable[[Contour], tuple[tuple[float, float] | None, bool]] | None = None,
     ) -> None:
-        """Store LV cavity area by instance/view/frame for phase fallback."""
+        """Store LV cavity area by instance/view/frame for phase fallback.
+
+        ``calibration_for`` resolves the scale of each contour's own frame/panel.
+        An ambiguous scoped scale (``None, calibrated=True``) skips that contour
+        instead of storing an area computed with the active clip's spacing.
+        """
         data = self.get(study_uid)
         current = {(uid, view, frame): area for uid, view, frame, area in data.simpson_area_by_frame}
         for contour in incoming:
             if contour.chamber.upper() != "LV" or contour.frame_index is None or len(contour.points) < 3:
                 continue
-            area = polygon_area_mm2(contour.closed_polygon_points(), pixel_spacing)
+            contour_spacing, contour_calibrated = (
+                calibration_for(contour) if calibration_for is not None else (pixel_spacing, True)
+            )
+            if contour_spacing is None:
+                if contour_calibrated:
+                    continue
+                contour_spacing = pixel_spacing
+            area = polygon_area_mm2(contour.closed_polygon_points(), contour_spacing)
             if area > 0.0:
                 key = (contour.sop_instance_uid or "", contour.view.upper(), contour.frame_index)
                 current[key] = area

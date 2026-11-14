@@ -6306,8 +6306,7 @@ class MainWindow(QMainWindow):
                 self._viewer._handle_stenosis_area_contour(contour)
                 self._sync_results_overlay(self._controller.state_manager.snapshot)
                 return
-            spacing = self._controller.state_manager.snapshot.effective_pixel_spacing
-            calibrated = spacing is not None
+            spacing, calibrated = self._viewer._spacing_for_contour(contour)
             from echo_personal_tool.domain.services.planimeter_formatter import (
                 format_planimeter_overlay_line,
             )
@@ -6366,7 +6365,7 @@ class MainWindow(QMainWindow):
                 self._lav_bi_active = False
                 self._tool_panel.measure.clear_action_highlight()
 
-            spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
+            spacing, spacing_calibrated = self._viewer._spacing_for_contour(contour)
             from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
@@ -6383,7 +6382,7 @@ class MainWindow(QMainWindow):
                     *chamber_volume_status_lines(snapshot, chamber="LA", view=contour.view),
                 )
         elif chamber == "RA" and contour.phase.upper() == "ES":
-            spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
+            spacing, spacing_calibrated = self._viewer._spacing_for_contour(contour)
             from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
@@ -6397,7 +6396,7 @@ class MainWindow(QMainWindow):
                     *chamber_volume_status_lines(snapshot, chamber="RA", view=contour.view),
                 )
         elif chamber == "RV":
-            spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
+            spacing, spacing_calibrated = self._viewer._spacing_for_contour(contour)
             from echo_personal_tool.domain.calculations.rv_fac import format_rv_area_overlay_line
 
             line = format_rv_area_overlay_line(contour, spacing, spacing_calibrated=spacing_calibrated)
