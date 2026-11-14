@@ -31,8 +31,10 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import cv2
 import numpy as np
 import pydicom
+from pydicom.dataset import FileMetaDataset
 from pydicom.encaps import generate_frames, parse_basic_offsets
 from pydicom.pixels.utils import pixel_array as _pixel_array
+from pydicom.uid import ExplicitVRLittleEndian, ImplicitVRLittleEndian
 
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import read_annotations_from_dicom
 from echo_personal_tool.infrastructure.dicom_frame_count import (
@@ -45,6 +47,12 @@ from echo_personal_tool.infrastructure.dicom_frame_geometry import (
     check_frame_geometry,
     pixel_data_layout,
     read_value,
+)
+from echo_personal_tool.infrastructure.dicom_validator import (
+    CorruptDicomError,
+    DicomKind,
+    UnsupportedDicomError,
+    classify_dicom_dataset,
 )
 from echo_personal_tool.infrastructure.file_identity import FileIdentity
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
@@ -160,6 +168,7 @@ _DECODE_FAILURES = (
 # (1.2.840.10008.1.2.2) is in _UNCOMPRESSED_SYNTAXES but must go through pydicom.
 _FAST_PATH_SYNTAXES = frozenset({"1.2.840.10008.1.2", "1.2.840.10008.1.2.1"})
 _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
+_DICOM_MAGIC = b"DICM"
 # How much of a file is read to *locate* the PixelData element. The value itself is mapped
 # rather than read: for an uncompressed cine it is the whole file (332 MB for 120 frames of
 # 1280x720 RGB), while its tag sits within the first kilobyte.
@@ -273,7 +282,8 @@ def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
     for an uncompressed cine the value is essentially the whole file. None when the element
     is encapsulated (undefined length) or cannot be parsed.
     """
-    pos = 132  # skip 128-byte preamble + "DICM"
+    # Part 10 starts with 128 preamble bytes + "DICM"; a raw dataset starts at 0.
+    pos = 132 if len(raw) >= 132 and raw[128:132] == _DICOM_MAGIC else 0
     while pos + 8 <= len(raw):
         tag = raw[pos : pos + 4]
         if tag == _PIXEL_DATA_TAG:
@@ -667,6 +677,22 @@ class DicomSession:
         with resolved.open("rb") as fh:
             metadata = pydicom.dcmread(fh, stop_before_pixels=True, force=True)
             self._pixel_element_offset = fh.tell()
+        # A raw dataset has no File Meta Information. pydicom still detected its
+        # encoding; record it so the uncompressed path is not assumed to be
+        # explicit little-endian by accident.
+        file_meta = getattr(metadata, "file_meta", None)
+        encoding = getattr(metadata, "original_encoding", None)
+        if file_meta is not None and not getattr(file_meta, "TransferSyntaxUID", None) and encoding:
+            file_meta = FileMetaDataset()
+            file_meta.TransferSyntaxUID = ImplicitVRLittleEndian if encoding[0] else ExplicitVRLittleEndian
+            metadata.file_meta = file_meta
+        kind = classify_dicom_dataset(metadata)
+        if kind is DicomKind.UNKNOWN:
+            self.release()
+            raise CorruptDicomError("DICOM has no image identity or geometry")
+        if not kind.is_image:
+            self.release()
+            raise UnsupportedDicomError(f"{kind.value} DICOM has no image frames")
         # #475: one *frame* is bounded, before anything is allocated or decoded. A forged
         # 65535×65535×3 header would otherwise ask the decoder for ~12.9 GB in one piece.
         try:

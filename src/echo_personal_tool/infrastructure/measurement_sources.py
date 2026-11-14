@@ -11,6 +11,10 @@ import pydicom
 from pydicom.errors import InvalidDicomError
 
 from echo_personal_tool.domain.models.metadata import StudyMetadata
+from echo_personal_tool.infrastructure.dicom_validator import (
+    InvalidDicomError as DicomValidationError,
+)
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError, study_key
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
@@ -28,8 +32,9 @@ def describe_study(study: StudyMetadata) -> dict[str, Any]:
             before = path.stat()
             if instance.media_format == "dicom":
                 try:
-                    ds = pydicom.dcmread(path, stop_before_pixels=True)
-                except (InvalidDicomError, EOFError) as exc:
+                    validate_dicom_header(path)
+                    ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+                except (DicomValidationError, InvalidDicomError, EOFError) as exc:
                     log_boundary_failure(logger, "persistence.source", exc, code="source")
                     raise MeasurementStorageError("source") from exc
                 if (

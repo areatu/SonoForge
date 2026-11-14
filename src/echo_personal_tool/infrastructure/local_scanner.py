@@ -21,7 +21,13 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
-from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+from echo_personal_tool.infrastructure.dicom_validator import (
+    CorruptDicomError,
+    DicomKind,
+    UnsupportedDicomError,
+    classify_dicom_dataset,
+    validate_dicom_header,
+)
 from echo_personal_tool.infrastructure.media_formats import (
     MediaFormat,
     detect_media_format,
@@ -292,6 +298,20 @@ class LocalMediaDirectoryScanner:
         dataset, info = self._parse_header(path)
         if dataset is None or info is None:
             return None
+        kind = classify_dicom_dataset(dataset)
+        if kind is DicomKind.DICOMDIR:
+            # A DICOMDIR is a media index, not a study image: it should not
+            # appear as a damaged or zero-frame instance in the gallery.
+            logger.debug("DICOMDIR index skipped")
+            return None
+        if kind is not DicomKind.IMAGE:
+            if kind is DicomKind.UNKNOWN:
+                self._header_info[path] = None
+                self._log_scan_error(path, CorruptDicomError("DICOM dataset has no image identity or geometry"))
+            else:
+                # SR/PR/encapsulated documents are valid DICOM but not pictures.
+                logger.debug("Non-image DICOM skipped: kind=%s", kind.value)
+            return None
         study_uid = info.study_uid
         series_uid = info.series_uid
         if not study_uid or not series_uid:
@@ -366,7 +386,14 @@ class LocalMediaDirectoryScanner:
         extension = path.suffix.lower()
         safe_format = extension if extension in _SAFE_SCAN_EXTENSIONS else "unknown"
         module_name = type(exc).__module__ or ""
-        error_name = type(exc).__name__ if module_name.startswith(("builtins", "pydicom")) else safe_error_category(exc)
+        if isinstance(exc, UnsupportedDicomError):
+            error_name = "UnsupportedDicomError"
+        elif isinstance(exc, CorruptDicomError):
+            error_name = "CorruptDicomError"
+        else:
+            error_name = (
+                type(exc).__name__ if module_name.startswith(("builtins", "pydicom")) else safe_error_category(exc)
+            )
         message = f"format={safe_format} error={error_name}"
         log_boundary_failure(logger, "scanner.study_folder", exc, code="invalid", level=logging.WARNING)
         if self._error_log_path is None:

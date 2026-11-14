@@ -12,7 +12,13 @@ import pydicom
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import map_instance_metadata
 from echo_personal_tool.infrastructure.dicom_session import DicomSession, get_thread_dicom_session
-from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+from echo_personal_tool.infrastructure.dicom_validator import (
+    CorruptDicomError,
+    DicomKind,
+    UnsupportedDicomError,
+    classify_dicom_dataset,
+    validate_dicom_header,
+)
 from echo_personal_tool.infrastructure.file_identity import FileIdentity
 
 _CACHE_MAX_ENTRIES = 32
@@ -114,6 +120,11 @@ class DicomReaderImpl:
     def read_metadata(self, path: Path) -> InstanceMetadata:
         validate_dicom_header(path)
         dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+        kind = classify_dicom_dataset(dataset)
+        if kind is DicomKind.UNKNOWN:
+            raise CorruptDicomError(f"DICOM has no image identity or geometry: {path.name}")
+        if not kind.is_image:
+            raise UnsupportedDicomError(f"{kind.value} DICOM has no image frames: {path.name}")
         return map_instance_metadata(dataset, path=path)
 
     def read_pixels(self, path: Path, frame_index: int = 0) -> np.ndarray:

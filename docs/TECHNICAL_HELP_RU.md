@@ -316,6 +316,8 @@ DICOM mapper читает, среди прочего:
 
 Показ тегов в DICOM inspector сам по себе не делает тег входом расчёта: нужен соответствующий parser. Overlay интересующих тегов — только display preference.
 
+Reader принимает обычный DICOM Part 10 (128-байтовая преамбула + `DICM`) и ограниченный fallback для dataset без преамбулы: такой файл открывается только при читаемом заголовке с валидными SOP Class/Instance и Study/Series UID; произвольные бинарные файлы остаются повреждёнными. DICOMDIR распознаётся как индекс и не попадает в галерею как клип, а SR/PR и encapsulated documents считаются неподдерживаемыми типами, а не повреждёнными изображениями. Big-endian raw dataset не поддерживается.
+
 ### 5.2 Measurement state
 
 Contours, linear measurements, vessel records, Doppler markers/calibration, M-Mode calibration, cine ROI, patient metrics и strain report хранятся в study-session. Linear и vessel fields для текущего snapshot фильтруются по SOP Instance; Doppler может агрегировать DTO по instances/frames study. Simpson biplane может объединять совместимые view из разных instances, а физический spacing берётся в текущем расчётном контексте.
