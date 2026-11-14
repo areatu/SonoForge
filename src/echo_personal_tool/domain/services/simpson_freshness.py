@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.models.calibration import CalibrationContext
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.result_provenance import (
     REASON_CALIBRATION_CHANGED,
@@ -67,6 +68,11 @@ class SimpsonBasis:
     contours: tuple[SimpsonContourRef, ...] = ()
     pixel_spacing: tuple[float, float] | None = None
     method: str = ""
+    #: Full calibration provenance when available.  ``pixel_spacing`` stays
+    #: for old documents; the context adds source/scope/revision so changing
+    #: only the provenance (for example recalibrating with the same numbers)
+    #: still invalidates the result.
+    calibration: CalibrationContext | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +91,7 @@ def simpson_basis_from_contours(
     contours: tuple[Contour, ...],
     pixel_spacing: tuple[float, float] | None,
     method: str = "",
+    calibration: CalibrationContext | None = None,
 ) -> SimpsonBasis:
     """Build the current Simpson basis from the study's contours.
 
@@ -103,7 +110,7 @@ def simpson_basis_from_contours(
             continue
         refs[(view, phase)] = SimpsonContourRef(view, phase, contour.measurement_id, contour.revision)
     ordered = tuple(refs[key] for key in sorted(refs))
-    return SimpsonBasis(contours=ordered, pixel_spacing=pixel_spacing, method=method)
+    return SimpsonBasis(contours=ordered, pixel_spacing=pixel_spacing, method=method, calibration=calibration)
 
 
 def evaluate_simpson_freshness(recorded: SimpsonBasis | None, current: SimpsonBasis | None) -> SimpsonFreshness:
@@ -118,7 +125,9 @@ def evaluate_simpson_freshness(recorded: SimpsonBasis | None, current: SimpsonBa
     reasons: list[str] = []
     if recorded.method != current.method:
         reasons.append(REASON_METHOD_CHANGED)
-    if not _same_spacing(recorded.pixel_spacing, current.pixel_spacing):
+    if not _same_spacing(recorded.pixel_spacing, current.pixel_spacing) or _calibration_signature(
+        recorded
+    ) != _calibration_signature(current):
         reasons.append(REASON_CALIBRATION_CHANGED)
     before = {(ref.view, ref.phase): ref for ref in recorded.contours}
     after = {(ref.view, ref.phase): ref for ref in current.contours}
@@ -131,6 +140,10 @@ def evaluate_simpson_freshness(recorded: SimpsonBasis | None, current: SimpsonBa
     if not reasons:
         reasons.append(REASON_INPUT_CHANGED)
     return SimpsonFreshness(Freshness.STALE.value, tuple(dict.fromkeys(reasons)))
+
+
+def _calibration_signature(basis: SimpsonBasis) -> tuple[object, ...] | None:
+    return basis.calibration.signature() if basis.calibration is not None else None
 
 
 def _same_spacing(first: tuple[float, float] | None, second: tuple[float, float] | None) -> bool:

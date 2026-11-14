@@ -22,6 +22,7 @@ from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, contour_key
 from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
+from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
 from echo_personal_tool.domain.models.metadata import StudyMetadata
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -171,6 +172,35 @@ def record_bsa_basis(data: StudyMeasurementData) -> StudyMeasurementData:
     return replace(data, bsa_basis=basis if basis.value is not None else None)
 
 
+def _resolve_calibration_for_persistence(
+    data: StudyMeasurementData,
+    sources: dict,
+) -> CalibrationContext | None:
+    """Calibration provenance belonging to the stored result (#547).
+
+    ``calibration_by_instance`` is written by the app when the study is opened
+    or recalibrated.  Legacy documents without it keep a spacing-only context
+    marked UNKNOWN instead of inventing a confident source.
+    """
+    if data.manual_calibration is not None:
+        return data.manual_calibration
+    by_instance = dict(data.calibration_by_instance)
+    for contour in data.contours:
+        if not contour.sop_instance_uid:
+            continue
+        context = by_instance.get(contour.sop_instance_uid)
+        if context is not None:
+            return context
+    spacing = _resolve_pixel_spacing_for_persistence(data, sources)
+    if spacing is None:
+        return None
+    return CalibrationContext(
+        spacing=spacing,
+        source="saved_spacing",
+        confidence=CalibrationConfidence.UNKNOWN,
+    )
+
+
 def _resolve_pixel_spacing_for_persistence(data: StudyMeasurementData, sources: dict) -> tuple[float, float] | None:
     """Best-effort pixel spacing for Simpson provenance at save time.
 
@@ -203,6 +233,7 @@ def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeas
     from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
 
     spacing = _resolve_pixel_spacing_for_persistence(data, sources)
+    calibration = _resolve_calibration_for_persistence(data, sources)
     # method: derive from current contours similar to AppController
     method = ""
     if data.contours:
@@ -213,7 +244,7 @@ def record_simpson_basis(data: StudyMeasurementData, sources: dict) -> StudyMeas
         except (ArithmeticError, TypeError, ValueError) as exc:
             log_boundary_failure(logger, "measurement.save", exc, code="invalid", level=logging.DEBUG)
             method = ""
-    basis = simpson_basis_from_contours(data.contours, spacing, method=method)
+    basis = simpson_basis_from_contours(data.contours, spacing, method=method, calibration=calibration)
     # No LV contours -> no Simpson result to persist; keep None so legacy
     # documents stay unverified and empty studies don't invent a provenance.
     if not basis.contours:

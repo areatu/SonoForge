@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from echo_personal_tool.domain.models.calibration import CalibrationContext
+
 
 @dataclass(frozen=True)
 class InstanceRef:
@@ -29,6 +31,11 @@ class InstanceMetadata:
     path: Path | None = None
     media_format: str = "dicom"
     pixel_spacing_source: str | None = None
+    #: One calibration when the instance has a single unambiguous scale.
+    calibration: CalibrationContext | None = None
+    #: Frame/region-scoped calibrations when a single instance-wide tuple would
+    #: attach the wrong scale to some measurements (#547).
+    calibrations: tuple[CalibrationContext, ...] = ()
     frame_time_vector: tuple[float, ...] | None = None
     patient_height_m: float | None = None
     patient_weight_kg: float | None = None
@@ -52,6 +59,23 @@ class InstanceMetadata:
     #: Family-name component of DICOM PatientName, for the opt-in start page.
     #: RAM metadata only: never included in measurement exports or diagnostics.
     patient_surname: str = field(default="", repr=False, compare=False)
+
+    def calibration_for_frame(self, frame_index: int | None) -> CalibrationContext | None:
+        """Pick a calibration that applies to *frame_index* without geometry.
+
+        A region-scoped calibration needs a measurement bbox to resolve safely;
+        callers measuring a line/contour must use
+        :func:`domain.models.calibration.select_calibration`.  This helper is
+        for display and for frames with a single frame/instance context.
+        """
+        if self.calibration is not None:
+            return self.calibration
+        if frame_index is None:
+            return None
+        for context in self.calibrations:
+            if context.scope.value == "frame" and context.frame_index == frame_index:
+                return context
+        return None
 
 
 @dataclass(frozen=True)

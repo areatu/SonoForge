@@ -40,6 +40,7 @@ from enum import Enum
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+from echo_personal_tool.domain.models.calibration import CalibrationContext, CalibrationRegion
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.doppler import (
     DopplerIntervalMarker,
@@ -120,7 +121,7 @@ FIELDS = frozenset(
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
  height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance
- manual_bsa_m2 bsa_basis manual_calculator_inputs
+ manual_bsa_m2 bsa_basis manual_calculator_inputs calibration_by_instance
  simpson_basis doppler_basis derived_snapshot""".split()
 )
 TYPES = frozenset(
@@ -139,6 +140,8 @@ TYPES = frozenset(
         VesselMeasurement,
         # BSA provenance
         BsaBasis,
+        CalibrationContext,
+        CalibrationRegion,
         # provenance DTOs
         ResultProvenance,
         MethodIdentity,
@@ -235,6 +238,8 @@ def _decode(value: Any, hint: Any) -> Any:
         return hint(**{key: _decode(v, hints[key]) for key, v in value.items()})
     if hint is DopplerKind:
         return DopplerKind(value)
+    if isinstance(hint, type) and issubclass(hint, Enum):
+        return hint(value)
     if hint is float:
         if type(value) not in (int, float) or not math.isfinite(value):
             raise MeasurementStorageError("invalid")

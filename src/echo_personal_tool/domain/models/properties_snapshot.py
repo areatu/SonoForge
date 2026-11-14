@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.models.calibration import CalibrationContext
+
 
 @dataclass(frozen=True)
 class RegionSummary:
@@ -67,6 +69,10 @@ class PropertiesSnapshot:
     mmode_horizontal_ms_per_pixel: float | None = None
     mmode_has_depth_from_dicom: bool = False
     mmode_has_time_from_dicom: bool = False
+    #: Same calibration provenance as ``InstanceMetadata``; kept here so the
+    #: Properties panel can show source/scope/confidence without re-reading DICOM.
+    calibration: CalibrationContext | None = None
+    calibrations: tuple[CalibrationContext, ...] = ()
 
     @classmethod
     def default(

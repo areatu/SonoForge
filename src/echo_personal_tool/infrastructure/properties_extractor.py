@@ -11,7 +11,10 @@ from echo_personal_tool.domain.models.properties_snapshot import (
     PropertiesSnapshot,
     RegionSummary,
 )
-from echo_personal_tool.domain.services.pixel_spacing_resolver import resolve_pixel_spacing
+from echo_personal_tool.domain.services.pixel_spacing_resolver import (
+    resolution_from_contexts,
+    resolve_calibration_contexts,
+)
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_mmode_region,
     is_spectral_doppler_region,
@@ -225,7 +228,8 @@ def extract_properties_snapshot(
     heart_rate_bpm = _safe_float(dataset.get("HeartRate"))
 
     # Spatial
-    resolution = resolve_pixel_spacing(dataset)
+    calibrations = resolve_calibration_contexts(dataset)
+    resolution = resolution_from_contexts(calibrations)
     pixel_spacing_mm = resolution.spacing if resolution else None
     pixel_spacing_source = resolution.source if resolution else None
     transducer_frequency_mhz = _safe_float(dataset.get("TransducerFrequency"))
@@ -257,6 +261,8 @@ def extract_properties_snapshot(
         heart_rate_bpm=heart_rate_bpm,
         pixel_spacing_mm=pixel_spacing_mm,
         pixel_spacing_source=pixel_spacing_source,
+        calibration=resolution.calibration if resolution else None,
+        calibrations=calibrations,
         transducer_frequency_mhz=transducer_frequency_mhz,
         regions=tuple(regions),
         depth_calibrated=depth_ok,

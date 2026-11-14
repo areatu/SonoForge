@@ -169,11 +169,89 @@
         },
         "manual": {
           "type": "boolean"
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "confidence": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "frame_index": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {"type": "integer"},
+              "minItems": 4,
+              "maxItems": 4
+            },
+            {"type": "null"}
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "units": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "assumed_isotropic": {
+          "type": "boolean"
         }
       },
       "required": [
         "kind"
       ]
+    },
+    "CalibrationRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x0", "x1", "y0", "y1"],
+      "properties": {
+        "x0": {"type": "integer", "minimum": 0},
+        "x1": {"type": "integer", "minimum": 0},
+        "y0": {"type": "integer", "minimum": 0},
+        "y1": {"type": "integer", "minimum": 0}
+      }
+    },
+    "CalibrationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spacing", "source", "scope", "confidence", "units", "revision", "assumed_isotropic"],
+      "properties": {
+        "spacing": {
+          "type": "array",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "source": {"type": "string", "maxLength": 256},
+        "scope": {"type": "string", "maxLength": 32},
+        "confidence": {"type": "string", "maxLength": 32},
+        "frame_index": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "region": {
+          "anyOf": [
+            {"$ref": "#/$defs/CalibrationRegion"},
+            {"type": "null"}
+          ]
+        },
+        "units": {"type": "string", "maxLength": 32},
+        "revision": {"type": "integer", "minimum": 0},
+        "assumed_isotropic": {"type": "boolean"}
+      }
     },
     "Contour": {
       "type": "object",
@@ -1297,6 +1375,18 @@
             "$ref": "#/$defs/ManualCalculatorInput"
           }
         },
+        "calibration_by_instance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {"type": "string"},
+              {"$ref": "#/$defs/CalibrationContext"}
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
         "manual_spacing_by_instance": {
           "type": "array",
           "items": {
@@ -1577,6 +1667,12 @@
         },
         "method": {
           "type": "string"
+        },
+        "calibration": {
+          "anyOf": [
+            {"$ref": "#/$defs/CalibrationContext"},
+            {"type": "null"}
+          ]
         }
       }
     },

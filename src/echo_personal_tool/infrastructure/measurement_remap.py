@@ -21,6 +21,7 @@ INSTANCE_FIELDS = (
     "mmode_calibration_by_instance",
     "cine_segment_roi_by_instance",
     "manual_spacing_by_instance",
+    "calibration_by_instance",
     "mmode_time_by_instance",
     "simpson_area_by_frame",
 )

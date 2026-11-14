@@ -5,8 +5,8 @@ from __future__ import annotations
 import pydicom
 from pydicom.dataset import Dataset, FileMetaDataset
 
+from echo_personal_tool.domain.models.calibration import CalibrationConfidence
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
-    PixelSpacingResolution,
     effective_pixel_spacing,
     resolve_pixel_spacing,
     spacing_from_known_distance,
@@ -27,7 +27,10 @@ def test_resolve_pixel_spacing_from_pixel_spacing_tag() -> None:
     ds = _base_dataset()
     ds.PixelSpacing = [0.25, 0.25]
     result = resolve_pixel_spacing(ds)
-    assert result == PixelSpacingResolution((0.25, 0.25), "PixelSpacing")
+    assert result.spacing == (0.25, 0.25)
+    assert result.source == "PixelSpacing"
+    assert result.calibration is not None
+    assert result.calibration.confidence is CalibrationConfidence.MEASURED
 
 
 def test_pixel_spacing_takes_priority_over_imager() -> None:
@@ -44,14 +47,20 @@ def test_resolve_from_imager_pixel_spacing() -> None:
     ds = _base_dataset()
     ds.ImagerPixelSpacing = [0.31, 0.31]
     result = resolve_pixel_spacing(ds)
-    assert result == PixelSpacingResolution((0.31, 0.31), "ImagerPixelSpacing")
+    assert result.spacing == (0.31, 0.31)
+    assert result.source == "ImagerPixelSpacing"
+    assert result.calibration is not None
+    assert result.calibration.confidence is CalibrationConfidence.ASSUMED
 
 
 def test_resolve_from_nominal_scanned_pixel_spacing() -> None:
     ds = _base_dataset()
     ds.NominalScannedPixelSpacing = [0.28, 0.28]
     result = resolve_pixel_spacing(ds)
-    assert result == PixelSpacingResolution((0.28, 0.28), "NominalScannedPixelSpacing")
+    assert result.spacing == (0.28, 0.28)
+    assert result.source == "NominalScannedPixelSpacing"
+    assert result.calibration is not None
+    assert result.calibration.confidence is CalibrationConfidence.ASSUMED
 
 
 def test_resolve_from_ultrasound_region_2d_tissue() -> None:
