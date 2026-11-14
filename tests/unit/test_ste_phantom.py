@@ -385,7 +385,12 @@ def test_wall_leaving_the_sector_is_excluded_and_stated(qapp):
     frames = phantom.frames()
 
     clean = _run_worker(phantom, frames)
-    assert clean.qc_status == "valid"
+    assert clean.qc_status == "valid", (
+        f"status={clean.qc_status} reasons={clean.qc_reasons} "
+        f"rejected={clean.qc_rejected_fraction:.3f} unverified={clean.qc_unverified_fraction:.3f} "
+        f"closure={clean.qc_closure_median_mm:.2f} mm visibility={clean.qc_visibility_loss:.3f} "
+        f"excluded={clean.qc_excluded_nodes} coverage={clean.qc_coverage:.3f}"
+    )
     assert clean.qc_visibility_loss == 0.0
     assert clean.qc_excluded_nodes == 0
 

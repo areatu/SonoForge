@@ -227,6 +227,16 @@ def _run_worker(phantom):
     return payload["result"]
 
 
+def _qc_context(result) -> str:
+    """Why a clean clip stopped being ``valid``: the soft signal that fired."""
+    return (
+        f"status={result.qc_status} reasons={result.qc_reasons} "
+        f"rejected={result.qc_rejected_fraction:.3f} unverified={result.qc_unverified_fraction:.3f} "
+        f"closure={result.qc_closure_median_mm:.2f} mm visibility={result.qc_visibility_loss:.3f} "
+        f"excluded={result.qc_excluded_nodes} coverage={result.qc_coverage:.3f}"
+    )
+
+
 @pytest.mark.gui
 def test_clean_clip_tracking_is_verified_and_reported(phantom_module, qapp) -> None:
     """A clean clip: the round trip closes, and the numbers say so."""
@@ -234,7 +244,7 @@ def test_clean_clip_tracking_is_verified_and_reported(phantom_module, qapp) -> N
     phantom = StePhantom(StePhantomConfig.quick(mode="uniform", noise_db=40.0, decorrelation=0.25))
     result = _run_worker(phantom)
 
-    assert result.qc_status == "valid"
+    assert result.qc_status == "valid", _qc_context(result)
     assert result.qc_rejected_fraction <= 0.10, f"rejected {result.qc_rejected_fraction:.2f}"
     assert result.qc_unverified_fraction == 0.0
     assert result.qc_closure_median_mm <= 0.6, f"closure {result.qc_closure_median_mm:.2f} mm — median"

@@ -37,9 +37,11 @@ def _make_tag(group: int, element: int, vr: str, length: int, payload: bytes) ->
 
 
 def _assert_header_accepted(path: Path) -> None:
-    """The validator checks size and magic only: a well-formed preamble is accepted whatever follows.
+    """A well-formed Part 10 preamble is accepted without parsing the dataset.
 
-    Acceptance is a ``None`` return, and validating untrusted input never modifies it.
+    The raw-dataset fallback (#551) is only reached when the magic is absent;
+    this helper deliberately keeps fuzzing the fast Part 10 path. Acceptance is a
+    ``None`` return, and validating untrusted input never modifies it.
     """
     before = path.read_bytes()
     assert validate_dicom_header(path) is None
