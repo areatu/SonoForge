@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `fix(calibration)`: #547 — масштаб выбирается по геометрии кадра/панели, потребители (площади, объёмы, Simpson, сохранение) не берут чужую калибровку ([полностью](changelog.d/046-fix-calibration-consumers-547.md))
+
 - `fix(dicom)`: #551 — валидный DICOM без Part 10-преамбулы открывается, DICOMDIR/SR/PR не считаются порчей ([полностью](changelog.d/045-fix-dicom-raw-dataset-551.md))
 
 - `ci(security)`: #563 — dependency-audit evidence и SBOM из runtime-графа ([полностью](changelog.d/044-security-dependency-audit-563.md))
