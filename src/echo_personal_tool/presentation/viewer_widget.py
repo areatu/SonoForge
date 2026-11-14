@@ -2131,7 +2131,7 @@ class ViewerWidget(QWidget):
             return
 
         x0, y0, x1, y1 = roi
-        pen = pg.mkPen("#ff0000", width=1, style=Qt.PenStyle.DashLine)
+        pen = pg.mkPen(dark_theme.get_theme_tokens()["state.err"], width=1, style=Qt.PenStyle.DashLine)
         rect_item = pg.PlotDataItem(
             pen=pen,
             connect="all",
