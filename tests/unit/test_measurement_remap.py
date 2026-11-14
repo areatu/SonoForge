@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from echo_personal_tool.domain.models.calibration import CalibrationContext
 from echo_personal_tool.domain.models.result_provenance import (
     CalibrationRef,
     MethodIdentity,
@@ -30,7 +31,12 @@ def case():
         source=SourceIdentity(OLD, SOP, "old-series", frame_index=0, fingerprint="a" * 64),
         calibration=(CalibrationRef("pixel", source_instance_uid=SOP),),
     )
-    original["data"] = replace(original["data"], result_provenance=(prov,))
+    calibration = CalibrationContext(spacing=(0.1, 0.1), source="PixelSpacing")
+    original["data"] = replace(
+        original["data"],
+        result_provenance=(prov,),
+        calibration_by_instance=((SOP, calibration),),
+    )
     study = SimpleNamespace(
         study_uid=NEW,
         series=(

@@ -258,18 +258,15 @@ class AppController(QObject):
         self._projection_timer.setSingleShot(True)
         self._projection_timer.setInterval(PROJECTION_DEBOUNCE_MS)
         self._projection_timer.timeout.connect(self._emit_study_projection)
-        # Cadence reference for playback: the moment the last frame tick STARTED.
-        # _reschedule_playback_timer() schedules the next tick at (mark + interval), so the
-        # time spent emitting the frame is compensated instead of being added to the period.
+        # Last tick START time: _reschedule_playback_timer() targets mark + interval,
+        # compensating frame-emit time instead of adding it to the period.
         self._last_frame_shown_at: float = 0.0
-        # True while _advance_playback() emits a frame itself. The state_changed signal that
-        # emission triggers must not re-arm the playback timer (see _on_state_changed()).
+        # A frame emitted by _advance_playback() must not re-arm its own timer.
         self._advancing_frame = False
         self._playback_warmup_pending = False
         self._playback_poll_interval_ms = 16
-        # True while the playback timer is polling for frames instead of pacing them (a tick
-        # found the next frame missing, or the buffer is still warming up). Cleared by the
-        # next paced reschedule; read by _wake_playback_timer().
+        # A tick found the next frame missing (or the buffer is warming): polling mode,
+        # cleared by the next paced reschedule and read by _wake_playback_timer().
         self._playback_poll_pending = False
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
@@ -294,8 +291,7 @@ class AppController(QObject):
             if thumbnail_scheduler is not None
             else ThumbnailScheduler(max_in_flight=self._thumbnail_max_in_flight)
         )
-        # Keep thumbnail work out of the interactive pool's FIFO. Tests/custom
-        # executors can still inject one pool; production gets a bounded preview pool.
+        # Thumbnails use their own pool; tests may still inject one.
         self._thumbnail_pool = thread_pool if thread_pool is not None else QThreadPool(self)
         if thread_pool is None:
             self._thumbnail_pool.setMaxThreadCount(thumbnail_max_in_flight)
@@ -304,8 +300,7 @@ class AppController(QObject):
         self._thumbnail_instances: dict[str, InstanceMetadata] = {}
         self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
-        # Instance the cine time-scale ROI was already detected for (see
-        # _maybe_cache_cine_roi_from_frame); detection costs 14-38 ms at 720p.
+        # Cine ROI probe key; detection costs 14-38 ms at 720p.
         self._cine_roi_probe_key: tuple[str, str | None] | None = None
         self._leading_static_frames: dict[Path, int] = {}
         self._batch_load_id: int = 0
@@ -313,9 +308,8 @@ class AppController(QObject):
         self._batch_target_frame: int = 0
         self._prefetch_request_id: int = 0
         self._prefetch_load_id: int = 0
-        # Frames requested by the in-flight prefetch run; the staleness timeout scales with
-        # it because a 32-frame batch legitimately takes far longer than a 2-frame one and
-        # force-clearing it would start a second run decoding the same frames.
+        # Frames in the in-flight prefetch run: the staleness timeout scales with it,
+        # since force-clearing a long batch would start a second decode of the same frames.
         self._prefetch_load_count: int = 0
         self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
@@ -454,10 +448,8 @@ class AppController(QObject):
         logger.info("scan_start")
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
-        # The completion handlers below are lambdas delivered through queued
-        # connections.  If QThreadPool auto-deletes the QRunnable immediately
-        # after run(), ``worker.signals`` can die before the main event loop
-        # handles those calls, leaving the UI permanently on “Scanning…”.
+        # Queued completion lambdas need worker.signals alive after run(); keep
+        # the QRunnable until the main loop delivers them (else “Scanning…”).
         worker.setAutoDelete(False)
         self._retain_worker(worker)
         generation = self._study_load_generation
@@ -694,11 +686,9 @@ class AppController(QObject):
                 return
 
         self._frame_cache.clear()
-        # Old sessions are released by DicomSession.open() (called inside
-        # DicomDecodeWorker.run()) via release_stale_sessions(exclude=self)
-        # on the worker thread — no main-thread blocking, no race condition
-        # (the old async QRunnable approach could call release_heavy() on an
-        # in-use session during ThreadPoolExecutor frame decode).
+        # DicomSession.open() (inside DicomDecodeWorker.run()) releases stale
+        # sessions on its worker thread: no main-thread blocking, and no race
+        # that could release_heavy() a session during frame decode.
         self._last_pinned_frame = None
         self._loaded_source_path = None
         self._loaded_frame_index = None
@@ -714,16 +704,25 @@ class AppController(QObject):
             emit=False,
         )
         study_uid = self._resolve_study_uid(instance)
+        self._measurement_session.activate_instance(study_uid, instance.sop_instance_uid)
         session = self._measurement_session.get(study_uid)
         spacing = dict(session.manual_spacing_by_instance).get(instance.sop_instance_uid)
-        self._measurement_session.activate_instance(study_uid, instance.sop_instance_uid)
-        if spacing is not None:
+        if (
+            self._measurement_session.get_instance_calibration(study_uid, instance.sop_instance_uid) is None
+            and instance.calibration
+        ):
+            self._measurement_session.set_instance_calibration(
+                study_uid, instance.sop_instance_uid, instance.calibration
+            )
+        if session.manual_calibration is not None and session.manual_calibration.source == "manual":
+            self._state_manager.set_manual_calibration(session.manual_calibration, emit=False)
+        elif spacing is not None:
             self._state_manager.set_manual_pixel_spacing(spacing, emit=False)
         session_contours = contours_for_instance(
             self._measurement_session.get(study_uid).contours,
             instance.sop_instance_uid,
         )
-        # Load annotations from DICOM Graphic Annotation tags
+        # DICOM Graphic Annotations
         if (
             not session_contours
             and instance.path is not None
@@ -795,8 +794,7 @@ class AppController(QObject):
         instance: InstanceMetadata,
         priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
     ) -> None:
-        # The gallery inspects this callback's signature. Do not drop the viewport
-        # priority here: otherwise scrolling to file 114 leaves it behind files 1–113.
+        # Keep the gallery's viewport priority: otherwise file 114 lags behind 1–113.
         self.request_thumbnail_preview(instance, priority)
 
     def _reset_thumbnail_queue(self) -> None:
@@ -1668,7 +1666,7 @@ class AppController(QObject):
         if instance is None or instance.media_format == "dicom":
             return False
         state = self._state_manager.snapshot
-        if state.manual_pixel_spacing is not None:
+        if state.manual_pixel_spacing is not None or state.manual_calibration is not None:
             return False
         study_uid = self._resolve_study_uid(instance)
         session = self._measurement_session.get(study_uid)
@@ -1730,7 +1728,9 @@ class AppController(QObject):
         self._state_manager.clear_manual_pixel_spacing()
         instance = self._current_instance or self._state_manager.snapshot.instance
         if instance is not None:
-            self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, None)
+            self._measurement_session.set_instance_spacing(
+                study_uid, instance.sop_instance_uid, None, fallback_calibration=instance.calibration
+            )
         self._recompute_measurements()
         self.status_message.emit(tr("status.calibration_reset"))
 
@@ -2231,7 +2231,8 @@ class AppController(QObject):
             from echo_personal_tool.domain.services.simpson_freshness import simpson_basis_from_contours
 
             method = lvef.method if lvef and lvef.method else ""
-            return simpson_basis_from_contours(session.contours, pixel_spacing, method=method)
+            calibration = session.active_calibration
+            return simpson_basis_from_contours(session.contours, pixel_spacing, method=method, calibration=calibration)
         except Exception:
             return None
 

@@ -190,6 +190,15 @@ class CalibrationRef:
     source_instance_uid: str = ""
     # Whether this calibration is manual override
     manual: bool = False
+    # Projection of CalibrationContext (#547): a result can be tied to a
+    # frame/region calibration, not only to an instance-wide tuple.
+    scope: str = "instance"
+    confidence: str = "measured"
+    frame_index: int | None = None
+    region: tuple[int, int, int, int] | None = None
+    revision: int = 0
+    units: str = "mm_per_pixel"
+    assumed_isotropic: bool = False
 
 
 @dataclass(frozen=True)

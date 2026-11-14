@@ -11,7 +11,11 @@ import pydicom
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models import InstanceMetadata, PatientDemographics
-from echo_personal_tool.domain.services.pixel_spacing_resolver import resolve_pixel_spacing
+from echo_personal_tool.domain.models.calibration import CalibrationContext
+from echo_personal_tool.domain.services.pixel_spacing_resolver import (
+    resolution_from_contexts,
+    resolve_calibration_contexts,
+)
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     COLOR_FLOW_DATA_TYPE,
     DOPPLER_DATA_TYPES,
@@ -28,11 +32,14 @@ def _parse_study_datetime(study_date: str | None, study_time: str | None) -> dat
     return datetime.strptime(f"{date_part}{time_part}", "%Y%m%d%H%M%S")
 
 
-def _pixel_spacing(dataset: Dataset) -> tuple[tuple[float, float] | None, str | None]:
-    resolution = resolve_pixel_spacing(dataset)
+def _pixel_spacing(
+    dataset: Dataset,
+) -> tuple[tuple[float, float] | None, str | None, CalibrationContext | None, tuple[CalibrationContext, ...]]:
+    contexts = resolve_calibration_contexts(dataset)
+    resolution = resolution_from_contexts(contexts)
     if resolution is None:
-        return None, None
-    return resolution.spacing, resolution.source
+        return None, None, None, contexts
+    return resolution.spacing, resolution.source, resolution.calibration, contexts
 
 
 def _frame_time_ms(dataset: Dataset) -> float | None:
@@ -156,7 +163,7 @@ def map_instance_metadata(
     """Convert a DICOM dataset (header or full) to InstanceMetadata."""
     number_of_frames = infer_dicom_frame_count(dataset, pixel_data=pixel_data)
     series_description = str(dataset.get("SeriesDescription", "") or "").strip()
-    spacing, spacing_source = _pixel_spacing(dataset)
+    spacing, spacing_source, calibration, calibrations = _pixel_spacing(dataset)
     return InstanceMetadata(
         sop_instance_uid=str(dataset.get("SOPInstanceUID", "") or ""),
         series_uid=str(dataset.get("SeriesInstanceUID", "") or ""),
@@ -164,6 +171,8 @@ def map_instance_metadata(
         number_of_frames=number_of_frames,
         pixel_spacing=spacing,
         pixel_spacing_source=spacing_source,
+        calibration=calibration,
+        calibrations=calibrations,
         frame_time_ms=_frame_time_ms(dataset),
         frame_time_vector=_frame_time_vector(dataset),
         series_description=series_description,

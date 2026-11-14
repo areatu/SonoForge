@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal
 
 from echo_personal_tool.domain.models import (
+    CalibrationContext,
     Contour,
     InstanceMetadata,
     LinearMeasurement,
@@ -12,6 +13,7 @@ from echo_personal_tool.domain.models import (
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 
@@ -33,6 +35,7 @@ class StateManager(QObject):
         self._measurement_snapshot: MeasurementSnapshot | None = None
         self._decode_in_progress = False
         self._manual_pixel_spacing: tuple[float, float] | None = None
+        self._manual_calibration: CalibrationContext | None = None
         self._scroll_navigation = False
         # Manually placed A→B loop of the cine (issue 7). Session-scoped, like
         # the markers of the phase strip; reset on every clip swap.
@@ -54,6 +57,7 @@ class StateManager(QObject):
             measurement_snapshot=self._measurement_snapshot,
             decode_in_progress=self._decode_in_progress,
             manual_pixel_spacing=self._manual_pixel_spacing,
+            manual_calibration=self._manual_calibration,
         )
 
     def clear_instance(self, *, emit: bool = True) -> None:
@@ -69,6 +73,7 @@ class StateManager(QObject):
         self._measurement_snapshot = None
         self._decode_in_progress = False
         self._manual_pixel_spacing = None
+        self._manual_calibration = None
         self._scroll_navigation = False
         self._reset_loop()
         if emit:
@@ -95,6 +100,7 @@ class StateManager(QObject):
         self._measurement_snapshot = None
         self._decode_in_progress = False
         self._manual_pixel_spacing = None
+        self._manual_calibration = None
         self._reset_loop()
         if emit:
             self._emit_state()
@@ -280,7 +286,19 @@ class StateManager(QObject):
         self._emit_state()
 
     def set_manual_pixel_spacing(self, spacing: tuple[float, float] | None, *, emit: bool = True) -> None:
+        previous = self._manual_calibration
         self._manual_pixel_spacing = spacing
+        if spacing is None:
+            self._manual_calibration = None
+        else:
+            revision = (previous.revision if previous is not None else 0) + 1
+            self._manual_calibration = manual_calibration_context(spacing, revision=revision)
+        if emit:
+            self._emit_state()
+
+    def set_manual_calibration(self, calibration: CalibrationContext | None, *, emit: bool = True) -> None:
+        self._manual_calibration = calibration
+        self._manual_pixel_spacing = calibration.spacing if calibration is not None else None
         if emit:
             self._emit_state()
 
@@ -294,6 +312,7 @@ class StateManager(QObject):
         self._linear_measurements = ()
         self._doppler_measurement = None
         self._manual_pixel_spacing = None
+        self._manual_calibration = None
         self._emit_state()
 
     def _emit_state(self) -> None:
@@ -311,6 +330,7 @@ class StateManager(QObject):
             measurement_snapshot=self._measurement_snapshot,
             decode_in_progress=self._decode_in_progress,
             manual_pixel_spacing=self._manual_pixel_spacing,
+            manual_calibration=self._manual_calibration,
             scroll_navigation=scroll,
         )
         self.state_changed.emit(state)

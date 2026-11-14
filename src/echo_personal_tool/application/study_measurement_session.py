@@ -14,6 +14,7 @@ from echo_personal_tool.domain.doppler_catalog import (
     canonical_trace_label,
 )
 from echo_personal_tool.domain.models import Contour, LinearMeasurement
+from echo_personal_tool.domain.models.calibration import CalibrationContext, invalidate_dependents
 from echo_personal_tool.domain.models.doppler import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
@@ -29,6 +30,7 @@ from echo_personal_tool.domain.models.vessel_measurement import VesselMeasuremen
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
+from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases
@@ -268,6 +270,13 @@ class StudyMeasurementData:
     cine_segment_roi_by_instance: tuple[tuple[str, tuple[float, float, float, float]], ...] = ()
     manual_pixel_spacing: tuple[float, float] | None = None
     manual_spacing_by_instance: tuple[tuple[str, tuple[float, float]], ...] = ()
+    #: Active instance's manual calibration context (not persisted itself;
+    #: provenance lives in ``calibration_by_instance``).
+    manual_calibration: CalibrationContext | None = None
+    #: Spatial calibration provenance/revision per instance (#547).  Stored
+    #: next to the measurements so a later recalibration can be detected even
+    #: when the numeric spacing happens to stay the same.
+    calibration_by_instance: tuple[tuple[str, CalibrationContext], ...] = ()
     mmode_time_by_instance: tuple[tuple[str, float], ...] = ()
     height_source: str = "unset"
     weight_source: str = "unset"
@@ -324,6 +333,17 @@ class StudyMeasurementData:
         )
 
     @property
+    def active_calibration(self) -> CalibrationContext | None:
+        """Calibration to compare stored results against, without UI state."""
+        if self.manual_calibration is not None:
+            return self.manual_calibration
+        by_instance = dict(self.calibration_by_instance)
+        for contour in self.contours:
+            if contour.sop_instance_uid and contour.sop_instance_uid in by_instance:
+                return by_instance[contour.sop_instance_uid]
+        return None
+
+    @property
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
         return aggregate_doppler_by_instance(dict(self.doppler_by_instance))
 
@@ -356,6 +376,7 @@ class StudyMeasurementSessionStore:
         self._studies[study_uid] = replace(
             data,
             manual_pixel_spacing=dict(data.manual_spacing_by_instance).get(instance_uid),
+            manual_calibration=dict(data.calibration_by_instance).get(instance_uid),
             mmode_time_per_pixel_ms=dict(data.mmode_time_by_instance).get(instance_uid),
         )
 
@@ -366,16 +387,68 @@ class StudyMeasurementSessionStore:
         if self.on_change is not None:
             self.on_change(study_uid, data)
 
-    def set_instance_spacing(self, study_uid: str, instance_uid: str, spacing: tuple[float, float] | None) -> None:
+    def set_instance_spacing(
+        self,
+        study_uid: str,
+        instance_uid: str,
+        spacing: tuple[float, float] | None,
+        *,
+        fallback_calibration: CalibrationContext | None = None,
+    ) -> None:
         data = self.get(study_uid)
         values = dict(data.manual_spacing_by_instance)
+        calibrations = dict(data.calibration_by_instance)
         if spacing is None:
             values.pop(instance_uid, None)
+            calibrations.pop(instance_uid, None)
+            if fallback_calibration is not None and fallback_calibration.source != "manual":
+                # Clearing a manual override exposes the DICOM scale again; bump
+                # its revision so results derived from the override go stale.
+                calibrations[instance_uid] = invalidate_dependents(fallback_calibration)
+            calibration = None
         else:
             values[instance_uid] = spacing
+            previous = calibrations.get(instance_uid)
+            calibration = manual_calibration_context(
+                spacing,
+                revision=(previous.revision if previous is not None else 0) + 1,
+            )
+            calibrations[instance_uid] = calibration
         self._set(
-            study_uid, replace(data, manual_spacing_by_instance=tuple(values.items()), manual_pixel_spacing=spacing)
+            study_uid,
+            replace(
+                data,
+                manual_spacing_by_instance=tuple(values.items()),
+                manual_pixel_spacing=spacing,
+                calibration_by_instance=tuple(calibrations.items()),
+                manual_calibration=calibration,
+            ),
         )
+
+    def set_instance_calibration(
+        self,
+        study_uid: str,
+        instance_uid: str,
+        calibration: CalibrationContext | None,
+    ) -> None:
+        """Store calibration provenance; ``None`` removes it."""
+        data = self.get(study_uid)
+        current = dict(data.calibration_by_instance)
+        if calibration is None:
+            current.pop(instance_uid, None)
+        else:
+            current[instance_uid] = calibration
+        self._set(
+            study_uid,
+            replace(
+                data,
+                calibration_by_instance=tuple(current.items()),
+                manual_calibration=calibration if calibration is not None and calibration.source == "manual" else None,
+            ),
+        )
+
+    def get_instance_calibration(self, study_uid: str, instance_uid: str) -> CalibrationContext | None:
+        return dict(self.get(study_uid).calibration_by_instance).get(instance_uid)
 
     def set_instance_mmode_time(self, study_uid: str, instance_uid: str, value: float) -> None:
         data = self.get(study_uid)

@@ -503,6 +503,7 @@ def test_v3_schema_still_validates_a_v3_document():
     wire["data"].pop("simpson_basis", None)
     wire["data"].pop("doppler_basis", None)
     wire["data"].pop("derived_snapshot", None)
+    wire["data"].pop("calibration_by_instance", None)
     for item in wire["data"]["vessel_measurements"]:
         # v6: the named-artery site label did not exist in a v3 document.
         item.pop("label", None)
@@ -593,6 +594,7 @@ def test_v1_dump_matches_v1_schema():
             node.pop("simpson_basis", None)
             node.pop("doppler_basis", None)
             node.pop("derived_snapshot", None)
+            node.pop("calibration_by_instance", None)
             if "psv_cm_s" in node:
                 # item 2/4: the named-artery site label arrived in v6.
                 node.pop("label", None)
