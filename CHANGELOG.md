@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `refactor(frames)`: #552 — презентация читает кадры только через `FrameAccess`: статус готовности, кадр или `None`, полный клип и проекция для M-mode; lifecycle переключения/закрытия покрыт characterization-тестами ([полностью](changelog.d/052-refactor-frame-access-552.md))
+
 - `test(geometry)`: #555 — приёмка линейки/площади на zoom/pan/flip/rotation и анизотропии, RU/EN-плашка калибровки ([полностью](changelog.d/051-test-geometry-acceptance-555.md))
 
 - `feat(report)`: #555 — карточка «откуда значение» называет клипы, кадры и измерения за допплеровским агрегатом и GLS, а не только за калипером ([полностью](changelog.d/050-feat-derived-lineage-555.md))
