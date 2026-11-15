@@ -59,7 +59,7 @@ from echo_personal_tool.domain.models.manual_calculator_input import (
     MANUAL_CALCULATOR_ORIGIN,
     ManualCalculatorInput,
 )
-from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.measurements import ContourLineage, StrainReport
 from echo_personal_tool.domain.models.result_provenance import (
     BSA_SOURCE_DERIVED,
     BSA_SOURCE_MANUAL,
@@ -137,6 +137,7 @@ TYPES = frozenset(
         DopplerSpectrogramRoi,
         MmodeCalibrationState,
         StrainReport,
+        ContourLineage,
         VesselMeasurement,
         # BSA provenance
         BsaBasis,
@@ -188,6 +189,17 @@ def _encode(value: object) -> object:
         fields = FIELDS if isinstance(value, StudyMeasurementData) else {f.name for f in dataclasses.fields(value)}
         if isinstance(value, LinearMeasurement) and not value.submillimeter:
             fields = fields - {"submillimeter"}  # Keep ordinary/legacy documents unchanged.
+        if isinstance(value, StrainReport) and not value.lineage_by_view:
+            # Provenance of the tracked contour is written only when it exists:
+            # a study without strain lineage keeps the exact shape older
+            # schemas already accepted (issue 555).
+            fields = fields - {"lineage_by_view"}
+        if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)) and not (
+            value.sop_instance_uid or value.frame_index is not None
+        ):
+            # A marker measured before lineage was recorded keeps its old wire
+            # shape; an empty source is not written as ``null`` noise.
+            fields = fields - {"sop_instance_uid", "frame_index"}
         return {name: _encode(getattr(value, name)) for name in sorted(fields)}
     if isinstance(value, Enum):
         return value.value

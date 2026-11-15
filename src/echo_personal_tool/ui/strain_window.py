@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
+from echo_personal_tool.domain.services.segment_map import normalise_view
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
@@ -220,6 +221,13 @@ class StrainWindow(QMainWindow):
             self._study = study
             self._refresh_overview()
 
+    def _analysis_with_source(self, result: StrainResult) -> StrainAnalysis:
+        """Keep the contour lineage the controller adopted for this view (issue 555)."""
+        view = normalise_view(str(getattr(result, "view", "A4C")))
+        existing = self._study.analyses.get(view)
+        source = existing.source_contour if existing is not None else None
+        return StrainAnalysis.from_result(result, source=source)
+
     def show_result(
         self,
         result: StrainResult,
@@ -260,7 +268,7 @@ class StrainWindow(QMainWindow):
                 log_boundary_failure(logger, "strain.window", exc, code="invalid", level=logging.DEBUG)
 
         # Record this view in the study; the newest run of a view wins.
-        analysis = StrainAnalysis.from_result(result)
+        analysis = self._analysis_with_source(result)
         self._analysis = analysis
         self._study = self._study.with_view(analysis)
 

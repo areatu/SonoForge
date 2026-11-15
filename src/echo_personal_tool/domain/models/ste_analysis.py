@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.measurements import ContourLineage, StrainReport
 from echo_personal_tool.domain.models.speckle import StrainResult
 from echo_personal_tool.domain.services.segment_map import (
     normalise_view,
@@ -66,6 +66,11 @@ class StrainAnalysis:
     """One analysed view: values, provenance and quality in one record."""
 
     view: str = "A4C"
+    #: The endocardial contour this view was tracked from (issue 555), with
+    #: its identity, clip and frame. Provenance only — outside equality, like
+    #: the Simpson lineage: two analyses are the same measurement whether or
+    #: not the caller recorded where the contour came from.
+    source_contour: ContourLineage | None = field(default=None, compare=False)
     schema_version: int = ANALYSIS_SCHEMA_VERSION
     segmentation: str = "AHA-18"
     definition_gls: str = DEFINITION_GLS
@@ -149,6 +154,16 @@ class StrainAnalysis:
         data: dict = {
             "schema_version": self.schema_version,
             "view": self.view,
+            "source_contour": (
+                None
+                if self.source_contour is None
+                else {
+                    "measurement_id": self.source_contour.measurement_id,
+                    "revision": self.source_contour.revision,
+                    "sop_instance_uid": self.source_contour.sop_instance_uid,
+                    "frame_index": self.source_contour.frame_index,
+                }
+            ),
             "segmentation": self.segmentation,
             "definitions": {
                 "gls": self.definition_gls,
@@ -225,12 +240,25 @@ class StrainAnalysis:
         return data
 
     @classmethod
-    def from_result(cls, result: StrainResult, *, view: str | None = None) -> StrainAnalysis:
-        """Build the record from a worker result (the only conversion point)."""
+    def from_result(
+        cls,
+        result: StrainResult,
+        *,
+        view: str | None = None,
+        source: ContourLineage | None = None,
+    ) -> StrainAnalysis:
+        """Build the record from a worker result (the only conversion point).
+
+        ``source`` is the endocardial contour the tracking was launched on
+        (issue 555).  The worker result itself carries no clip identity, so the
+        caller that knows the contour passes it here; without it the analysis
+        honestly records no lineage.
+        """
         metrics = getattr(result, "segment_metrics", {}) or {}
         segment_ess = {int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()}
         return cls(
             view=normalise_view(view or getattr(result, "view", "A4C")),
+            source_contour=source if source is not None and source.recorded else None,
             gls=_finite(result.gls),
             ess=_finite(getattr(result, "ess", None)),
             peak=_finite(getattr(result, "peak_strain", None)),
@@ -407,6 +435,7 @@ def strain_report_from_study(
     gls_by_view: list[tuple[str, float]] = []
     qc_by_view: list[tuple[str, str]] = []
     avc_by_view: list[tuple[str, str]] = []
+    lineage_by_view: list[tuple[str, ContourLineage]] = []
     for view in study.views_measured():
         analysis = study.analyses[view]
         value = _finite(analysis.gls)
@@ -415,6 +444,8 @@ def strain_report_from_study(
         gls_by_view.append((view, value))
         qc_by_view.append((view, analysis.qc_status))
         avc_by_view.append((view, analysis.avc_source))
+        if analysis.source_contour is not None:
+            lineage_by_view.append((view, analysis.source_contour))
     if not gls_by_view:
         return None
 
@@ -428,6 +459,7 @@ def strain_report_from_study(
         avc_source_by_view=tuple(avc_by_view),
         segments_missing=len(study.missing_segments()),
         contour_source=contour_source,
+        lineage_by_view=tuple(lineage_by_view),
     )
 
 

@@ -23,6 +23,7 @@ from echo_personal_tool.domain.models.value_origin import (
     KIND_CALCULATOR,
     KIND_MEASUREMENT,
     METHOD_CALCULATOR,
+    METHOD_DOPPLER_AGGREGATE,
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
     METHOD_NOT_EVALUATED,
@@ -143,12 +144,15 @@ def test_a_planimeter_value_records_the_method_but_no_clip() -> None:
     assert row.origin.recorded is False
 
 
-def test_a_derived_doppler_value_has_no_origin_rather_than_a_guess() -> None:
-    """A computed Vmax aggregate records no input lineage in this release."""
+def test_a_derived_doppler_value_without_markers_is_unverified_not_invented() -> None:
+    """The aggregate has a method, but no recorded measurement behind it."""
     doppler = DopplerResults(flow_results=(DopplerFlowResult(site="TR", vmax_cm_s=280.0),))
     rows = _rows(MeasurementSnapshot(doppler=doppler))
     derived = next(value for value in rows if "TR" in value.label)
-    assert derived.origin is None
+    assert derived.origin is not None
+    assert derived.origin.method_id == METHOD_DOPPLER_AGGREGATE
+    assert derived.origin.recorded is False
+    assert derived.origin.freshness == Freshness.UNVERIFIED.value
 
 
 # ── calculator outputs ─────────────────────────────────────────────────

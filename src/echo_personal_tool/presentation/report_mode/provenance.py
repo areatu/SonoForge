@@ -30,10 +30,12 @@ from echo_personal_tool.domain.models.result_provenance import Freshness
 from echo_personal_tool.domain.models.value_origin import (
     KIND_CALCULATOR,
     METHOD_CALCULATOR,
+    METHOD_DOPPLER_AGGREGATE,
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
     METHOD_NOT_EVALUATED,
     METHOD_PLANIMETER,
+    METHOD_STRAIN,
     METHOD_VESSEL,
     REASON_NOT_RECORDED,
     ValueOrigin,
@@ -51,6 +53,8 @@ _METHOD_KEYS: dict[str, str] = {
     METHOD_VESSEL: "report.origin.method_vessel",
     METHOD_PLANIMETER: "report.origin.method_planimeter",
     METHOD_CALCULATOR: "report.origin.method_calculator",
+    METHOD_DOPPLER_AGGREGATE: "report.origin.method_doppler_aggregate",
+    METHOD_STRAIN: "report.origin.method_strain",
     METHOD_NOT_EVALUATED: "report.origin.method_not_evaluated",
 }
 

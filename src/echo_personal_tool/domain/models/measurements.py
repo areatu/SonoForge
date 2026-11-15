@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
@@ -92,6 +93,15 @@ class DopplerResults:
     tr_dpdt_ms: float | None = None
     #: Mean of the last three valid manual peak-to-peak heart rates (bpm).
     heart_rate_bpm: float | None = None
+    #: The markers these values were computed from (issue 555).  A Vmax row is
+    #: the mean of several measurements, and a VTI row the mean of several
+    #: traces; the report needs the identities, clips and frames of those
+    #: primary measurements, not just the aggregate.  Provenance only — outside
+    #: equality, like the Simpson contour lineage above; old persisted results
+    #: carry no markers and the card honestly says the origin was not recorded.
+    peaks: tuple[DopplerPeakMarker, ...] = field(default=(), compare=False, repr=False)
+    intervals: tuple[DopplerIntervalMarker, ...] = field(default=(), compare=False, repr=False)
+    traces: tuple[DopplerTrace, ...] = field(default=(), compare=False, repr=False)
 
     def flow(self, site: str) -> DopplerFlowResult | None:
         """Return one site result using case-insensitive lookup."""
@@ -266,6 +276,11 @@ class StrainReport:
     segments_missing: int = 0
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
+    #: ``(view, contour lineage)`` of the endocardial contour each view was
+    #: tracked from (issue 555).  The GLS of a view is derived from that
+    #: contour, so the report card can name the clip, frame and measurement
+    #: identity it came from.  Provenance only — outside equality.
+    lineage_by_view: tuple[tuple[str, ContourLineage], ...] = field(default=(), compare=False, repr=False)
 
     @property
     def has_values(self) -> bool:

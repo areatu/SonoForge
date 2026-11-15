@@ -20,6 +20,12 @@ class DopplerPeakMarker:
     from the DICOM ``RegionDataType`` with an explicit manual override winning
     (Э2).  Storage stays in cm/s; the mode only selects display units
     (CW → m/s, PW/TDI → cm/s, unknown → by magnitude).
+
+    ``sop_instance_uid`` and ``frame_index`` are the clip and frame the marker
+    was drawn on (issue 555).  The marker is primary data; the report aggregates
+    several markers into one Vmax/VTI row and must still be able to answer
+    «откуда значение», so the identity travels with the marker instead of being
+    dropped at the compute boundary.  Legacy records leave both empty.
     """
 
     label: str
@@ -27,6 +33,8 @@ class DopplerPeakMarker:
     velocity_cm_s: float
     measurement_id: str = ""
     mode: str = ""
+    sop_instance_uid: str = ""
+    frame_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,9 @@ class DopplerIntervalMarker:
     start_time_ms: float
     end_time_ms: float
     measurement_id: str = ""
+    #: Clip and frame of the interval (issue 555); empty on legacy records.
+    sop_instance_uid: str = ""
+    frame_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +61,9 @@ class DopplerTrace:
     points: tuple[tuple[float, float], ...]
     measurement_id: str = ""
     mode: str = ""
+    #: Clip and frame of the traced envelope (issue 555); empty on legacy records.
+    sop_instance_uid: str = ""
+    frame_index: int | None = None
 
 
 @dataclass(frozen=True)

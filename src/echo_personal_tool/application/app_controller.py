@@ -68,6 +68,7 @@ from echo_personal_tool.domain.calculators.models import SOURCE_DICOM, Calculati
 from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
 from echo_personal_tool.domain.models import (
     Contour,
+    ContourLineage,
     InstanceMetadata,
     LinearMeasurement,
     StudyMetadata,
@@ -4448,9 +4449,11 @@ class AppController(QObject):
         self._retain_worker(worker)
         generation = self._study_load_generation
         instance_uid = instance.sop_instance_uid if instance else None
+        source_uid = contour.sop_instance_uid or instance_uid or ""
+        source = ContourLineage(contour.measurement_id, contour.revision, source_uid, contour.frame_index)
         worker.signals.finished.connect(
-            lambda result: (
-                self._on_speckle_tracking_finished(result)
+            lambda result, lineage=source: (
+                self._on_speckle_tracking_finished(result, lineage)
                 if (
                     generation == self._study_load_generation
                     and not self._study_switching
@@ -4466,11 +4469,10 @@ class AppController(QObject):
         worker.signals.error.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
-    def _on_speckle_tracking_finished(self, result: object) -> None:
+    def _on_speckle_tracking_finished(self, result: object, source: ContourLineage | None = None) -> None:
         if not isinstance(result, StrainResult):
             return
-
-        self._record_strain_result(result)
+        self._record_strain_result(result, source)
 
         gls_text = f"GLS: {result.gls:.1f}%"
         hr_text = f"HR: {result.heart_rate_bpm:.0f} bpm" if result.heart_rate_bpm > 0 else ""
@@ -4478,7 +4480,7 @@ class AppController(QObject):
         self.status_message.emit(status)
         self.speckle_result_ready.emit(result)
 
-    def _record_strain_result(self, result: StrainResult) -> None:
+    def _record_strain_result(self, result: StrainResult, source: ContourLineage | None = None) -> None:
         """Accumulate the analysed views of the study and publish the protocol row.
 
         The study is rebuilt here from the same :class:`StrainResult` objects and
@@ -4488,7 +4490,7 @@ class AppController(QObject):
         """
         study_uid = self._resolve_study_uid()
         study = self._strain_studies.get(study_uid, StrainStudy())
-        study = study.with_view(StrainAnalysis.from_result(result))
+        study = study.with_view(StrainAnalysis.from_result(result, source=source))
         self._strain_studies[study_uid] = study
         self._measurement_session.set_strain(study_uid, strain_report_from_study(study))
         self._recompute_measurements()

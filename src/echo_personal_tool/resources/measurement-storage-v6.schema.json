@@ -253,6 +253,38 @@
         "assumed_isotropic": {"type": "boolean"}
       }
     },
+    "ContourLineage": {
+      "type": "object",
+      "properties": {
+        "measurement_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "sop_instance_uid": {
+          "type": "string"
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "measurement_id",
+        "revision",
+        "sop_instance_uid",
+        "frame_index"
+      ],
+      "additionalProperties": false
+    },
     "Contour": {
       "type": "object",
       "properties": {
@@ -485,6 +517,21 @@
     "DopplerIntervalMarker": {
       "type": "object",
       "properties": {
+        "sop_instance_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "end_time_ms": {
           "type": "number"
         },
@@ -539,6 +586,21 @@
     "DopplerPeakMarker": {
       "type": "object",
       "properties": {
+        "sop_instance_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "label": {
           "type": "string"
         },
@@ -598,6 +660,21 @@
     "DopplerTrace": {
       "type": "object",
       "properties": {
+        "sop_instance_uid": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "frame_index": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "label": {
           "type": "string"
         },
@@ -1164,6 +1241,22 @@
               },
               {
                 "type": "number"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "lineage_by_view": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/ContourLineage"
               }
             ],
             "minItems": 2,
