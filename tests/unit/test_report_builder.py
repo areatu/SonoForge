@@ -40,6 +40,7 @@ from echo_personal_tool.infrastructure.i18n import tr
 
 
 def _snapshot(**kwargs) -> MeasurementSnapshot:
+    kwargs.setdefault("spacing_calibrated", True)
     return MeasurementSnapshot(**kwargs)
 
 

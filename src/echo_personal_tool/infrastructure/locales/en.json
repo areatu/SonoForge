@@ -3280,7 +3280,7 @@
   "report.status.draft": "DRAFT — not signed off",
   "report.status.final": "Final report — signed off",
   "report.notice.draft": "This is a draft: the report is not signed off and is not a final document.",
-  "report.notice.uncalibrated": "No image scale: physical values are not calculated; areas and volumes are shown in pixels.",
+  "report.notice.uncalibrated": "No 2D image scale: contour areas and volumes are shown in pixels. Linear measurements with a recorded physical scale stay in mm.",
   "report.notice.unreviewed.one": "{count} automatic contour has not been reviewed by a physician.",
   "report.notice.unreviewed.few": "{count} automatic contours have not been reviewed by a physician.",
   "report.notice.unreviewed.many": "{count} automatic contours have not been reviewed by a physician.",

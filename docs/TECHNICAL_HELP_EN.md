@@ -55,7 +55,7 @@ Source strength is expressed by `CalibrationConfidence`: `MEASURED` is an explic
 
 ### 2.2 Uncalibrated fallback and pixel units
 
-When no valid spacing is available, the controller passes `(1.0, 1.0)` to geometry routines but marks the snapshot as `spacing_calibrated = false`. This allows the same pixel geometry code to run without pretending that one pixel is one millimetre.
+When no valid spacing is available, the controller passes `(1.0, 1.0)` to geometry routines but marks the snapshot as `spacing_calibrated = false`. This allows the same pixel geometry code to run without pretending that one pixel is one millimetre. `MeasurementSnapshot` itself defaults to `false`: a snapshot built without explicit evidence of a scale does not claim clinical units. Teichholz and LV mass take an explicit `spacing_calibrated`; without it the domain function returns `None` even when the `millimeter_length` slot holds a number. The controller confirms the scale when a 2D scale exists or the calipers already carry millimetres (M-mode, manual input, scoped panel), so valid linear results do not disappear because the instance-level spacing is ambiguous.
 
 Formatting uses the flag to distinguish physical and pixel output:
 

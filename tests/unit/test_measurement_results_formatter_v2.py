@@ -29,6 +29,7 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
 
 
 def _snap(**kwargs) -> MeasurementSnapshot:
+    kwargs.setdefault("spacing_calibrated", True)
     return MeasurementSnapshot(**kwargs)
 
 

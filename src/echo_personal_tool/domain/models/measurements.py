@@ -300,7 +300,11 @@ class MeasurementSnapshot:
     rv_fac_percent: float | None = None
     diastology_grade: str | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
-    spacing_calibrated: bool = True
+    #: Whether a physical 2D scale was available when the snapshot was built.
+    #: The default is deliberately ``False``: a snapshot constructed without
+    #: evidence must not claim clinical units (#555).  Code that knows the
+    #: scale states it explicitly.
+    spacing_calibrated: bool = False
     #: Contours still waiting for a human review (#555). Physical calculations
     #: already ignore them; the export must say so instead of printing a draft
     #: value as if it were confirmed.

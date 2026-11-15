@@ -213,7 +213,7 @@ def test_teichholz_volumes_cite_their_own_caliper() -> None:
         caliper("LVEDD", 50.0, "clip1", 11, "m1"),
         caliper("LVESD", 33.0, "clip2", 21, "m2"),
     )
-    teichholz = from_linear_measurements(calipers)
+    teichholz = from_linear_measurements(calipers, spacing_calibrated=True)
     groups = build_report_groups(MeasurementSnapshot(teichholz=teichholz, linear_measurements=calipers), sex="F")
 
     # The Teichholz section, in order: EDV, ESV, EF, SV, then the calipers.

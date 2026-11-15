@@ -20,8 +20,16 @@ def lvm_grams(
 
 def from_linear_measurements(
     measurements: tuple[LinearMeasurement, ...],
+    *,
+    spacing_calibrated: bool = False,
 ) -> float | None:
-    """Return LVM (g) when IVSd, LVEDD, LVPWd calipers are present."""
+    """Return LVM (g) when IVSd, LVEDD, LVPWd calipers are present.
+
+    Like Teichholz, the gram result enters a clinical report only when the
+    caller confirms the calipers are physically scaled (#555).
+    """
+    if not spacing_calibrated:
+        return None
     values: dict[str, float] = {}
     for measurement in measurements:
         label = measurement.label.upper()

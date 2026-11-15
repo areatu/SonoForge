@@ -16,10 +16,20 @@ def test_from_linear_measurements_requires_three_labels() -> None:
         LinearMeasurement(label="IVSd", pixel_length=20.0, millimeter_length=10.0),
         LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),
     )
-    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is None
 
     measurements = (
         *measurements,
         LinearMeasurement(label="LVPWd", pixel_length=20.0, millimeter_length=10.0),
     )
-    assert from_linear_measurements(measurements) is not None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is not None
+
+
+def test_uncalibrated_calipers_do_not_become_grams() -> None:
+    measurements = tuple(
+        LinearMeasurement(label, pixel_length=50.0, millimeter_length=value)
+        for label, value in (("IVSD", 10.0), ("LVEDD", 50.0), ("LVPWD", 9.0))
+    )
+
+    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is not None
