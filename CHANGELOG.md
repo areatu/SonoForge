@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(report)`: #555 — статус черновика/устаревших/непроверенных контуров виден над листом отчёта и совпадает с PDF/CSV/JSON ([полностью](changelog.d/048-feat-report-status-555.md))
+
 - `feat(calibration)`: #555 — Properties перечисляет все масштабы клипа, `ASSUMED` подписан словом и причиной, а не только цветом ([полностью](changelog.d/047-feat-calibration-ui-555.md))
 
 - `fix(calibration)`: #547 — масштаб выбирается по геометрии кадра/панели, потребители (площади, объёмы, Simpson, сохранение) не берут чужую калибровку ([полностью](changelog.d/046-fix-calibration-consumers-547.md))

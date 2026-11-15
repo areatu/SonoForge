@@ -9,6 +9,8 @@ geometry itself is pinned without Qt in ``test_report_view_map.py``.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 pytest.importorskip("pytestqt")
@@ -418,3 +420,46 @@ class TestHideValueMenu:
         assert widget._build_value_menu(ReportValue(label="X", value="1")) is None
         widget._document = self._keyed_document()
         assert widget._build_value_menu(widget._document.groups[0].values[0]) is not None
+
+
+class TestStatusBanner:
+    def test_a_draft_names_itself_and_every_warning(self, qtbot) -> None:
+        document = replace(
+            _document(),
+            draft=True,
+            notices=("Нет масштаба изображения", "Не подтверждён 1 контур"),
+        )
+        widget = _make(qtbot, lambda: document)
+
+        assert widget.refresh_now() is True
+        banner = widget.notice_banner
+        assert banner.isVisible() is True
+        assert document.status_text in banner.text()
+        assert "Нет масштаба изображения" in banner.text()
+        assert "Не подтверждён 1 контур" in banner.text()
+        assert banner.accessibleName() == banner.text()
+
+    def test_a_final_clean_sheet_has_no_banner(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: replace(_document(), draft=False, notices=()))
+
+        assert widget.refresh_now() is True
+        assert widget.notice_banner.isVisible() is False
+        assert widget.notice_banner.text() == ""
+
+    def test_a_final_sheet_still_shows_stale_or_unreviewed_warnings(self, qtbot) -> None:
+        document = replace(_document(), draft=False, notices=("Объёмы Симпсона устарели",))
+        widget = _make(qtbot, lambda: document)
+
+        assert widget.refresh_now() is True
+        assert widget.notice_banner.isVisible() is True
+        assert widget.notice_banner.text() == "Объёмы Симпсона устарели"
+        assert document.status_text not in widget.notice_banner.text()
+
+    def test_a_new_document_updates_and_clears_the_banner(self, qtbot) -> None:
+        widget = _make(qtbot, lambda: replace(_document(), draft=True))
+
+        assert widget.refresh_now() is True
+        assert widget.notice_banner.isVisible() is True
+
+        assert widget.set_document(replace(_document(), draft=False, notices=())) is True
+        assert widget.notice_banner.isVisible() is False
