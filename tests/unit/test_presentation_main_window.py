@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from echo_personal_tool.application.frame_cache import FrameCacheStatus
 from echo_personal_tool.infrastructure.i18n import tr
 
 pytestmark = pytest.mark.gui
@@ -63,8 +64,9 @@ def mock_controller():
     c.measurement_persistence.discard_unsaved.return_value = True
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
-    c.get_cached_frames.return_value = []
-    c._frame_cache = None
+    c.frame_access.status.return_value = FrameCacheStatus(ready=False, frame_count=0, loaded_count=0, source_path=None)
+    c.frame_access.frames.return_value = []
+    c.frame_access.full_cine.return_value = None
     c._current_study_uid = None
     c._measurement_session = {}
     return c
@@ -327,8 +329,7 @@ class TestMainWindow:
         )
         # Cache claims it does NOT hold the full cine — the result itself must
         # provide the frames.
-        main_window._controller._frame_cache = MagicMock()
-        main_window._controller._frame_cache.require_full_cine.side_effect = RuntimeError("incomplete")
+        main_window._controller.frame_access.full_cine.return_value = None
 
         main_window._on_speckle_result_ready(result)
 
@@ -781,16 +782,16 @@ class TestOnMmodeColumnReady:
 class TestOnMmodeLineCompleted:
     def test_no_widget(self, main_window):
         main_window._mmode_widget = None
-        main_window._controller.get_cached_frames.reset_mock()
+        main_window._controller.frame_access.frames.reset_mock()
 
         main_window._on_mmode_line_completed((10, 20), (100, 200))
 
-        main_window._controller.get_cached_frames.assert_not_called()  # nothing to recalculate without a widget
+        main_window._controller.frame_access.frames.assert_not_called()  # nothing to recalculate without a widget
 
     def test_with_widget_and_cached_frames(self, main_window):
         main_window._mmode_widget = MagicMock()
         main_window._mmode_active = True
-        main_window._controller.get_cached_frames.return_value = [np.zeros((256, 256))]
+        main_window._controller.frame_access.frames.return_value = [np.zeros((256, 256))]
         main_window._on_mmode_line_completed((10, 20), (100, 200))
         main_window._mmode_widget.recalculate_from_frames.assert_called_once()
 

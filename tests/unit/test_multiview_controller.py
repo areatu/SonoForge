@@ -66,16 +66,6 @@ class FakePane:
         self.windows.append(span)
 
 
-class FakeCache:
-    """Serves a deterministic frame per index."""
-
-    def is_ready(self, path: Path) -> bool:
-        return True
-
-    def get(self, index: int) -> np.ndarray:
-        return np.full((2, 2), index, dtype=np.uint8)
-
-
 def _instance(
     frames: int = 30,
     frame_time_ms: float | None = 33.3,
@@ -112,7 +102,7 @@ class FakeClock:
 @pytest.fixture()
 def rig(qapp, monkeypatch):
     controller = MagicMock()
-    controller._frame_cache = FakeCache()
+    controller.frame_access.frame.side_effect = lambda path, index: np.full((2, 2), index, dtype=np.uint8)
     mv = MultiViewController(controller)
     panes = {PaneId.LEFT: FakePane(PaneId.LEFT), PaneId.RIGHT: FakePane(PaneId.RIGHT)}
     for pane_id, pane in panes.items():
@@ -711,7 +701,8 @@ class TestRobustness:
         painted_before = len(rig.panes[PaneId.RIGHT].viewer.frames)
         # the same clip is still in the pane, but the pair was explicitly replaced
         rig.mv.session.bump_generation()
-        rig.controller._frame_cache = None
+        rig.controller.frame_access.frame.side_effect = None
+        rig.controller.frame_access.frame.return_value = None
         start = MagicMock()
         monkeypatch.setattr(rig.mv, "_start_worker", start)
         rig.mv._on_pane_frame(PaneId.RIGHT, captured[0], captured[1], np.full((2, 2), 99, dtype=np.uint8))

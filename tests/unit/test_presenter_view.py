@@ -64,7 +64,7 @@ def _make_controller():
     c.state_manager.loop_state.return_value = (None, None, False)
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
-    c.get_cached_frames.return_value = []
+    c.frame_access.frames.return_value = []
     # A MagicMock controller would leave measurement_persistence as a truthy
     # auto-mock: MainWindow._sync_measurement_persistence would then open a
     # modal QMessageBox.exec() during construction and hang the test forever
