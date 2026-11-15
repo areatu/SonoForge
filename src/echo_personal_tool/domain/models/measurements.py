@@ -9,6 +9,7 @@ from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, Dopp
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+from echo_personal_tool.domain.services.doppler_repeats import RepeatStatistics
 
 if False:  # TYPE_CHECKING for provenance statuses
     pass
@@ -41,6 +42,11 @@ class DopplerFlowResult:
     #: (``CW`` | ``PW`` | ``TDI``, empty when unknown).  Display-only: it
     #: selects m/s vs cm/s for the velocities, storage stays in cm/s.
     mode: str = ""
+    #: Accepted/excluded/selected values behind the reported Vmax and VTI
+    #: (issue 559).  The dialog and the report read the same object, so the
+    #: shown mean cannot disagree with the mean of the rows around it.
+    vmax_stats: RepeatStatistics = field(default_factory=RepeatStatistics)
+    vti_stats: RepeatStatistics = field(default_factory=RepeatStatistics)
 
 
 @dataclass(frozen=True)

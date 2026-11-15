@@ -56,7 +56,7 @@ from echo_personal_tool.domain.services.doppler_provenance import (
     doppler_value_origin,
     strain_value_origin,
 )
-from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
+from echo_personal_tool.domain.services.doppler_repeats import RepeatStatistics, report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.domain.services.nomenclature import caliper_label as _cal
 from echo_personal_tool.domain.services.nomenclature import catalog_label as _label_catalog
@@ -278,13 +278,23 @@ class ReportValue:
     #: hidden or restored.  Empty for rows the builder does not own (the
     #: «не оценивалось» marks appended by the window).
     key: str = ""
+    #: Sample SD and coefficient of variation of the selected repeats
+    #: (issue 559).  Kept as strings so the machine-readable ``value`` stays
+    #: the plain mean; the human value adds them after the ``n`` suffix.
+    repeat_sd: str = ""
+    repeat_cv: str = ""
 
     @property
     def display_value(self) -> str:
         """Value plus the localized count of samples entering a repeat mean."""
-        if self.sample_count is None or self.sample_count <= 1:
-            return self.value
-        return self.value + tr("domain.report.repeat_suffix", count=self.sample_count)
+        text = self.value
+        if self.sample_count is not None and self.sample_count > 1:
+            text += tr("domain.report.repeat_suffix", count=self.sample_count)
+        if self.repeat_sd:
+            text += tr("domain.report.repeat_sd", sd=self.repeat_sd)
+        if self.repeat_cv:
+            text += tr("domain.report.repeat_cv", cv=self.repeat_cv)
+        return text
 
 
 @dataclass(frozen=True)
@@ -629,6 +639,8 @@ def _value(
     norm_label: str | None = None,
     scale: float | None = None,
     sample_count: int | None = None,
+    repeat_sd: float | None = None,
+    repeat_cv: float | None = None,
     origin: ValueOrigin | None = None,
 ) -> ReportValue | None:
     """One report row formatted via :func:`format_measurement` (issue 482).
@@ -656,6 +668,8 @@ def _value(
         pathological=pathological,
         group=resolved,
         sample_count=sample_count,
+        repeat_sd=f"{repeat_sd:.2f}" if repeat_sd is not None else "",
+        repeat_cv=f"{repeat_cv:.1f}" if repeat_cv is not None else "",
         origin=origin,
     )
 
@@ -1090,6 +1104,7 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             values.append(heart_rate)
         flow_mode_by_label: dict[str, str] = {}
         flow_sample_count_by_label: dict[str, int] = {}
+        flow_stats_by_label: dict[str, RepeatStatistics] = {}
         flow_origins: dict[str, ValueOrigin] = {}
         doppler_values: list[tuple[str, str, float | None, str, str]] = [
             (_label("result.mv_e"), "mv.e", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -1153,8 +1168,14 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             flow_mode_by_label[_flow(flow.site, "Vmax")] = flow.mode
             flow_mode_by_label[_flow(flow.site, "Vmean")] = flow.mode
             vmax_repeat_count = flow.vmax_repeats or flow.vti_repeats
-            flow_sample_count_by_label[_flow(flow.site, "Vmax")] = report_sample_count(vmax_repeat_count)
-            flow_sample_count_by_label[_flow(flow.site, "VTI")] = report_sample_count(flow.vti_repeats)
+            flow_sample_count_by_label[_flow(flow.site, "Vmax")] = flow.vmax_stats.n or report_sample_count(
+                vmax_repeat_count
+            )
+            flow_sample_count_by_label[_flow(flow.site, "VTI")] = flow.vti_stats.n or report_sample_count(
+                flow.vti_repeats
+            )
+            flow_stats_by_label[_flow(flow.site, "Vmax")] = flow.vmax_stats
+            flow_stats_by_label[_flow(flow.site, "VTI")] = flow.vti_stats
         doppler_values.extend(
             (
                 (_label_catalog("mv.pht"), "mv.pht", doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
@@ -1168,6 +1189,7 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
         )
         for label, measurement_id, doppler_val, unit, group in doppler_values:
             scale: float | None = None
+            stats_factor = 1.0
             if label in flow_mode_by_label and doppler_val is not None:
                 doppler_val, unit, _ = scale_velocity_for_display(
                     doppler_val,
@@ -1176,9 +1198,14 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 )
                 if unit == "m/s":
                     scale = 1.0
+                    stats_factor = 0.01
             sample_count = flow_sample_count_by_label.get(label)
             if sample_count is not None and sample_count <= 1:
                 sample_count = None
+            stats = flow_stats_by_label.get(label)
+            sd = stats.sd if stats is not None and sample_count is not None else None
+            repeat_sd = sd * stats_factor if sd is not None else None
+            repeat_cv = stats.cv_percent if stats is not None and repeat_sd is not None else None
             item = _value(
                 label,
                 measurement_id,
@@ -1188,6 +1215,8 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 group=group,
                 scale=scale,
                 sample_count=sample_count,
+                repeat_sd=repeat_sd,
+                repeat_cv=repeat_cv,
                 origin=flow_origins.get(measurement_id) or doppler_value_origin(doppler, measurement_id),
             )
             if item:
