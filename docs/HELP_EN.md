@@ -299,6 +299,8 @@ If spatial calibration is absent, geometry can still be stored in pixels. Areas/
 
 `Settings → Measurement → Length display unit` selects `mm` or `cm` for display. It changes formatting, not the stored calibration.
 
+The `Properties` panel shows both the current scale and every scale recorded in the clip: source, confidence, frame or ultrasound-region bounds. When the scale comes from `ImagerPixelSpacing`, nominal scanning, a single manual line, or the “seconds as length” heuristic, the row says “assumption” and names the reason; its badge is amber, not green. This matters: a physical area or volume computed from an assumed scale is not a measured value until the scale is verified.
+
 ### 5.2 Height, Weight, BSA, and the session
 
 The `Measures` panel contains `Height` and `Weight`. The fields are whole-number spin boxes: height `0–250 cm`, weight `0–300 kg`; zero is displayed as empty. A DICOM instance with both `PatientSize` and `PatientWeight` can populate them when it is loaded (`PatientSize` is converted from metres to centimetres). MP4/JPEG/PNG have no DICOM tags and normally leave them empty.

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.models.calibration import (
+    ASSUMPTION_IMAGER_PLANE,
+    ASSUMPTION_SECONDS_AS_LENGTH,
     CALIBRATION_CROSSES_REGION,
     CalibrationConfidence,
     CalibrationContext,
@@ -59,3 +61,36 @@ def test_unavailable_badge_names_the_reason() -> None:
     text = calibration_status.unavailable_text(CALIBRATION_CROSSES_REGION)
 
     assert calibration_status.reason_text(CALIBRATION_CROSSES_REGION) in text
+
+
+def test_an_assumption_code_is_named_in_the_badge_and_in_details() -> None:
+    """Colour is not a label: the assumption is spelled out (#555)."""
+    context = CalibrationContext(
+        spacing=(0.3, 0.3),
+        source="SequenceOfUltrasoundRegions",
+        confidence=CalibrationConfidence.ASSUMED,
+        assumption=ASSUMPTION_SECONDS_AS_LENGTH,
+    )
+
+    badge = calibration_status.summary(context)
+    detail = calibration_status.details(context)
+
+    code = calibration_status.assumption_text(ASSUMPTION_SECONDS_AS_LENGTH)
+    assert calibration_status.assumption_note(context) in badge
+    assert code not in badge, "the badge stays short; the code belongs to the list/tooltip"
+    assert code in detail
+    assert code in calibration_status.scale_line(context)
+    assert calibration_status.tone(context) == "warn"
+
+
+def test_an_unknown_assumption_code_stays_readable_as_itself() -> None:
+    context = CalibrationContext(
+        spacing=(0.1, 0.1),
+        source="ImagerPixelSpacing",
+        confidence=CalibrationConfidence.ASSUMED,
+        assumption=ASSUMPTION_IMAGER_PLANE,
+    )
+
+    assert calibration_status.assumption_text("future_code") == "future_code"
+    assert calibration_status.assumption_text(ASSUMPTION_IMAGER_PLANE)
+    assert "future_code" not in calibration_status.details(context)

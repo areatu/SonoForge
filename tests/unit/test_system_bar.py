@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation.system_bar import SystemBar
 
 pytestmark = pytest.mark.gui
@@ -61,7 +62,7 @@ def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtb
 
     assert badge.isVisible()
     assert badge.property("tone") == "warn"
-    assert badge.text()
+    assert badge.text().endswith(tr("calibration.badge.assumed"))
     assert badge.toolTip()
 
 

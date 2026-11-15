@@ -3288,5 +3288,14 @@
   "report.notice.stale.simpson": "Объёмы Симпсона устарели: входные данные сохранённого исследования изменились.",
   "report.notice.stale.doppler": "Доплеровские показатели устарели: сохранённые данные не совпадают с текущими.",
   "report.notice.stale.derived": "Расчётные показатели устарели: входные данные изменились после расчёта.",
-  "report.notice.stale.bsa": "Индексы устарели: площадь тела BSA изменилась после расчёта."
+  "report.notice.stale.bsa": "Индексы устарели: площадь тела BSA изменилась после расчёта.",
+  "calibration.assumption.imager_plane": "ImagerPixelSpacing задаёт плоскость детектора, а не пациента",
+  "calibration.assumption.isotropic": "изотропия принята по одному известному расстоянию",
+  "calibration.assumption.nominal_scanned": "NominalScannedPixelSpacing — номинальный масштаб сканирования",
+  "calibration.assumption.seconds_as_length": "секунды шкалы времени приняты за длину (2D tissue region)",
+  "calibration.badge.assumed": " · предположение",
+  "calibration.detail.assumption": "Предположение: {assumption}",
+  "properties.calibration.assumption": "Предположение:",
+  "properties.calibration.scales": "Масштабы клипа:",
+  "properties.calibration.scales_more": "… и ещё {count}"
 }
