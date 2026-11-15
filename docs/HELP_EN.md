@@ -201,6 +201,10 @@ While a tab holds no study, the viewer area shows the **Studies** browser: a tab
 - The **Continue: …** button at the top of the left column still resumes the last session (a folder or the server dialog) with its date and clip count.
 - In the Presenter profile the table, sources, filters and recent places are hidden — the open actions, help and settings remain.
 
+### 2.9 Key images
+
+The application menu → **Key images…** (or `Ctrl+K` → “Key images”) opens the saved stills of the current study. **Add current frame** records the clip, the frame and, when it is the only one on that frame, its measurement; **Go to frame** returns to the same clip and frame even after the thumbnail sort changes. The list is stored per study in the application data and contains no file path, patient name or pixels. Each row reports **Source available**, **Source file is missing** or **Source file changed**; navigation is cancelled with an explicit status in the latter two cases. The “Where from” provenance card is not duplicated: navigation uses the same path as the report's **Open frames** button.
+
 ## 3. Local files and folders
 
 ### 3.1 Supported files

@@ -41,6 +41,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("layout", "app_menu.layout", "layout"),
     Command("calculators", "tool_panel.calculators", "open_calculators"),
     Command("references", "app_menu.references", "references"),
+    Command("key_images", "key_images.open", "key_images"),
     Command("help", "app_menu.help", "help"),
     Command("guide", "app_menu.guide", "guide"),
     Command("about", "app_menu.about", "about"),
