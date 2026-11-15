@@ -148,6 +148,14 @@ class ReportPreview(QWidget):
         self._status_label = QLabel()
         self._status_label.setObjectName("reportStatusLabel")
         self._status_label.setVisible(False)
+        #: Draft/stale/unreviewed banner above the sheet.  The same words are
+        #: printed in the PDF, but the reader must see them without scrolling
+        #: to the first page of the sheet (issue 555).
+        self._notice_banner = QLabel()
+        self._notice_banner.setObjectName("reportStatusBanner")
+        self._notice_banner.setWordWrap(True)
+        self._notice_banner.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._notice_banner.setVisible(False)
 
         self._profile_label = QLabel()
         self._profile_label.setObjectName("reportProfileLabel")
@@ -229,6 +237,7 @@ class ReportPreview(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(toolbar)
+        layout.addWidget(self._notice_banner)
         layout.addWidget(body, 1)
 
         self._timer = QTimer(self)
@@ -263,6 +272,11 @@ class ReportPreview(QWidget):
     def anchors(self) -> dict[ValueId, list[PageRect]]:
         """Value-cell rectangles of the last render, in page points (§8.4)."""
         return dict(self._anchors)
+
+    @property
+    def notice_banner(self) -> QLabel:
+        """The draft/stale/unreviewed banner above the sheet."""
+        return self._notice_banner
 
     @property
     def pdf_bytes(self) -> bytes:
@@ -356,6 +370,7 @@ class ReportPreview(QWidget):
             return False
         self._hide_card()
         self._document = version.document
+        self._update_notice_banner()
         self._anchors = dict(version.anchors)
         self._pdf_bytes = version.pdf
         return self._load_pdf(version.pdf)
@@ -380,6 +395,7 @@ class ReportPreview(QWidget):
             self._show_status("report_mode.render_failed")
             return False
         self._document = document
+        self._update_notice_banner()
         self._anchors = dict(rendered.anchors)
         self._pdf_bytes = rendered.pdf
         self._show_status("")
@@ -609,6 +625,26 @@ class ReportPreview(QWidget):
             return
         self._pages_label.setText(tr("report_mode.page_of", current=current, total=total))
 
+    def _update_notice_banner(self) -> None:
+        """Show the document status and its export warnings above the sheet.
+
+        A final, clean document hides the banner: it is not a decoration but a
+        statement that the sheet is a draft or carries a warning.  The words
+        come from the document itself, so the screen, PDF, CSV and JSON cannot
+        disagree (issue 555).
+        """
+        document = self._document
+        if document is None:
+            self._notice_banner.clear()
+            self._notice_banner.setVisible(False)
+            return
+        lines = [document.status_text] if document.draft else []
+        lines.extend(document.notices)
+        text = "\n".join(line for line in lines if line)
+        self._notice_banner.setText(text)
+        self._notice_banner.setAccessibleName(text)
+        self._notice_banner.setVisible(bool(text))
+
     def _show_status(self, key: str) -> None:
         self._status_key = key
         self._status_label.setText(tr(key) if key else "")
@@ -721,6 +757,7 @@ class ReportPreview(QWidget):
             self._placeholder.setText(tr("report_mode.unavailable"))
         if self._status_key:
             self._status_label.setText(tr(self._status_key))
+        self._update_notice_banner()
         self._card.reload_text()
         self._update_pages_label()
 
@@ -737,6 +774,12 @@ class ReportPreview(QWidget):
             }}
             #reportStatusLabel {{
                 color: {tokens["state.err"]};
+            }}
+            #reportStatusBanner {{
+                color: {tokens["state.warn"]};
+                background: {tokens["surface.1"]};
+                border-left: 3px solid {tokens["state.warn"]};
+                padding: 6px 8px;
             }}
             #reportUnavailable {{
                 color: {tokens["text.2"]};

@@ -961,6 +961,8 @@ forbids extra PHI requests.
 | `Measurement Results → Export PDF` | text PDF report | Current completed snapshot values when their inputs are valid. |
 | `Send to server…` | STOW-RS or DIMSE C-STORE payload | May include Graphic Annotation Sequence for supported current calipers/contours. |
 
+In the `Report` mode a status line above the sheet names the document state: draft, no image scale, stale values, and unreviewed automatic contours. The same warnings print at the top of the PDF and travel in CSV/JSON; they cannot be hidden, because they describe the document rather than its styling. `Finish` freezes the status with the sheet version.
+
 Copying the source DICOM or converting video to MP4 is not measurement export.
 
 ### 17.2 PDF measurement report
