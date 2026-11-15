@@ -786,3 +786,19 @@ def test_composition_module_is_free_of_qt_widgets_and_controller_init_has_no_hos
                             if name in forbidden_init_calls:
                                 found_init_calls.append(name)
     assert found_init_calls == [], f"AppController.__init__ must not probe host state: {found_init_calls}"
+
+
+def test_presentation_reads_frames_only_through_the_controller_facade() -> None:
+    """Issue #552: presentation may not reach into the controller's frame cache."""
+    offenders: list[str] = []
+    for source in sorted(_PRESENTATION_ROOT.rglob("*.py")):
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        relative = source.relative_to(_SRC_ROOT)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "_frame_cache":
+                offenders.append(f"{relative}:{node.lineno}")
+            elif isinstance(node, ast.Constant) and node.value == "_frame_cache":
+                offenders.append(f"{relative}:{node.lineno} (getattr)")
+    assert offenders == [], "presentation must use AppController.frame_access instead of _frame_cache:\n" + "\n".join(
+        offenders
+    )

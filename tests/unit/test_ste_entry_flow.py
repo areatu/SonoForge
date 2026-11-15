@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from echo_personal_tool.application.frame_cache import FrameCacheStatus
+
 pytestmark = pytest.mark.gui
 
 
@@ -135,8 +137,7 @@ def mock_controller():
     c.state_manager.loop_state.return_value = (None, None, False)
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
-    c.get_cached_frames.return_value = []
-    c._frame_cache = MagicMock(_total_frames=20)
+    c.frame_access.status.return_value = FrameCacheStatus(ready=False, frame_count=20, loaded_count=0, source_path=None)
     c._current_study_uid = None
     c._measurement_session = {}
     # Real-disabled persistence semantics: a truthy auto-mock would make
@@ -247,7 +248,7 @@ class TestSpeckleLaunchFlow:
             config_preset="standard",
         )
         frames = np.zeros((10, 200, 200), dtype=np.uint8)
-        main_window._controller._frame_cache.require_full_cine = MagicMock(return_value=frames)
+        main_window._controller.frame_access.full_cine.return_value = frames
 
         # The result opens exactly one parentless StrainWindow (top-level) so
         # it shows above a maximized/fullscreen main window. That is the active

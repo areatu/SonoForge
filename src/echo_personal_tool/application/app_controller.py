@@ -30,6 +30,7 @@ from echo_personal_tool.application.composition import (
 )
 from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
+from echo_personal_tool.application.frame_access import FrameAccess
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
@@ -1085,11 +1086,10 @@ class AppController(QObject):
     def toggle_mmode(self) -> None:
         self._mmode_active = not self._mmode_active
 
+    frame_access = property(lambda self: FrameAccess(self._frame_cache))
+
     def get_cached_frames(self) -> list:
-        frames = self._frame_cache.frames
-        if frames is None:
-            return []
-        return [frames[i] for i in range(frames.shape[0])]
+        return cast(list, self.frame_access.frames())
 
     def set_playback_speed_multiplier(self, multiplier: float) -> None:
         self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))

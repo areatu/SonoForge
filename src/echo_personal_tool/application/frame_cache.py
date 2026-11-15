@@ -73,6 +73,21 @@ class FrameMemoryStats:
     mode: str
 
 
+@dataclass(frozen=True)
+class FrameCacheStatus:
+    """Lifecycle view of the cache without exposing its storage.
+
+    ``ready`` means a source and a positive frame total are set, not that
+    every frame is resident: playback legitimately reads a sparse window.
+    ``loaded_count`` reports how many source indices are currently resident.
+    """
+
+    ready: bool
+    frame_count: int
+    loaded_count: int
+    source_path: Path | None
+
+
 class FrameCache:
     def __init__(
         self,
@@ -397,6 +412,19 @@ class FrameCache:
 
     def frame_count(self) -> int:
         return self._total_frames
+
+    def get_loaded(self, index: int) -> np.ndarray | None:
+        """Return a resident frame, or ``None`` for an evicted/out-of-range index."""
+        return self._frame_store.get(index)
+
+    def status(self) -> FrameCacheStatus:
+        """Report readiness and residency without exposing the frame store."""
+        return FrameCacheStatus(
+            ready=self.source_path is not None and self._total_frames > 0,
+            frame_count=self._total_frames,
+            loaded_count=len(self._frame_store),
+            source_path=self.source_path,
+        )
 
     def memory_bytes(self) -> int:
         """Owned backing bytes, counting each shared parent allocation once.

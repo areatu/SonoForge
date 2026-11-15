@@ -3388,9 +3388,7 @@ class MainWindow(QMainWindow):
 
     def _on_mmode_line_completed(self, start: object, end: object) -> None:
         if self._mmode_widget is not None and isinstance(start, tuple) and isinstance(end, tuple):
-            cached_frames = (
-                self._controller.get_cached_frames() if hasattr(self._controller, "get_cached_frames") else []
-            )
+            cached_frames = self._controller.frame_access.frames()
             if cached_frames:
                 self._mmode_widget.recalculate_from_frames(cached_frames, start, end, mask=self._viewer.mask_phi)
             # Apply calibration to M-mode depth axis
@@ -5882,8 +5880,7 @@ class MainWindow(QMainWindow):
         else:
             ed_es_hint = "Auto-detect: ECG → Simpson area → image"
         current_idx = self._get_current_frame_index() or 0
-        cache = self._controller._frame_cache
-        n_frames = cache._total_frames if cache else 0
+        n_frames = self._controller.frame_access.status().frame_count
         settings = SpeckleSettingsDialog(
             self,
             current_frame=current_idx,
@@ -5992,10 +5989,7 @@ class MainWindow(QMainWindow):
         # back to the cache for older result objects.
         frames: np.ndarray | None = getattr(result, "cine_frames", None)
         if frames is None:
-            try:
-                frames = self._controller._frame_cache.require_full_cine()
-            except Exception:  # noqa: BLE001
-                frames = None
+            frames = self._controller.frame_access.full_cine()
         # Keep the last result so the "Strain curves" button can reopen it
         self._strain_result_for_window = result
         self._strain_frames_for_window = frames

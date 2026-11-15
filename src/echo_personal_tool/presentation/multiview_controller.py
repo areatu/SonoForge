@@ -772,15 +772,10 @@ class MultiViewController(QObject):
         # arrives after an explicit replace/clear of the pair is discarded even if
         # this pane still carries the same clip.
         self._inflight[pane_id] = (generation, frame_index, self.session.generation)
-        cache = getattr(self._controller, "_frame_cache", None)
-        if cache is not None and cache.is_ready(instance.path):
-            try:
-                pixels = np.asarray(cache.get(frame_index))
-            except (RuntimeError, IndexError, ValueError):
-                pixels = None
-            if pixels is not None:
-                self._on_pane_frame(pane_id, generation, frame_index, pixels)
-                return
+        pixels = self._controller.frame_access.frame(instance.path, frame_index)
+        if pixels is not None:
+            self._on_pane_frame(pane_id, generation, frame_index, pixels)
+            return
         self._start_worker(pane_id, generation, frame_index)
 
     def _start_worker(self, pane_id: PaneId, generation: int, frame_index: int) -> None:

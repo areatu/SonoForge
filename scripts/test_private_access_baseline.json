@@ -23,7 +23,7 @@
         "win",
         "window"
       ],
-      "total": 2041,
+      "total": 2037,
       "files": {
         "tests/unit/test_caliper_doppler_and_repeat.py": 6,
         "tests/unit/test_cine_phase_routing.py": 22,
@@ -43,7 +43,7 @@
         "tests/unit/test_multiview_two_clips.py": 17,
         "tests/unit/test_multiview_window.py": 147,
         "tests/unit/test_phase_hotkeys.py": 39,
-        "tests/unit/test_presentation_main_window.py": 491,
+        "tests/unit/test_presentation_main_window.py": 488,
         "tests/unit/test_presenter_view.py": 169,
         "tests/unit/test_qh3_results_overlay_owner.py": 2,
         "tests/unit/test_reference_window.py": 25,
@@ -51,7 +51,7 @@
         "tests/unit/test_shortcut_settings.py": 6,
         "tests/unit/test_simpson_live_feedback.py": 41,
         "tests/unit/test_start_page_recents.py": 58,
-        "tests/unit/test_ste_entry_flow.py": 10,
+        "tests/unit/test_ste_entry_flow.py": 9,
         "tests/unit/test_tool_button_modes.py": 45,
         "tests/unit/test_tool_panel_v2.py": 4
       }
