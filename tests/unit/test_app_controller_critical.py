@@ -776,7 +776,10 @@ def test_on_doppler_markers_changed_valid(qapp, monkeypatch):
 
     assert ctrl._state_manager.snapshot.doppler_measurement == dto
     frame_index = ctrl._state_manager.snapshot.current_frame_index
-    assert ctrl.get_doppler_dto_for_instance_frame("uid1", frame_index) == dto, "kept per instance and frame"
+    stored = ctrl.get_doppler_dto_for_instance_frame("uid1", frame_index)
+    assert stored is not None, "kept per instance and frame"
+    assert stored.peaks[0].sop_instance_uid == "uid1"
+    assert stored.peaks[0].frame_index == frame_index
     assert messages, "the user gets a one-line summary of the markers"
 
 

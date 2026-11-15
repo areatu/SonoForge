@@ -9,7 +9,10 @@ import pytest
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
-from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+from echo_personal_tool.application.study_measurement_session import (
+    StudyMeasurementSessionStore,
+    with_doppler_source,
+)
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerPeakMarker
 from echo_personal_tool.infrastructure.local_scanner import LocalMediaDirectoryScanner
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
@@ -101,7 +104,9 @@ def test_new_study_does_not_flush_previous_viewer_annotations_under_series_uid(t
         controller.load_pre_scanned_studies(new)
         assert controller.measurement_persistence.flush(), "no orphan write under the previous Series UID"
         assert controller._measurement_session.get(new[0].study_uid).all_doppler_dto is None
-        assert controller.measurement_persistence.repository.load(old[0].study_uid)["data"].all_doppler_dto == dto
+        assert controller.measurement_persistence.repository.load(old[0].study_uid)[
+            "data"
+        ].all_doppler_dto == with_doppler_source(dto, old[0].series[0].instances[0].sop_instance_uid, 0)
     finally:
         controller.measurement_persistence.discard_pending()
         controller.measurement_persistence.close()
@@ -181,7 +186,9 @@ def test_cache_and_measurement_delete_are_isolated(tmp_path, make_app_services, 
         controller.load_pre_scanned_studies(redownloaded)
         assert controller.measurement_persistence.flush()
         assert controller._measurement_session.get("1.2.3").height_cm == 170.0
-        assert controller._measurement_session.get("1.2.3").all_doppler_dto == dto
+        assert controller._measurement_session.get("1.2.3").all_doppler_dto == with_doppler_source(
+            dto, studies[0].series[0].instances[0].sop_instance_uid, 0
+        )
         controller.measurement_persistence.delete_all(lambda error: None)
         assert controller.measurement_persistence.flush()
         assert restored_path.exists()
