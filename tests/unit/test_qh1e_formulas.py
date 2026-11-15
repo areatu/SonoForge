@@ -300,5 +300,9 @@ def test_teichholz_nonfinite_inputs_are_not_measurements(bad):
     assert ejection_fraction_percent(100, bad) is None
     for ed, es in ((bad, 30), (50, bad)):
         assert (
-            from_linear_measurements((LinearMeasurement("LVEDD", 100, ed), LinearMeasurement("LVESD", 60, es))) is None
+            from_linear_measurements(
+                (LinearMeasurement("LVEDD", 100, ed), LinearMeasurement("LVESD", 60, es)),
+                spacing_calibrated=True,
+            )
+            is None
         )

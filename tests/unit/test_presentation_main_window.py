@@ -1984,7 +1984,8 @@ class TestReportConclusionAutofill:
         from echo_personal_tool.domain.models.measurements import LvefResult, MeasurementSnapshot
 
         main_window._controller.compute_study_snapshot.return_value = MeasurementSnapshot(
-            lvef=LvefResult(lvef_percent=ef, method="simpson_biplan")
+            lvef=LvefResult(lvef_percent=ef, method="simpson_biplan"),
+            spacing_calibrated=True,
         )
         main_window._controller.patient_metric_sources.return_value = ("unset", "unset")
         main_window._tabs.active.report_patient_fields.update(sex="M", age="45")

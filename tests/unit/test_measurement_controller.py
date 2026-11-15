@@ -122,7 +122,7 @@ def test_app_controller_recomputes_measurements_from_current_state(synthetic_dic
     assert snapshot is not None
     assert snapshot.doppler == compute(doppler)
     assert snapshot.lvef == calculate(contours, _sample_instance(synthetic_dicom_path).pixel_spacing)
-    assert snapshot.teichholz == from_linear_measurements(linear_measurements)
+    assert snapshot.teichholz == from_linear_measurements(linear_measurements, spacing_calibrated=True)
     from dataclasses import replace
 
     assert snapshot.linear_measurements == tuple(replace(m, frame_index=0) for m in linear_measurements)
@@ -242,3 +242,24 @@ def test_scan_failure_reports_scan_code_when_persistence_enabled() -> None:
     controller._on_scan_failed("unreadable folder")
     assert "scan" in codes
     assert "source" not in codes
+
+
+def test_teichholz_survives_missing_2d_spacing_when_calipers_carry_mm(synthetic_dicom_path) -> None:
+    """M-mode calipers keep their millimetres without a 2D panel scale (#555).
+
+    The global snapshot flag describes the 2D spacing.  A caliper that already
+    carries millimetres is physical evidence of its own, so the linear
+    calculators must not disappear from an M-mode strip or a multi-panel clip.
+    """
+    from dataclasses import replace
+
+    controller = AppController()
+    instance = replace(_sample_instance(synthetic_dicom_path), pixel_spacing=None)
+    controller.state_manager.set_instance(instance, total_frames=4, frame_time_ms=40.0)
+    controller.on_linear_measurements_changed(list(_sample_linear_measurements()))
+
+    snapshot = controller.state_manager.snapshot.measurement_snapshot
+    assert snapshot is not None
+    assert snapshot.spacing_calibrated is False
+    assert snapshot.teichholz is not None
+    assert snapshot.teichholz.edv_ml > 0.0

@@ -35,7 +35,7 @@ def test_from_linear_measurements_computes_lvef() -> None:
         LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),
     )
 
-    result = from_linear_measurements(measurements)
+    result = from_linear_measurements(measurements, spacing_calibrated=True)
 
     assert result is not None
     assert result.edv_ml == pytest.approx(118.243, rel=1e-3)
@@ -52,7 +52,7 @@ def test_from_linear_measurements_case_insensitive_labels() -> None:
         LinearMeasurement(label="lvesd", pixel_length=70.0, millimeter_length=35.0),
     )
 
-    result = from_linear_measurements(measurements)
+    result = from_linear_measurements(measurements, spacing_calibrated=True)
 
     assert result is not None
     assert result.edv_ml == pytest.approx(118.243, rel=1e-3)
@@ -62,13 +62,13 @@ def test_from_linear_measurements_case_insensitive_labels() -> None:
 def test_from_linear_measurements_missing_lvedd_returns_none() -> None:
     measurements = (LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),)
 
-    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is None
 
 
 def test_from_linear_measurements_missing_lvesd_returns_none() -> None:
     measurements = (LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),)
 
-    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is None
 
 
 def test_from_linear_measurements_skips_missing_millimeter_length() -> None:
@@ -77,7 +77,7 @@ def test_from_linear_measurements_skips_missing_millimeter_length() -> None:
         LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),
     )
 
-    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is None
 
 
 def test_stroke_volume_is_edv_minus_esv() -> None:
@@ -90,9 +90,21 @@ def test_stroke_volume_is_edv_minus_esv() -> None:
 
     lvedd = LinearMeasurement(label="LVEDD", millimeter_length=50.0, pixel_length=150.0)
     lvesd = LinearMeasurement(label="LVESD", millimeter_length=33.0, pixel_length=99.0)
-    result = from_linear_measurements((lvedd, lvesd))
+    result = from_linear_measurements((lvedd, lvesd), spacing_calibrated=True)
 
     assert result is not None
     assert result.sv_ml is not None
     assert result.sv_ml == pytest.approx(result.edv_ml - result.esv_ml, abs=1e-6)
     assert result.sv_ml > 0.0
+
+
+def test_uncalibrated_calipers_do_not_become_ml() -> None:
+    """A millimetre slot without a scale confirmation is not a volume (#555)."""
+    measurements = (
+        LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),
+        LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),
+    )
+
+    assert from_linear_measurements(measurements) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=False) is None
+    assert from_linear_measurements(measurements, spacing_calibrated=True) is not None

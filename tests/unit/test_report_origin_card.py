@@ -48,7 +48,7 @@ def _caliper_row():
         measurement_id="m-0001",
         revision=3,
     )
-    groups = build_report_groups(MeasurementSnapshot(linear_measurements=(measurement,)))
+    groups = build_report_groups(MeasurementSnapshot(linear_measurements=(measurement,), spacing_calibrated=True))
     return next(value for group in groups for value in group.values if value.origin is not None)
 
 

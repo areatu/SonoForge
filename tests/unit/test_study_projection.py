@@ -238,7 +238,10 @@ def test_context_is_passed_through() -> None:
 
 
 def test_unmet_is_derived_from_spacing_when_not_given() -> None:
-    assert build_study_projection(MeasurementSnapshot()).unmet == frozenset()
+    assert build_study_projection(MeasurementSnapshot(spacing_calibrated=True)).unmet == frozenset()
+    # A bare snapshot has no evidence of a scale, so it must not unlock a
+    # spatial step (issue 555).
+    assert build_study_projection(MeasurementSnapshot()).unmet == frozenset({REQ_SPATIAL})
     uncalibrated = build_study_projection(MeasurementSnapshot(spacing_calibrated=False))
     assert uncalibrated.unmet == frozenset({REQ_SPATIAL})
 

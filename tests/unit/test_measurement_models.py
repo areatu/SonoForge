@@ -111,6 +111,7 @@ def test_measurement_snapshot_defaults() -> None:
     assert snapshot.teichholz is None
     assert snapshot.la_volume is None
     assert snapshot.linear_measurements == ()
+    assert snapshot.spacing_calibrated is False, "a bare snapshot has no evidence of a physical scale"
 
 
 def test_measurement_snapshot_populated() -> None:

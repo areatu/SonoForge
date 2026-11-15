@@ -337,7 +337,7 @@ def _card_row(*, recorded: bool = True):
         measurement_id="m-0001",
         revision=3,
     )
-    groups = build_report_groups(MeasurementSnapshot(linear_measurements=(measurement,)))
+    groups = build_report_groups(MeasurementSnapshot(linear_measurements=(measurement,), spacing_calibrated=True))
     value = next(value for group in groups for value in group.values if value.origin is not None)
     # A derived aggregate carries no origin at all — the honest «не записано».
     return value if recorded else replace(value, origin=None)

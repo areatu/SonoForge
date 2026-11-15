@@ -26,8 +26,19 @@ __all__ = [
 
 def from_linear_measurements(
     measurements: tuple[LinearMeasurement, ...],
+    *,
+    spacing_calibrated: bool = False,
 ) -> TeichholzResult | None:
-    """Compute Teichholz EDV/ESV/LVEF from LVEDD and LVESD calipers."""
+    """Compute Teichholz EDV/ESV/LVEF from LVEDD and LVESD calipers.
+
+    The caller must state that the calipers carry a physical scale
+    (``spacing_calibrated=True``).  Millimetres on a measurement are not proof
+    by themselves: a legacy or imported record can hold a number in the
+    ``millimeter_length`` slot that was never tied to a scale.  Without that
+    statement the function returns ``None`` instead of inventing mL (#555).
+    """
+    if not spacing_calibrated:
+        return None
     lvedd_mm: float | None = None
     lvesd_mm: float | None = None
 

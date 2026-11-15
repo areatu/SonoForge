@@ -82,7 +82,13 @@ def _manual_bsa_snapshot(**kwargs) -> MeasurementSnapshot:
     calculations = kwargs.pop("calculations", None)
     if calculations is None:
         calculations = CalculationsSnapshot(inputs=(InputValue("bsa", 1.8, SOURCE_MANUAL),))
-    return MeasurementSnapshot(indexed=indexed, calculations=calculations, **kwargs)
+    return _snap(indexed=indexed, calculations=calculations, **kwargs)
+
+
+def _snap(**kwargs) -> MeasurementSnapshot:
+    """A calibrated study unless the test explicitly says otherwise."""
+    kwargs.setdefault("spacing_calibrated", True)
+    return MeasurementSnapshot(**kwargs)
 
 
 def _keys(draft) -> set[str]:
@@ -95,19 +101,19 @@ def _one(draft, finding_id: str):
 
 class TestScope:
     def test_empty_study_has_no_findings_and_no_normal_negatives(self) -> None:
-        draft = build_conclusion(MeasurementSnapshot(), sex="M", age_years=45)
+        draft = build_conclusion(_snap(), sex="M", age_years=45)
         assert draft.findings == ()
         assert draft.notices == ()
         assert render_conclusion(draft, "ru") == ""
         assert draft.ruleset_version == RULESET_VERSION
 
     def test_known_pediatric_age_disables_the_adult_ruleset(self) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
         assert build_conclusion(snapshot, sex="M", age_years=17.9).findings == ()
         assert build_conclusion(snapshot, sex="M", age_years=18).findings != ()
 
     def test_standalone_calculator_snapshot_is_not_a_study_conclusion(self) -> None:
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             lvef=LvefResult(lvef_percent=60, method="simpson_biplan"),
             calculations=CalculationsSnapshot(standalone=True),
         )
@@ -131,29 +137,29 @@ class TestLeftVentricle:
         ],
     )
     def test_ef_sex_bands_and_severity_boundaries(self, sex: str, ef: float, expected: str) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=ef, method="simpson_biplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=ef, method="simpson_biplan"))
         finding = _one(build_conclusion(snapshot, sex=sex), "lv.ef")
         assert finding.text_key == f"report.conclusion.finding.lv_ef.{expected}.biplane"
 
     def test_unknown_sex_between_52_and_54_is_review_not_normal(self) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=53, method="simpson_biplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=53, method="simpson_biplan"))
         assert _one(build_conclusion(snapshot, sex=""), "lv.ef").text_key.endswith("lv_ef.review")
 
     def test_monoplane_method_is_named_in_the_phrase(self) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=60, method="simpson_monoplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=60, method="simpson_monoplan"))
         finding = _one(build_conclusion(snapshot, sex="M"), "lv.ef")
         assert finding.text_key.endswith(".monoplane")
         assert "моноплановый" in render_conclusion(build_conclusion(snapshot, sex="M"), "ru")
 
     def test_teichholz_conflict_becomes_review(self) -> None:
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             lvef=LvefResult(lvef_percent=60, method="simpson_biplan"),
             teichholz=TeichholzResult(edv_ml=120, esv_ml=80, lvef_percent=33),
         )
         assert _one(build_conclusion(snapshot, sex="M"), "lv.ef").text_key.endswith("lv_ef.review")
 
     def test_uncalibrated_spacing_blocks_spatial_findings(self) -> None:
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             spacing_calibrated=False,
             lvef=LvefResult(lvef_percent=60, method="simpson_biplan"),
             linear_measurements=(_linear("IVSd", 12), _linear("LVPWd", 12), _linear("TAPSE", 20)),
@@ -198,7 +204,7 @@ class TestLeftVentricle:
 
     def test_stale_bsa_blocks_indexed_findings_and_adds_notice(self) -> None:
         basis = resolve_bsa_basis(height_cm=170, weight_kg=65)
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             height_cm=180,
             weight_kg=65,
             lvef=LvefResult(lvef_percent=60, method="simpson_biplan"),
@@ -230,15 +236,15 @@ class TestLeftVentricle:
     def test_wall_thickness_requires_both_walls_and_uses_sex_bands(
         self, sex: str, thickness: float, expected: str
     ) -> None:
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             linear_measurements=(_linear("IVSd", thickness), _linear("LVPWd", thickness)),
         )
         assert _one(build_conclusion(snapshot, sex=sex), "lv.wall").text_key.endswith(f"lv_wall.{expected}")
-        only_one = MeasurementSnapshot(linear_measurements=(_linear("IVSd", thickness),))
+        only_one = _snap(linear_measurements=(_linear("IVSd", thickness),))
         assert "lv.wall" not in {finding.id for finding in build_conclusion(only_one, sex=sex).findings}
 
     def test_implausibly_thin_walls_are_review(self) -> None:
-        snapshot = MeasurementSnapshot(linear_measurements=(_linear("IVSd", 5), _linear("LVPWd", 10)))
+        snapshot = _snap(linear_measurements=(_linear("IVSd", 5), _linear("LVPWd", 10)))
         assert _one(build_conclusion(snapshot, sex="F"), "lv.wall").text_key.endswith("lv_wall.review")
 
     def test_lvmi_is_increased_only_and_rwt_is_separate(self) -> None:
@@ -282,7 +288,7 @@ class TestStrain:
         [(-21.0, "gls.normal"), (-20.0, "gls.borderline"), (-18.0, "gls.borderline"), (-17.9, "gls.reduced")],
     )
     def test_complete_manual_qc_strain_bands(self, average: float, expected: str) -> None:
-        snapshot = MeasurementSnapshot(
+        snapshot = _snap(
             strain=_strain(
                 gls_by_view=(("A4C", average), ("A2C", average), ("A3C", average)),
                 gls_average=average,
@@ -306,7 +312,7 @@ class TestStrain:
         ],
     )
     def test_incomplete_or_unconfirmed_strain_is_not_classified(self, strain: StrainReport) -> None:
-        draft = build_conclusion(MeasurementSnapshot(strain=strain), sex="M")
+        draft = build_conclusion(_snap(strain=strain), sex="M")
         assert "lv.gls" not in {finding.id for finding in draft.findings}
         assert "report.conclusion.notice.strain_qc" in draft.notices
 
@@ -368,7 +374,7 @@ class TestAtriaAndRightVentricle:
         [(40, "normal"), (41, "mild"), (44, "mild"), (45, "moderate"), (49, "moderate"), (50, "severe")],
     )
     def test_rv_basal_bands(self, basal: float, expected: str) -> None:
-        snapshot = MeasurementSnapshot(linear_measurements=(_linear("RV basal", basal),))
+        snapshot = _snap(linear_measurements=(_linear("RV basal", basal),))
         assert _one(build_conclusion(snapshot, sex="M"), "rv.size").text_key.endswith(f"rv_size.{expected}")
 
     @pytest.mark.parametrize(
@@ -376,13 +382,13 @@ class TestAtriaAndRightVentricle:
         [(18, "normal"), (17, "mild"), (13, "moderate"), (10, "severe")],
     )
     def test_tapse_bands(self, tapse: float, expected: str) -> None:
-        snapshot = MeasurementSnapshot(linear_measurements=(_linear("TAPSE", tapse),))
+        snapshot = _snap(linear_measurements=(_linear("TAPSE", tapse),))
         assert _one(build_conclusion(snapshot, sex="M"), "rv.tapse").text_key.endswith(f"rv_tapse.{expected}")
 
     def test_tapse_and_fac_agree_or_review(self) -> None:
-        agree = MeasurementSnapshot(linear_measurements=(_linear("TAPSE", 20),), rv_fac_percent=40)
+        agree = _snap(linear_measurements=(_linear("TAPSE", 20),), rv_fac_percent=40)
         assert _one(build_conclusion(agree, sex="M"), "rv.function").text_key.endswith("rv_function.normal")
-        disagree = MeasurementSnapshot(linear_measurements=(_linear("TAPSE", 20),), rv_fac_percent=20)
+        disagree = _snap(linear_measurements=(_linear("TAPSE", 20),), rv_fac_percent=20)
         assert _one(build_conclusion(disagree, sex="M"), "rv.function").text_key.endswith("rv_function.review")
 
 
@@ -408,7 +414,7 @@ def _as_snapshot(
         if gradient is not None
         else None
     )
-    return MeasurementSnapshot(
+    return _snap(
         doppler=doppler,
         calculations=CalculationsSnapshot(
             inputs=inputs,
@@ -455,7 +461,7 @@ def _regurg_snapshot(valve: str, eroa: float | None, rvol: float | None, rf: flo
         for name, value in (("eroa", eroa), ("rvol", rvol), ("rf", rf))
         if value is not None
     )
-    return MeasurementSnapshot(calculations=CalculationsSnapshot(results=(_result(f"pisa_{valve}", outputs),)))
+    return _snap(calculations=CalculationsSnapshot(results=(_result(f"pisa_{valve}", outputs),)))
 
 
 class TestRegurgitation:
@@ -509,7 +515,7 @@ def _ms_snapshot(area: float | None, gradient: float | None, *, pisa: float | No
         if gradient is not None
         else None
     )
-    return MeasurementSnapshot(
+    return _snap(
         doppler=doppler,
         calculations=CalculationsSnapshot(results=(_result("mitral_valve_area", tuple(outputs)),)),
     )
@@ -536,17 +542,13 @@ class TestPulmonaryHypertension:
         [(3.5, "ph.high"), (3.4, "ph.intermediate"), (2.9, "ph.intermediate")],
     )
     def test_tr_probability_not_pasp_severity(self, tr_vmax: float, expected: str) -> None:
-        snapshot = MeasurementSnapshot(
-            calculations=CalculationsSnapshot(inputs=(InputValue("tr_vmax", tr_vmax, SOURCE_MEASURED),))
-        )
+        snapshot = _snap(calculations=CalculationsSnapshot(inputs=(InputValue("tr_vmax", tr_vmax, SOURCE_MEASURED),)))
         assert _one(build_conclusion(snapshot, sex="M"), "ph.probability").text_key.endswith(expected)
 
     def test_low_tr_velocity_does_not_exclude_ph_and_pasp_alone_is_silent(self) -> None:
-        low = MeasurementSnapshot(
-            calculations=CalculationsSnapshot(inputs=(InputValue("tr_vmax", 2.5, SOURCE_MEASURED),))
-        )
+        low = _snap(calculations=CalculationsSnapshot(inputs=(InputValue("tr_vmax", 2.5, SOURCE_MEASURED),)))
         assert build_conclusion(low, sex="M").findings == ()
-        pasp_only = MeasurementSnapshot(
+        pasp_only = _snap(
             calculations=CalculationsSnapshot(results=(_result("pulmonary_pressure", (_output("pasp", 60),)),))
         )
         assert build_conclusion(pasp_only, sex="M").findings == ()
@@ -554,7 +556,7 @@ class TestPulmonaryHypertension:
 
 class TestRenderingAndMerge:
     def test_both_languages_are_qualitative_and_carry_review_notice(self) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=25, method="simpson_biplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=25, method="simpson_biplan"))
         draft = build_conclusion(snapshot, sex="M")
         for language in ("ru", "en"):
             text = render_conclusion(draft, language)
@@ -585,7 +587,7 @@ class TestRenderingAndMerge:
         assert merged.status_key.endswith("no_data")
 
     def test_application_adds_edited_block_notice_and_uses_ui_language(self) -> None:
-        snapshot = MeasurementSnapshot(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
+        snapshot = _snap(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
         result = autofill_conclusion(
             snapshot,
             sex="M",
@@ -634,7 +636,7 @@ class TestDraftNoticeSuppression:
     _DRAFT = "report.conclusion.notice.review"
 
     def _snapshot(self) -> MeasurementSnapshot:
-        return MeasurementSnapshot(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
+        return _snap(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
 
     def test_the_domain_still_produces_the_notice(self) -> None:
         from echo_personal_tool.domain.services.report_conclusion import build_conclusion

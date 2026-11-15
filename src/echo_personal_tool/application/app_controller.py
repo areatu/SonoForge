@@ -2096,16 +2096,14 @@ class AppController(QObject):
                     edv_bi_ml=study_lvef.edv_bi_ml,
                     esv_bi_ml=study_lvef.esv_bi_ml,
                 )
-        teichholz = from_linear_measurements(linear_measurements)
+        # Millimetres on a caliper are evidence even when the 2D spacing is ambiguous.
+        linear_ok = spacing_calibrated or any(m.millimeter_length is not None for m in linear_measurements)
+        teichholz = from_linear_measurements(linear_measurements, spacing_calibrated=linear_ok)
         la_simpson = calculate_chamber(contours, "LA", pixel_spacing)
         ra_simpson = calculate_chamber(contours, "RA", pixel_spacing)
         rv_simpson = calculate_chamber(contours, "RV", pixel_spacing)
-        la_volume = la_from_measurements(
-            contours,
-            linear_measurements,
-            pixel_spacing if spacing_calibrated else None,
-        )
-        lvm_g = lvm_from_linear(linear_measurements)
+        la_volume = la_from_measurements(contours, linear_measurements, pixel_spacing if spacing_calibrated else None)
+        lvm_g = lvm_from_linear(linear_measurements, spacing_calibrated=linear_ok)
         rwt = rwt_from_linear(linear_measurements)
         rv_fac_percent = from_rv_contours(contours, pixel_spacing) if spacing_calibrated else None
         planimeter = planimeter_results_from_contours(

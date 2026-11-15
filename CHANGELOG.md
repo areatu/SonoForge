@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `fix(calibration)`: #555 — честный default `spacing_calibrated=False`, Teichholz и масса ЛЖ требуют подтверждённого масштаба, но не теряют M-mode/scoped мм ([полностью](changelog.d/049-fix-calibration-gates-555.md))
+
 - `feat(report)`: #555 — статус черновика/устаревших/непроверенных контуров виден над листом отчёта и совпадает с PDF/CSV/JSON ([полностью](changelog.d/048-feat-report-status-555.md))
 
 - `feat(calibration)`: #555 — Properties перечисляет все масштабы клипа, `ASSUMED` подписан словом и причиной, а не только цветом ([полностью](changelog.d/047-feat-calibration-ui-555.md))

@@ -197,7 +197,8 @@ def _restore_record(workdir: Path) -> dict:
 def _snapshot_from(data: StudyMeasurementData) -> MeasurementSnapshot:
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
-    return MeasurementSnapshot(linear_measurements=tuple(data.linear_measurements))
+    # The smoke record was measured on a synthetic cine with known spacing.
+    return MeasurementSnapshot(linear_measurements=tuple(data.linear_measurements), spacing_calibrated=True)
 
 
 def _export(workdir: Path, snapshot: MeasurementSnapshot) -> tuple[dict[str, Any], str]:

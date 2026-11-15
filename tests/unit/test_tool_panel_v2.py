@@ -101,7 +101,9 @@ def test_protocol_steps_stack_when_two_tiles_do_not_fit(qtbot) -> None:
     panel = _make_panel(qtbot)
     v2 = panel.measure
     panel.set_protocols(PROTOCOLS)
-    panel.set_protocol_progress(progress(SIMPSON_BIPLANE, build_study_projection(MeasurementSnapshot())))
+    panel.set_protocol_progress(
+        progress(SIMPSON_BIPLANE, build_study_projection(MeasurementSnapshot(spacing_calibrated=True)))
+    )
     card = v2._protocol_card
 
     panel.resize(420, 900)
