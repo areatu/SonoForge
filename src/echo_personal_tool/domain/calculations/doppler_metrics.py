@@ -388,4 +388,9 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         mr_dpdt_ms=mr_dpdt_ms,
         tr_dpdt_ms=tr_dpdt_ms,
         heart_rate_bpm=_find_heart_rate_bpm(dto),
+        # Provenance only: the report names the individual measurements behind
+        # each aggregate (issue 555).  Outside ``DopplerResults`` equality.
+        peaks=dto.peaks,
+        intervals=dto.intervals,
+        traces=dto.traces,
     )

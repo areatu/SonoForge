@@ -51,6 +51,11 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     is_outside_norm,
     linear_norm_for_label,
 )
+from echo_personal_tool.domain.services.doppler_provenance import (
+    doppler_flow_origin,
+    doppler_value_origin,
+    strain_value_origin,
+)
 from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.domain.services.nomenclature import caliper_label as _cal
@@ -1079,11 +1084,13 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             doppler.heart_rate_bpm,
             tr("unit.bpm"),
             group=GROUP_OTHER,
+            origin=doppler_value_origin(doppler, "hr"),
         )
         if heart_rate is not None:
             values.append(heart_rate)
         flow_mode_by_label: dict[str, str] = {}
         flow_sample_count_by_label: dict[str, int] = {}
+        flow_origins: dict[str, ValueOrigin] = {}
         doppler_values: list[tuple[str, str, float | None, str, str]] = [
             (_label("result.mv_e"), "mv.e", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             (_label("result.mv_a"), "mv.a", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -1141,6 +1148,8 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                     (_flow(flow.site, "VTI"), flow_measurement_id(flow.site, "VTI"), flow.vti_cm, "cm", group),
                 )
             )
+            for kind in ("Vmax", "PGmax", "Vmean", "PGmean", "VTI"):
+                flow_origins[flow_measurement_id(flow.site, kind)] = doppler_flow_origin(doppler, flow, kind)
             flow_mode_by_label[_flow(flow.site, "Vmax")] = flow.mode
             flow_mode_by_label[_flow(flow.site, "Vmean")] = flow.mode
             vmax_repeat_count = flow.vmax_repeats or flow.vti_repeats
@@ -1179,6 +1188,7 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 group=group,
                 scale=scale,
                 sample_count=sample_count,
+                origin=flow_origins.get(measurement_id) or doppler_value_origin(doppler, measurement_id),
             )
             if item:
                 values.append(item)
@@ -1274,6 +1284,7 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
                 sex=sex,
                 group=GROUP_LEFT_VENTRICLE,
                 norm_label="GLS",
+                origin=strain_value_origin(strain, strain_measurement_id(view), view=view),
             )
             if item:
                 values.append(item)
@@ -1285,6 +1296,7 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
             sex=sex,
             group=GROUP_LEFT_VENTRICLE,
             norm_label="GLS",
+            origin=strain_value_origin(strain, "lv.gls"),
         )
         if item:
             values.append(item)

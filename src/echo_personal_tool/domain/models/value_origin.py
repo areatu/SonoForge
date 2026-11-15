@@ -49,6 +49,10 @@ METHOD_SIMPSON = "simpson"
 METHOD_TEICHHOLZ = "teichholz"
 #: Values derived from several linear calipers (LVM, RWT, LV mass index).
 METHOD_LINEAR_DERIVED = "linear_derived"
+#: Mean of several Doppler measurements (Vmax/VTI repeats, ratios, PG).
+METHOD_DOPPLER_AGGREGATE = "doppler_aggregate"
+#: Speckle-tracking GLS of one view or its multi-view average (GLS_AV).
+METHOD_STRAIN = "strain"
 
 #: The value has no recorded lineage (shown as «происхождение не записано»).
 REASON_NOT_RECORDED = "provenance_not_recorded"

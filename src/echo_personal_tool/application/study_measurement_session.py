@@ -99,6 +99,53 @@ def merge_doppler_dtos(
     )
 
 
+def with_doppler_source(
+    dto: DopplerMeasurementDTO,
+    sop_instance_uid: str,
+    frame_index: int | None = None,
+) -> DopplerMeasurementDTO:
+    """Stamp every marker of a DTO with the clip and frame it belongs to.
+
+    The viewer reports a marker without storage context; this session is the
+    boundary that already knows both.  Stamping happens here, once, so every
+    caller of the setters records the same lineage and the report can later
+    answer «откуда значение» for the aggregate (issue 555).  A marker that
+    already carries its own clip keeps it — re-saving a marker must not move
+    it to whichever frame happens to be open now.
+    """
+
+    if not sop_instance_uid:
+        return dto
+
+    return replace(
+        dto,
+        peaks=tuple(
+            replace(
+                marker,
+                sop_instance_uid=marker.sop_instance_uid or sop_instance_uid,
+                frame_index=marker.frame_index if marker.frame_index is not None else frame_index,
+            )
+            for marker in dto.peaks
+        ),
+        intervals=tuple(
+            replace(
+                marker,
+                sop_instance_uid=marker.sop_instance_uid or sop_instance_uid,
+                frame_index=marker.frame_index if marker.frame_index is not None else frame_index,
+            )
+            for marker in dto.intervals
+        ),
+        traces=tuple(
+            replace(
+                marker,
+                sop_instance_uid=marker.sop_instance_uid or sop_instance_uid,
+                frame_index=marker.frame_index if marker.frame_index is not None else frame_index,
+            )
+            for marker in dto.traces
+        ),
+    )
+
+
 def aggregate_doppler_by_instance(
     by_instance: dict[str, DopplerMeasurementDTO],
 ) -> DopplerMeasurementDTO | None:
@@ -594,7 +641,7 @@ class StudyMeasurementSessionStore:
         data = self.get(study_uid)
         current = dict(data.doppler_by_instance)
         existing = current.get(instance_uid)
-        current[instance_uid] = merge_doppler_dtos(existing, dto)
+        current[instance_uid] = merge_doppler_dtos(existing, with_doppler_source(dto, instance_uid))
         self._set(
             study_uid,
             replace(
@@ -694,6 +741,7 @@ class StudyMeasurementSessionStore:
         study-wide aggregate survives this update.
         """
         data = self.get(study_uid)
+        dto = with_doppler_source(dto, instance_uid, frame_index)
         entries = tuple(
             item for item in data.doppler_by_instance_frame if (item[0], item[1]) != (instance_uid, frame_index)
         )
@@ -716,7 +764,7 @@ class StudyMeasurementSessionStore:
         data = self.get(study_uid)
         current = {(uid, frame): stored for uid, frame, stored in data.doppler_by_instance_frame}
         key = (instance_uid, frame_index)
-        current[key] = merge_doppler_dtos(current.get(key), dto)
+        current[key] = merge_doppler_dtos(current.get(key), with_doppler_source(dto, instance_uid, frame_index))
         self._set(
             study_uid,
             replace(
