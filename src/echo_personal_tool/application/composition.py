@@ -33,6 +33,7 @@ import psutil
 
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore
 from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.application.key_images import KeyImageService
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
 from echo_personal_tool.application.preferences_contract import UserPreferences
 from echo_personal_tool.application.profile_settings import (
@@ -239,6 +240,7 @@ class AppServices:
     measurement_store: StudyMeasurementSessionStore
     calculator_inputs: CalculatorInputStore
     persistence: MeasurementPersistence
+    key_images: KeyImageService
     cache_budget: FrameCacheBudget
     frame_cache: FrameCache
     segmenter: IOnnxSegmenter
@@ -410,6 +412,7 @@ def build_app_services(
         max_cache_bytes=cache_budget.max_cache_bytes,
         max_full_cine_bytes=cache_budget.ram_cap_bytes,
     )
+    key_images = KeyImageService(resolved_paths.measurements_dir / "key-images")
 
     if segmenter is not None:
         resolved_segmenter = segmenter
@@ -437,6 +440,7 @@ def build_app_services(
         measurement_store=measurement_store,
         calculator_inputs=calculator_inputs,
         persistence=persistence,
+        key_images=key_images,
         cache_budget=cache_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
@@ -479,6 +483,7 @@ def in_memory_app_services(
         max_cache_bytes=cache_budget.max_cache_bytes,
         max_full_cine_bytes=cache_budget.ram_cap_bytes,
     )
+    key_images = KeyImageService(resolved_paths.measurements_dir / "key-images")
     resolved_segmenter: IOnnxSegmenter = segmenter if segmenter is not None else DisabledOnnxSegmenter()
     io_facades = _build_io_facades(
         capabilities=capabilities,
@@ -496,6 +501,7 @@ def in_memory_app_services(
         measurement_store=measurement_store,
         calculator_inputs=calculator_inputs,
         persistence=persistence,
+        key_images=key_images,
         cache_budget=cache_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,

@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(key-images)`: #561 — «Ключевые кадры»: закладки исследования, переход к кадру после смены сортировки и честный статус `available/missing/changed` ([полностью](changelog.d/053-feat-key-images-561.md))
+
 - `refactor(frames)`: #552 — презентация читает кадры только через `FrameAccess`: статус готовности, кадр или `None`, полный клип и проекция для M-mode; lifecycle переключения/закрытия покрыт characterization-тестами ([полностью](changelog.d/052-refactor-frame-access-552.md))
 
 - `test(geometry)`: #555 — приёмка линейки/площади на zoom/pan/flip/rotation и анизотропии, RU/EN-плашка калибровки ([полностью](changelog.d/051-test-geometry-acceptance-555.md))

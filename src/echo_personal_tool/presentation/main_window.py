@@ -13,16 +13,7 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import (
-    QByteArray,
-    QEvent,
-    QPoint,
-    QRect,
-    QSignalBlocker,
-    Qt,
-    QThreadPool,
-    QTimer,
-)
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, QSignalBlocker, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QActionGroup, QCloseEvent, QCursor, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -121,6 +112,7 @@ from echo_personal_tool.presentation.focus_mode import (
     should_enter_focus,
 )
 from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLayer
+from echo_personal_tool.presentation.key_images import show_key_images
 from echo_personal_tool.presentation.layout.presets import (
     PRESETS,
     SLOT_GALLERY,
@@ -1640,6 +1632,7 @@ class MainWindow(QMainWindow):
         menu.addMenu(layout_menu)
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
+        menu.addAction(tr("key_images.open")).triggered.connect(lambda: show_key_images(self))
         menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
         menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_guide)
         menu.addSeparator()
@@ -1709,6 +1702,7 @@ class MainWindow(QMainWindow):
             "layout": self._show_layout_menu,
             "open_calculators": self._open_calculators,
             "references": self._show_references,
+            "key_images": lambda: show_key_images(self),
             "help": self._show_help,
             "guide": self._open_user_guide,
             "about": self._show_about,
@@ -5717,9 +5711,7 @@ class MainWindow(QMainWindow):
             return
         from PySide6.QtCore import QThreadPool
 
-        from echo_personal_tool.application.workers.heart_rate_worker import (
-            HeartRateWorker,
-        )
+        from echo_personal_tool.application.workers.heart_rate_worker import HeartRateWorker
 
         # Collect contour areas for area-time method
         contour_areas: list[float] | None = None
