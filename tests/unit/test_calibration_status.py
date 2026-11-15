@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from echo_personal_tool.application.localization import get_language, set_language
 from echo_personal_tool.domain.models.calibration import (
     ASSUMPTION_IMAGER_PLANE,
     ASSUMPTION_SECONDS_AS_LENGTH,
@@ -94,3 +97,43 @@ def test_an_unknown_assumption_code_stays_readable_as_itself() -> None:
     assert calibration_status.assumption_text("future_code") == "future_code"
     assert calibration_status.assumption_text(ASSUMPTION_IMAGER_PLANE)
     assert "future_code" not in calibration_status.details(context)
+
+
+@pytest.fixture
+def _restore_language():
+    previous = get_language()
+    yield
+    set_language(previous)
+
+
+@pytest.mark.parametrize(
+    ("language", "confidence", "scope"),
+    [("ru", "измеренная", "весь клип"), ("en", "measured", "whole clip")],
+)
+def test_the_badge_names_source_confidence_and_scope_in_both_languages(
+    _restore_language, language: str, confidence: str, scope: str
+) -> None:
+    """#555: the same calibration reads as a sentence in RU and EN."""
+    set_language(language)
+    context = _context(CalibrationConfidence.MEASURED)
+
+    badge = calibration_status.summary(context)
+
+    assert calibration_status.source_name("PixelSpacing") in badge
+    assert confidence in badge
+    assert scope in badge
+    assert calibration_status.tone(context) == "ok"
+
+
+@pytest.mark.parametrize(
+    ("language", "assumed"),
+    [("ru", "предположение"), ("en", "assumption")],
+)
+def test_an_assumed_scale_is_named_in_words_in_both_languages(_restore_language, language: str, assumed: str) -> None:
+    set_language(language)
+    context = _context(CalibrationConfidence.ASSUMED, assumed_isotropic=True)
+
+    badge = calibration_status.summary(context)
+
+    assert assumed in badge.lower()
+    assert calibration_status.tone(context) == "warn"
