@@ -39,6 +39,13 @@ CONFIDENCE_KEYS: dict[CalibrationConfidence, str] = {
     CalibrationConfidence.UNKNOWN: "calibration.confidence.unknown",
 }
 
+ASSUMPTION_KEYS: dict[str, str] = {
+    "isotropic_manual": "calibration.assumption.isotropic",
+    "imager_plane": "calibration.assumption.imager_plane",
+    "nominal_scanned": "calibration.assumption.nominal_scanned",
+    "seconds_as_length": "calibration.assumption.seconds_as_length",
+}
+
 REASON_KEYS: dict[str, str] = {
     CALIBRATION_NONE: "calibration.reason.missing",
     CALIBRATION_REGION_REQUIRED: "calibration.reason.region_required",
@@ -81,14 +88,46 @@ def scope_text(
     return tr("calibration.scope.instance")
 
 
+def assumption_text(assumption: str | None) -> str:
+    """Localized reason an ``ASSUMED`` scale is only an assumption.
+
+    An unknown code stays readable as itself: the badge must never invent a
+    meaning for a value the domain did not define.
+    """
+    if not assumption:
+        return ""
+    key = ASSUMPTION_KEYS.get(assumption)
+    return tr(key) if key else assumption
+
+
+def assumption_note(context: CalibrationContext) -> str:
+    """Short visible suffix for an assumed scale, empty for a measured one.
+
+    The badge tone is already amber, but colour alone is not a label: the
+    persistent indicator says «предположение» in words as well (issue 555).
+    """
+    if not context.needs_assumption_note:
+        return ""
+    return tr("calibration.badge.assumed")
+
+
 def summary(context: CalibrationContext) -> str:
-    """One-line badge text: source, confidence and scope."""
+    """One-line badge text: source, confidence, scope and an assumption tag."""
     return tr(
         "calibration.badge.available",
         source=source_text(context),
         confidence=confidence_text(context.confidence),
         scope=scope_text(context),
-    )
+    ) + assumption_note(context)
+
+
+def scale_line(context: CalibrationContext) -> str:
+    """Badge text plus the concrete assumption reason, for a list of scales."""
+    if context.assumption:
+        return f"{summary(context)} · {assumption_text(context.assumption)}"
+    if context.assumed_isotropic:
+        return f"{summary(context)} · {tr('calibration.assumption.isotropic')}"
+    return summary(context)
 
 
 def details(context: CalibrationContext) -> str:
@@ -99,6 +138,8 @@ def details(context: CalibrationContext) -> str:
         tr("calibration.detail.scope", scope=scope_text(context)),
         tr("calibration.detail.revision", revision=context.revision),
     ]
+    if context.assumption:
+        lines.append(tr("calibration.detail.assumption", assumption=assumption_text(context.assumption)))
     if context.assumed_isotropic:
         lines.append(tr("calibration.detail.assumed_isotropic"))
     if not context.is_calibrated:

@@ -3288,5 +3288,14 @@
   "report.notice.stale.simpson": "Simpson volumes are stale: the inputs of the saved study changed.",
   "report.notice.stale.doppler": "Doppler values are stale: the saved data no longer match the current study.",
   "report.notice.stale.derived": "Calculated values are stale: inputs changed after the calculation.",
-  "report.notice.stale.bsa": "Indexes are stale: the body surface area changed after the calculation."
+  "report.notice.stale.bsa": "Indexes are stale: the body surface area changed after the calculation.",
+  "calibration.assumption.imager_plane": "ImagerPixelSpacing describes the detector plane, not the patient",
+  "calibration.assumption.isotropic": "isotropy assumed from one known distance",
+  "calibration.assumption.nominal_scanned": "NominalScannedPixelSpacing is a nominal scanning scale",
+  "calibration.assumption.seconds_as_length": "time-axis seconds used as length (2D tissue region)",
+  "calibration.badge.assumed": " · assumption",
+  "calibration.detail.assumption": "Assumption: {assumption}",
+  "properties.calibration.assumption": "Assumption:",
+  "properties.calibration.scales": "Scales in this clip:",
+  "properties.calibration.scales_more": "… and {count} more"
 }

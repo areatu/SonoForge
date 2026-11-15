@@ -20,9 +20,11 @@ from echo_personal_tool.domain.models.properties_snapshot import (
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.presentation.calibration_status import (
+    assumption_text,
     confidence_text,
     details,
     reason_text,
+    scale_line,
     scope_text,
     source_name,
     source_text,
@@ -144,7 +146,12 @@ class PropertiesPanel(QWidget):
         """
         calibration = state.effective_calibration if state is not None else snapshot.calibration
         reason = state.calibration_reason if state is not None else snapshot.calibration_reason
-        key = (snapshot, calibration, reason)
+        contexts = (
+            tuple(state.instance.calibrations)
+            if state is not None and state.instance is not None
+            else tuple(snapshot.calibrations)
+        )
+        key = (snapshot, calibration, reason, contexts)
         if key == self._last_calibration_key:
             return
         self._last_calibration_key = key
@@ -230,7 +237,7 @@ class PropertiesPanel(QWidget):
         # Calibration status: the spatial scale first, with its evidence and
         # scope; M-mode and Doppler stay separate because they are separate
         # physical axes (issue 555, 6.2).
-        self._add_spatial_calibration_rows(calibration, reason)
+        self._add_spatial_calibration_rows(calibration, reason, contexts)
         self._add_mmode_calibration_row(snapshot)
         self._add_doppler_calibration_row(snapshot)
         self._calibration_group.show()
@@ -308,12 +315,24 @@ class PropertiesPanel(QWidget):
         label.setStyleSheet(f"color: {colour}; font-weight: 600;")
         return label
 
-    def _add_spatial_calibration_rows(self, calibration: CalibrationContext | None, reason: str) -> None:
-        """Source, confidence, scope and revision of the spatial scale."""
+    def _add_spatial_calibration_rows(
+        self,
+        calibration: CalibrationContext | None,
+        reason: str,
+        contexts: tuple[CalibrationContext, ...] = (),
+    ) -> None:
+        """Source, confidence, scope, assumption and all scoped scales (issue 555).
+
+        The effective context answers «what will a measurement use now»; when
+        one clip carries frame- or panel-scoped scales that answer depends on
+        the measurement geometry, so the panel must also list what is actually
+        recorded instead of only saying «region required».
+        """
         if calibration is None:
             text = tr("properties.calibration.reason") + " " + reason_text(reason)
             self._calibration_form.addRow(tr("properties.calibration.spatial"), self._tone_label(text, "error"))
             self._calibration_form.addRow("", QLabel(tr("properties.calibration.note")))
+            self._add_scale_rows(contexts, show_single=True)
             return
         source = self._tone_label(
             f"{source_text(calibration)} · {confidence_text(calibration.confidence)}", tone(calibration)
@@ -321,10 +340,49 @@ class PropertiesPanel(QWidget):
         source.setToolTip(details(calibration))
         self._calibration_form.addRow(tr("properties.calibration.spatial"), source)
         self._calibration_form.addRow(tr("properties.calibration.scope"), QLabel(scope_text(calibration)))
+        if calibration.assumption:
+            self._calibration_form.addRow(
+                tr("properties.calibration.assumption"),
+                self._tone_label(assumption_text(calibration.assumption), "warn"),
+            )
+        elif calibration.assumed_isotropic:
+            self._calibration_form.addRow(
+                tr("properties.calibration.assumption"),
+                self._tone_label(tr("calibration.assumption.isotropic"), "warn"),
+            )
         if calibration.revision:
             self._calibration_form.addRow(tr("properties.calibration.revision"), QLabel(str(calibration.revision)))
-        if calibration.assumed_isotropic or not calibration.is_calibrated:
+        if calibration.needs_assumption_note or not calibration.is_calibrated:
             self._calibration_form.addRow("", QLabel(tr("properties.calibration.note")))
+        self._add_scale_rows(contexts)
+
+    def _add_scale_rows(
+        self,
+        contexts: tuple[CalibrationContext, ...],
+        *,
+        show_single: bool = False,
+        limit: int = 6,
+    ) -> None:
+        """List every distinct recorded scale; a scoped clip is not one scale."""
+        unique: list[CalibrationContext] = []
+        seen: set[tuple[object, ...]] = set()
+        for context in contexts:
+            signature = context.signature()
+            if signature in seen:
+                continue
+            seen.add(signature)
+            unique.append(context)
+        if not unique or (len(unique) == 1 and not show_single):
+            return
+        self._calibration_form.addRow(tr("properties.calibration.scales"), QLabel(str(len(unique))))
+        for context in unique[:limit]:
+            label = self._tone_label(scale_line(context), tone(context))
+            label.setToolTip(details(context))
+            self._calibration_form.addRow("", label)
+        if len(unique) > limit:
+            self._calibration_form.addRow(
+                "", QLabel(tr("properties.calibration.scales_more", count=len(unique) - limit))
+            )
 
     def _add_mmode_calibration_row(self, snapshot: PropertiesSnapshot) -> None:
         """Add M-mode calibration status row."""
