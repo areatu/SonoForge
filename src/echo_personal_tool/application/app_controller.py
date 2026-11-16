@@ -1497,8 +1497,6 @@ class AppController(QObject):
 
     def on_mmode_time_calibration(self, time_per_pixel_ms: object) -> None:
         """Handle M-mode time calibration updates (P1.2 #547)."""
-        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
-
         if not isinstance(time_per_pixel_ms, (int, float)):
             raise TypeError("Expected numeric time_per_pixel_ms")
         study_uid = self._resolve_study_uid()
@@ -1507,8 +1505,6 @@ class AppController(QObject):
             self._measurement_session.set_instance_mmode_time(
                 study_uid, instance.sop_instance_uid, float(time_per_pixel_ms)
             )
-            # P1.2 #547: Notify frame cache of time calibration change (render/tracking sync)
-            # Note: notify_time_calibration is added to FrameCache in frame_cache.py
             self._frame_cache.notify_time_calibration(instance.sop_instance_uid, float(time_per_pixel_ms))
         self.status_message.emit(tr("status.mmode_time", time=float(time_per_pixel_ms)))
 
@@ -1526,30 +1522,14 @@ class AppController(QObject):
             self._current_instance.sop_instance_uid,
             calibration,
         )
-        # P1.2 #547: Notify frame cache and unified budget of calibration state change
-        # Note: notify_calibration_change is added to FrameCache in frame_cache.py
-        self._frame_cache.notify_calibration_change(
-            self._current_instance.sop_instance_uid, calibration
-        )
-        # Unified budget integration (P1.1 #545): tracking/render overhead may adjust
-        services = services_of(self)
-        if services is not None:
-            # Example: if calibration is complete, adjust tracking_render_overhead
-            # unified = services.unified_budget
-            pass
+        self._frame_cache.notify_calibration_change(self._current_instance.sop_instance_uid, calibration)
 
-    def get_mmode_calibration_for_instance(
-        self,
-        instance_uid: str,
-    ) -> MmodeCalibrationState | None:
+    def get_mmode_calibration_for_instance(self, instance_uid: str) -> MmodeCalibrationState | None:
         """Retrieve M-mode calibration state for a specific instance (P1.2 #547)."""
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_mmode_calibration(study_uid, instance_uid)
 
-    def get_doppler_calibration_for_instance(
-        self,
-        instance_uid: str,
-    ) -> DopplerCalibrationState | None:
+    def get_doppler_calibration_for_instance(self, instance_uid: str) -> DopplerCalibrationState | None:
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_doppler_calibration(study_uid, instance_uid)
 
@@ -2809,26 +2789,11 @@ class AppController(QObject):
         return max(1, target)
 
     def _tune_playback_cache(self, want_frames: int) -> None:
-        """Size the frame cache's budget and window for `want_frames` of the loaded cine.
+        """Size the frame cache budget and window for the loaded cine's prefetch target.
 
-        Both limits used to be flat: a 64 MB budget and a 12-frame window, chosen before
-        720p existed in the product. At 2.76 MB per frame that is 0.36 s of buffer no
-        matter how much RAM is free, so the seconds-based prefetch target could never be
-        reached. The budget grows to what the target needs (`FrameCache.budget_for_frames`)
-        and never past the share of available RAM taken at startup; the window grows with
-        it so eviction does not discard what prefetch just decoded.
-
-        Unified Memory Budget (P1.1 #545):
-        - `cache.memory_budget` and `cache.full_cine_reservation_bytes` are now derived
-          from `services.unified_budget` (max_cache_bytes, full_cine_bytes).
-        - DecodeGate, Comparison, and Tracking overheads are accounted in the unified budget.
+        Never exceed the RAM share taken at startup; widen eviction with the budget.
         """
         cache = self._frame_cache
-        services = services_of(self)
-        if services is None:
-            return
-        unified = services.unified_budget
-
         if want_frames <= 0:
             return
         frame_bytes = int(cache.average_frame_bytes())
@@ -2841,19 +2806,16 @@ class AppController(QObject):
             # raising IncompleteCineError at 720p. The RAM cap below still decides whether
             # the machine can afford it.
             want_frames = max(want_frames, total)
-
-        # Use unified budget limits instead of isolated cache_budget
+        budget = cache.memory_budget
         needed = cache.budget_for_frames(want_frames)
-        max_cache = unified.max_cache_bytes
-        full_cine = unified.full_cine_bytes
-
-        if needed > max_cache:
-            cache.set_memory_budget(min(needed, max_cache))
+        if needed > budget:
+            cache.set_memory_budget(min(needed, self._cache_ram_cap_bytes))
+            budget = cache.memory_budget
         if cache.evict_window < want_frames:
-            cache.set_evict_window(min(want_frames, max(1, max_cache // frame_bytes)))
-
-        # Reserve full cine bytes for decode/render/tracking overhead (P1.1 #545)
-        cache.set_full_cine_reservation_bytes(full_cine)
+            cache.set_evict_window(min(want_frames, max(1, budget // frame_bytes)))
+        services = services_of(self)
+        cap = services.unified_budget.full_cine_bytes if services is not None else self._cache_ram_cap_bytes
+        cache.set_full_cine_reservation_bytes(min(cap, self._cache_ram_cap_bytes))
 
     def _min_prefetch_batch(self) -> int:
         """Smallest prefetch run worth a thread-pool round-trip.

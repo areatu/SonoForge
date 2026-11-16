@@ -149,7 +149,7 @@ class FrameCacheBudget:
     max_cache_bytes: int
 
     @classmethod
-    def from_unified(cls, unified: UnifiedMemoryBudget) -> "FrameCacheBudget":
+    def from_unified(cls, unified: UnifiedMemoryBudget) -> FrameCacheBudget:
         return cls(
             playback_config=unified.playback_config,
             ram_cap_bytes=unified.ram_cap_bytes,
@@ -323,13 +323,13 @@ def clamp_preferences_for_capabilities(
     return preferences
 
 
-def compute_unified_memory_budget(
+def compute_frame_cache_budget(
     preferences: object,
     *,
     available_ram_bytes: int | None = None,
     playback_config: PlaybackConfig | None = None,
-) -> UnifiedMemoryBudget:
-    """Compute the adaptive unified memory cap and initial byte budgets."""
+) -> FrameCacheBudget:
+    """Compute the adaptive frame-cache memory cap and initial byte budget."""
     resolved_config = playback_config if playback_config is not None else detect_playback_config()
     if available_ram_bytes is not None:
         ram_cap_bytes = max(1, int(available_ram_bytes * 0.08))
@@ -341,44 +341,43 @@ def compute_unified_memory_budget(
             ram_cap_bytes = FALLBACK_RAM_CAP_BYTES
 
     configured_mb = int(getattr(preferences, "playback_max_cache_mb", DEFAULT_PLAYBACK_CACHE_MB))
-    # Allocation split (proposal P1.1 #545):
-    # - cache_max_bytes: 50% of ram_cap_bytes (capped by configured_mb)
-    # - full_cine_bytes: 40% of ram_cap_bytes (decode/render/tracking)
-    # - comparison_bytes: 5% of ram_cap_bytes (study comparison)
-    # - decode_gate_bytes: 5% of ram_cap_bytes (pending decode requests)
-    # - clinical_bytes: remaining (estimated, default 0)
-    cache_max_bytes = min(configured_mb * 1024 * 1024, int(ram_cap_bytes * 0.5))
-    full_cine_bytes = int(ram_cap_bytes * 0.4)
-    comparison_bytes = int(ram_cap_bytes * 0.05)
-    decode_gate_bytes = int(ram_cap_bytes * 0.05)
-    clinical_bytes = ram_cap_bytes - (
-        cache_max_bytes + full_cine_bytes + comparison_bytes + decode_gate_bytes
-    )
-
-    return UnifiedMemoryBudget(
+    max_cache_bytes = min(configured_mb * 1024 * 1024, ram_cap_bytes)
+    return FrameCacheBudget(
         playback_config=resolved_config,
         ram_cap_bytes=ram_cap_bytes,
-        max_cache_bytes=cache_max_bytes,
-        full_cine_bytes=full_cine_bytes,
-        comparison_bytes=comparison_bytes,
-        decode_gate_bytes=decode_gate_bytes,
-        clinical_bytes=clinical_bytes,
+        max_cache_bytes=max_cache_bytes,
     )
 
 
-def compute_frame_cache_budget(
+def compute_unified_memory_budget(
     preferences: object,
     *,
     available_ram_bytes: int | None = None,
     playback_config: PlaybackConfig | None = None,
-) -> FrameCacheBudget:
-    """Legacy wrapper: delegates to UnifiedMemoryBudget."""
-    unified = compute_unified_memory_budget(
+) -> UnifiedMemoryBudget:
+    """Register the concurrent memory consumers against one RAM share (P1.1 #545).
+
+    The frame-cache ceiling keeps its legacy value so playback sizing does not
+    change; the other consumers get explicit reservations from the same share
+    instead of owning isolated hard-coded caps.
+    """
+    cache = compute_frame_cache_budget(
         preferences,
         available_ram_bytes=available_ram_bytes,
         playback_config=playback_config,
     )
-    return FrameCacheBudget.from_unified(unified)
+    ram_cap_bytes = cache.ram_cap_bytes
+    full_cine_bytes = int(ram_cap_bytes * 0.4)
+    comparison_bytes = int(ram_cap_bytes * 0.05)
+    decode_gate_bytes = int(ram_cap_bytes * 0.05)
+    return UnifiedMemoryBudget(
+        playback_config=cache.playback_config,
+        ram_cap_bytes=ram_cap_bytes,
+        max_cache_bytes=cache.max_cache_bytes,
+        full_cine_bytes=full_cine_bytes,
+        comparison_bytes=comparison_bytes,
+        decode_gate_bytes=decode_gate_bytes,
+    )
 
 
 def _build_io_facades(
@@ -480,7 +479,7 @@ def build_app_services(
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
         max_cache_bytes=cache_budget.max_cache_bytes,
-        max_full_cine_bytes=cache_budget.full_cine_bytes,
+        max_full_cine_bytes=cache_budget.ram_cap_bytes,
     )
     key_images = KeyImageService(resolved_paths.measurements_dir / "key-images")
 
@@ -542,12 +541,6 @@ def in_memory_app_services(
         full_cine_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.4),
         comparison_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.05),
         decode_gate_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.05),
-        clinical_bytes=FALLBACK_RAM_CAP_BYTES - (
-            max_cache_bytes
-            + int(FALLBACK_RAM_CAP_BYTES * 0.4)
-            + int(FALLBACK_RAM_CAP_BYTES * 0.05)
-            + int(FALLBACK_RAM_CAP_BYTES * 0.05)
-        ),
     )
     cache_budget = FrameCacheBudget.from_unified(unified_budget)
     state_manager = StateManager()
@@ -561,7 +554,7 @@ def in_memory_app_services(
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
         max_cache_bytes=cache_budget.max_cache_bytes,
-        max_full_cine_bytes=cache_budget.full_cine_bytes,
+        max_full_cine_bytes=unified_budget.ram_cap_bytes,
     )
     key_images = KeyImageService(resolved_paths.measurements_dir / "key-images")
     resolved_segmenter: IOnnxSegmenter = segmenter if segmenter is not None else DisabledOnnxSegmenter()

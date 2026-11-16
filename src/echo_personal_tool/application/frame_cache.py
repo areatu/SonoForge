@@ -476,9 +476,6 @@ class FrameCache:
         below what is already held is left to the next put(), which trims as before.
         """
         self._max_cache_bytes = max(budget_bytes, _MIN_FRAME_SIZE_BYTES)
-        # P1.1 #545: If the budget changes, we might need to evict to stay within limits
-        if self._memory_bytes > self._max_cache_bytes:
-            self._evict_to_memory_limit()
 
     def set_full_cine_reservation_bytes(self, bytes_cap: int) -> None:
         """Set the separate ceiling for one immutable full cine (P1.1 #545).
