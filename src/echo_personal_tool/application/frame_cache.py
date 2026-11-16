@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from echo_personal_tool.domain.exceptions import IncompleteCineError
+from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 
 _logger = logging.getLogger(__name__)
 
@@ -475,6 +476,17 @@ class FrameCache:
         below what is already held is left to the next put(), which trims as before.
         """
         self._max_cache_bytes = max(budget_bytes, _MIN_FRAME_SIZE_BYTES)
+        # P1.1 #545: If the budget changes, we might need to evict to stay within limits
+        if self._memory_bytes > self._max_cache_bytes:
+            self._evict_to_memory_limit()
+
+    def set_full_cine_reservation_bytes(self, bytes_cap: int) -> None:
+        """Set the separate ceiling for one immutable full cine (P1.1 #545).
+
+        Growing allows larger cines to be loaded fully; shrinking below the
+        currently loaded full cine will raise ValueError on next load/require.
+        """
+        self._max_full_cine_bytes = max(1, int(bytes_cap))
 
     def set_evict_window(self, window: int) -> None:
         """Set the LRU half-width around the playhead.
@@ -525,6 +537,17 @@ class FrameCache:
         if frames <= 0:
             return 0
         return int(frames * self.average_frame_bytes() / _EMERGENCY_TRIM_FRACTION)
+
+    # P1.2 #547: M-mode calibration integration hooks
+    def notify_time_calibration(self, instance_uid: str, ms_per_pixel: float) -> None:
+        """Notify frame cache of M-mode time calibration change."""
+        # Integration point for P1.2 #547
+        pass
+
+    def notify_calibration_change(self, instance_uid: str, calibration: MmodeCalibrationState) -> None:
+        """Notify frame cache of M-mode calibration state change."""
+        # Integration point for P1.2 #547
+        pass
 
     def can_fit_full_cine(self) -> bool:
         """True if the whole cine at the observed (or minimum) frame size fits
