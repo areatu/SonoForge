@@ -146,6 +146,7 @@ from echo_personal_tool.presentation.viewer.compare_tools import (
 )
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.contours import ContourStateAttribute, ViewerContours
+from echo_personal_tool.presentation.viewer.dicom_window_menu import add_dicom_window_actions
 from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
@@ -1133,7 +1134,6 @@ class ViewerWidget(QWidget):
         self._phi_filter = AnonymizationFilter(enabled=True)
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
-
         self._overlay_label = QLabel(self)
         self._overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
@@ -1204,6 +1204,7 @@ class ViewerWidget(QWidget):
             color_active_provider=lambda: self._color_display_active,
             image_item=self._image_item,
             invalidate_edge_map=self._invalidate_edge_map_cache,
+            display_provider=lambda: getattr(self._current_instance_metadata(), "display", None),
         )
 
         # The whole transport lives in one widget so the focus view (UI-6) can
@@ -2029,10 +2030,8 @@ class ViewerWidget(QWidget):
             self._view.addItem(item)
             self._panel_frame_items.append(item)
 
-    def _current_instance_metadata(self):
-        if self._current_state is not None and self._current_state.instance is not None:
-            return self._current_state.instance
-        return None
+    def _current_instance_metadata(self) -> Any:
+        return self._current_state.instance if self._current_state is not None else None
 
     @_prof
     def set_transport_visible(self, visible: bool) -> None:
@@ -2180,6 +2179,7 @@ class ViewerWidget(QWidget):
         menu = QMenu(self)
         menu.addAction(tr("viewer.context_save_as"), self._save_viewer_image)
         self._add_gold_export_actions(menu)
+        add_dicom_window_actions(menu, self.display)
         menu.addSeparator()
         menu.addAction(
             _load_icon("tune"),
@@ -3646,9 +3646,7 @@ class ViewerWidget(QWidget):
         return None
 
     def _measurement_crosshair_active(self) -> bool:
-        if self._crosshair_panel_bounds() is not None:
-            return True
-        return False
+        return self._crosshair_panel_bounds() is not None
 
     def _ensure_crosshair_graphics(self) -> None:
         pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.label"], width=1, style=Qt.PenStyle.DashLine)

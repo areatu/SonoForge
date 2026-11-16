@@ -7,6 +7,7 @@ from echo_personal_tool.domain.models.calibration import (
     select_calibration,
 )
 from echo_personal_tool.domain.models.contour import Contour
+from echo_personal_tool.domain.models.dicom_display import DicomDisplay, LookupTable, WindowPreset
 from echo_personal_tool.domain.models.doppler import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
@@ -71,6 +72,7 @@ __all__ = [
     "CalibrationSelection",
     "ChamberSimpsonResult",
     "Contour",
+    "DicomDisplay",
     "DopplerIntervalMarker",
     "DopplerMeasurementDTO",
     "DopplerPeakMarker",
@@ -85,6 +87,7 @@ __all__ = [
     "InstanceMetadata",
     "InstanceRef",
     "LinearMeasurement",
+    "LookupTable",
     "LaVolumeResult",
     "LvViewMetrics",
     "ContourLineage",
@@ -107,6 +110,7 @@ __all__ = [
     "TrackingKernel",
     "TrackingResult",
     "ViewerState",
+    "WindowPreset",
     "VesselMeasurement",
     "pixel_to_mm_length",
     "select_calibration",

@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(dicom)`: #542 — тракт DICOM display: modality → VOI → presentation, окна из заголовка и числовые W/L, MONOCHROME1 и Pixel Padding ([полностью](changelog.d/056-feat-dicom-display-542.md))
+
 - `feat(comparison)`: #562 — сравнение с явно выбранным предыдущим исследованием без автоматической регистрации ([полностью](changelog.d/055-feat-study-comparison-562.md))
 
 - `feat(doppler)`: #559 — принятые/исключённые повторы с явным выбором циклов, n, mean/SD/CV и диалогом «Повторы Допплера…» ([полностью](changelog.d/054-feat-doppler-repeats-559.md))

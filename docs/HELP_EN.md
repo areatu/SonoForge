@@ -137,10 +137,14 @@ The central viewer displays the current frame, calipers, contours, result overla
 - W/L sliders in `Controls`; the Interface settings no longer offer a W/L preset;
 - crosshair, panel frames, caliper labels, and inline labels;
 - zoom levels `Fit`, `100%`, and `200%` with `0`, `+`/`=`, and `-`;
-- a context menu with `Save as…`, properties, overlay/reset commands, and calibration actions;
+- a context menu with `Save as…`, properties, overlay/reset commands, calibration actions, and DICOM windows;
 - an optional DICOM tag inspector.
 
 `Save as…` saves a screenshot of the viewer area as PNG or JPEG. It is not a PDF report and is not a reliable structured-measurement export.
+
+DICOM instances that carry a display chain get a `DICOM window` submenu in the context menu. It lists the header windows (`WindowCenter`/`WindowWidth`, including several pairs) and `Numeric W/L…`, where center and width are entered in modality units separated by a comma. `Header window` restores the default. The W/L/DR sliders keep working and replace the selected window once moved; the numeric window is remembered per clip and restored when you return.
+
+Rendering follows the standard chain: stored values → `RescaleSlope`/`RescaleIntercept` or Modality LUT → VOI LUT or DICOM window → presentation. Negative CT values (air, fat) therefore stay distinct, `MONOCHROME1` is inverted on screen only, and Pixel Padding neither stretches the auto window nor appears as tissue. `HU` is labelled only for CT with a proven rescale; MR and ordinary ultrasound keep their own units. Intensity measurements must read modality values, never the 8-bit screen image.
 
 ### 2.4 Side panels and layout
 
