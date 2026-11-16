@@ -42,6 +42,7 @@ class FakeWindow:
     save_path: str = ""
     printer: object | None = None
     protocol: MagicMock = field(default_factory=MagicMock)
+    activated_tools: list[str] = field(default_factory=list)
 
     def port(self) -> ReportWindowPort:
         def store(preferences: UserPreferences) -> None:
@@ -64,6 +65,7 @@ class FakeWindow:
             focus_viewer=lambda: self.calls.append(("focus_viewer",)),
             open_instance=lambda instance: self.calls.append(("open", instance.sop_instance_uid)),
             protocol_session=lambda: self.protocol,
+            activate_tool=self.activated_tools.append,
             rename_contour=rename,
             mirror_report_mode=lambda report: self.calls.append(("mirror", report)),
             ask_save_path=lambda title, name, file_filter: self.calls.append(("ask_save", name)) or self.save_path,
@@ -215,6 +217,23 @@ class TestTabEdits:
         assert len(window.saved_preferences) == 1
         assert window.preferences.report_show_inputs is True
 
+    def test_measure_tool_opens_the_organ_measurement(self, coordinator, window) -> None:
+        coordinator.set_mode(True)
+
+        coordinator.measure_tool("cca.imt")
+
+        assert window.tab.report_mode is False
+        assert window.activated_tools == ["cca.imt"]
+
+    def test_measure_without_a_protocol_or_tool_does_nothing(self, coordinator, window) -> None:
+        coordinator.set_mode(True)
+
+        coordinator.measure_step("", 0)
+        coordinator.measure_tool("")
+
+        assert window.tab.report_mode is True
+        assert window.activated_tools == []
+
     def test_measure_arms_the_protocol_step_on_the_images(self, coordinator, window) -> None:
         window.protocol.active_protocol_id = "other"
         coordinator.set_mode(True)
@@ -224,6 +243,65 @@ class TestTabEdits:
         assert window.tab.report_mode is False
         window.protocol.start.assert_called_once_with("lv_linear")
         window.protocol.arm.assert_called_once_with(2)
+
+
+class TestCompleteness:
+    """Issue 560: the pre-export checklist reaches the sheet and the PDF."""
+
+    def test_an_incomplete_checklist_is_printed_as_a_notice(self, coordinator) -> None:
+        from echo_personal_tool.application.localization import tr
+
+        coordinator.set_mode(True)
+        document = coordinator.current_document()
+
+        assert tr("report.notice.checklist_incomplete", missing=22, stale=0) in document.notices
+
+    def test_a_stale_value_is_counted_apart_from_missing(self, coordinator, controller) -> None:
+        from echo_personal_tool.domain.protocols import ProjectionValue
+        from echo_personal_tool.domain.translation import tr
+
+        controller.study_projection.return_value = StudyProjection(
+            values={"lv.ivsd": ProjectionValue(value=1.0, stale=True)}
+        )
+        coordinator.set_mode(True)
+        document = coordinator.current_document()
+
+        assert tr("report.notice.checklist_incomplete", missing=21, stale=1) in document.notices
+        assert coordinator.page.checklist_summary().stale == 1
+
+    def test_unreviewed_contours_are_reported_next_to_missing_values(self, coordinator, controller) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        controller.compute_study_snapshot.return_value = MeasurementSnapshot(unreviewed_contours=3)
+        coordinator.set_mode(True)
+        coordinator.current_document()
+
+        assert coordinator.page.checklist_summary().unreviewed == 3
+
+    def test_the_checklist_follows_the_study_type(self, coordinator, window) -> None:
+        window.preferences.study_profile = "builtin.vascular"
+
+        coordinator.set_mode(True)
+
+        assert [section.id for section in coordinator.page.sections.sections] == ["precerebral"]
+        assert coordinator.page.checklist_summary().missing == 2
+
+    def test_a_decision_prints_on_the_sheet_with_its_reason(self, coordinator) -> None:
+        from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.domain.services.report_sections import CHECK_NOT_APPLICABLE
+
+        coordinator.set_mode(True)
+        page = coordinator.page
+        item = page.sections.sections[0].items[0]
+        page.sections.set_decision(item.key, CHECK_NOT_APPLICABLE, "не входит в протокол")
+
+        document = coordinator.current_document()
+        rows = [value for group in document.groups for value in group.values if value.label == item.label]
+
+        assert len(rows) == 1
+        assert tr("report.checklist.not_applicable") in rows[0].value
+        assert "не входит в протокол" in rows[0].value
+        assert page.checklist_summary().not_applicable == 1
 
 
 class TestRename:

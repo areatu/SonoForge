@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 67,
-  "total_errors": 813,
+  "total_errors": 809,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -165,8 +165,6 @@
       "union-attr": 1
     },
     "src/echo_personal_tool/presentation/report_mode/sections.py": {
-      "arg-type": 2,
-      "assignment": 2,
       "union-attr": 1
     },
     "src/echo_personal_tool/presentation/report_mode/view_map.py": {

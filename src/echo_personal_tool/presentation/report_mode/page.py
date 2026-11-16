@@ -24,6 +24,7 @@ from echo_personal_tool.application.report_conclusion import ConclusionAutofillR
 from echo_personal_tool.application.report_phrases import ReportPhraseStore
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_builder import ReportDocument
+from echo_personal_tool.domain.services.report_sections import ChecklistDecision, ChecklistSummary
 from echo_personal_tool.presentation.report_mode.export import ReportExportPanel
 from echo_personal_tool.presentation.report_mode.patient import ReportPatientEditor
 from echo_personal_tool.presentation.report_mode.phrases import PANEL_WIDTH, ReportPhrasesPanel
@@ -37,6 +38,8 @@ class ReportModePage(QWidget):
 
     patient_field_changed = Signal(str, str)
     measure_requested = Signal(str, int)  # protocol_id, step_index
+    #: A study-profile tool of the checklist that has no TP protocol step.
+    tool_requested = Signal(str)
     conclusion_changed = Signal(str)
     generated_conclusion_changed = Signal(str)
     #: «Открыть кадры» of the «откуда значение» card (PR-4).
@@ -70,9 +73,12 @@ class ReportModePage(QWidget):
         super().__init__(parent)
         self.setObjectName("reportModePage")
         self._projection_provider = projection_provider
+        self._checklist_profile = ""
+        self._unreviewed = 0
         self._finished = False
         self._sections = ReportSectionsPanel(parent=self)
         self._sections.measure_requested.connect(self.measure_requested)
+        self._sections.tool_requested.connect(self.tool_requested)
         self._preview = ReportPreview(document_provider, font_size=font_size, parent=self)
         self._preview.open_frames_requested.connect(self.open_frames_requested)
         self._preview.value_visibility_changed.connect(self.value_visibility_changed)
@@ -175,6 +181,24 @@ class ReportModePage(QWidget):
         """Explicit «не оценивалось» marks of the session (they print, PR-5)."""
         return self._sections.marked_not_evaluated()
 
+    def checklist_decisions(self) -> dict[str, ChecklistDecision]:
+        """Explicit checklist decisions of the session, by measurement key."""
+        return self._sections.decisions()
+
+    def checklist_summary(self) -> ChecklistSummary:
+        """Missing/stale/unreviewed counts the sheet's export notice reports."""
+        return self._sections.checklist_summary()
+
+    def set_checklist_profile(self, profile_id: str) -> None:
+        """The checklist follows the study type of the open report."""
+        self._checklist_profile = profile_id
+        self._sections.set_profile(profile_id)
+
+    def set_unreviewed(self, count: int) -> None:
+        """How many contours of the study still wait for a human review."""
+        self._unreviewed = max(int(count), 0)
+        self._sections.set_unreviewed(self._unreviewed)
+
     def set_hidden_values(self, entries: tuple[tuple[str, str], ...]) -> None:
         """Mirror the hidden rows of the document into the left column (item 9)."""
         self._sections.set_hidden_values(entries)
@@ -207,7 +231,11 @@ class ReportModePage(QWidget):
 
     def _refresh_sections(self) -> None:
         projection = self._projection_provider() if self._projection_provider is not None else None
-        self._sections.set_projection(projection)
+        self._sections.set_projection(
+            projection,
+            profile_id=self._checklist_profile,
+            unreviewed=self._unreviewed,
+        )
 
     def request_refresh(self) -> None:
         if self._finished:

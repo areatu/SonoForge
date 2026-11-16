@@ -1,9 +1,12 @@
 """Sections column of the report mode (UI-4 PR-2, spec §4.6).
 
-Shows the report sections with ✓ / ◐ / ○ and a counter, then the measurements
-the TP protocols still expect.  «измерить» asks the window to switch back to
-«Изображения» and arm the protocol step; «не оценивалось» is an explicit,
-reversible mark kept in memory for this UI session.
+The column is the pre-export completeness checklist of the study: section
+status, the measurements the selected study type still expects, and the three
+incomplete states — missing, stale and unreviewed.  «Измерить» asks the window
+to switch back to «Изображения» and arm the protocol step (or the profile tool);
+a missing item can be explicitly declared «неприменимо» / «не получено» with a
+mandatory reason.  The decision is reversible and prints on the sheet, so an
+incomplete export never looks complete.
 """
 
 from __future__ import annotations
@@ -22,12 +25,17 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain.protocols import StudyProjection
 from echo_personal_tool.domain.services.report_sections import (
+    CHECK_DECISION_KINDS,
+    ChecklistDecision,
+    ChecklistSummary,
     ReportSection,
     ReportSectionItem,
     SectionStatus,
     build_report_sections,
+    checklist_summary,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.report_mode.checklist_decision import ChecklistDecisionDialog
 
 #: Spec §4.6: the sections column is 284 px wide.
 _SECTIONS_WIDTH = 284
@@ -43,6 +51,8 @@ class ReportSectionsPanel(QFrame):
     """«Разделы» and «Не заполнено» beside the A4 sheet."""
 
     measure_requested = Signal(str, int)  # protocol_id, step_index
+    #: A profile-tool recommendation without a TP step (organ studies).
+    tool_requested = Signal(str)
     #: The explicit «не оценивалось» marks changed (they print, PR-5).
     not_evaluated_changed = Signal()
     #: The physician asked to bring a hidden row of the sheet back (item 9 of
@@ -55,7 +65,9 @@ class ReportSectionsPanel(QFrame):
         self.setFixedWidth(_SECTIONS_WIDTH)
         self._projection: StudyProjection | None = None
         self._sections: tuple[ReportSection, ...] = ()
-        self._not_evaluated: set[str] = set()
+        self._decisions: dict[str, ChecklistDecision] = {}
+        self._profile_id = ""
+        self._unreviewed = 0
         #: ``(key, label)`` of the rows hidden in the sheet, in document order.
         self._hidden_values: tuple[tuple[str, str], ...] = ()
         self._frozen = False
@@ -64,6 +76,10 @@ class ReportSectionsPanel(QFrame):
         self._title.setObjectName("reportSectionsTitle")
         self._counter = QLabel()
         self._counter.setObjectName("reportSectionsCounter")
+        self._summary = QLabel()
+        self._summary.setObjectName("reportChecklistSummary")
+        self._summary.setWordWrap(True)
+        self._summary.setVisible(False)
 
         header = QHBoxLayout()
         header.setContentsMargins(10, 8, 10, 4)
@@ -91,26 +107,96 @@ class ReportSectionsPanel(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(header)
+        layout.addWidget(self._summary)
         layout.addWidget(scroll, 1)
 
         self._retranslate()
         self.apply_theme()
 
     # ── Content ─────────────────────────────────────────────────────────
-    def set_projection(self, projection: StudyProjection | None) -> None:
-        """Rebuild from the study projection (``None`` = nothing measured)."""
+    def set_projection(
+        self,
+        projection: StudyProjection | None,
+        *,
+        profile_id: str | None = None,
+        unreviewed: int | None = None,
+    ) -> None:
+        """Rebuild from the study projection (``None`` = nothing measured).
+
+        ``profile_id``/``unreviewed`` are contextual state of the same refresh:
+        the study type decides which recommendations are relevant, and the
+        unreviewed contour count is the third incomplete state next to missing
+        and stale values.
+        """
         self._projection = projection
-        self._sections = build_report_sections(projection, get_language())
+        if profile_id is not None:
+            self._profile_id = profile_id
+        if unreviewed is not None:
+            self._unreviewed = max(int(unreviewed), 0)
+        self._refresh()
+
+    def set_profile(self, profile_id: str) -> None:
+        """Use the checklist of another study type."""
+        if profile_id == self._profile_id:
+            return
+        self._profile_id = profile_id
+        self._refresh()
+
+    def set_unreviewed(self, count: int) -> None:
+        """Update the number of contours waiting for a human review."""
+        count = max(int(count), 0)
+        if count == self._unreviewed:
+            return
+        self._unreviewed = count
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._sections = build_report_sections(
+            self._projection,
+            get_language(),
+            profile_id=self._profile_id,
+            decisions=self._decisions,
+        )
         known = {item.key for section in self._sections for item in section.items}
-        self._not_evaluated &= known
+        self._decisions = {key: value for key, value in self._decisions.items() if key in known}
         self._rebuild()
 
     @property
     def sections(self) -> tuple[ReportSection, ...]:
         return self._sections
 
+    def decisions(self) -> dict[str, ChecklistDecision]:
+        """Explicit physician decisions by measurement key (a copy)."""
+        return dict(self._decisions)
+
     def marked_not_evaluated(self) -> frozenset[str]:
-        return frozenset(self._not_evaluated)
+        """Keys with an explicit decision, kept as the historical API."""
+        return frozenset(self._decisions)
+
+    def set_decision(self, key: str, kind: str, reason: str) -> None:
+        """Record an explicit decision; a reason is mandatory."""
+        if kind not in CHECK_DECISION_KINDS:
+            raise ValueError(f"unknown checklist decision: {kind!r}")
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("a checklist decision needs a reason")
+        known = {item.key for section in self._sections for item in section.items}
+        if key not in known:
+            return
+        self._decisions[key] = ChecklistDecision(kind=kind, reason=reason)
+        self._refresh()
+        self.not_evaluated_changed.emit()
+
+    def clear_decision(self, key: str) -> None:
+        """Undo the decision: the item returns to the missing list."""
+        if self._decisions.pop(key, None) is None:
+            return
+        self._refresh()
+        self.not_evaluated_changed.emit()
+
+    def checklist_summary(self) -> ChecklistSummary:
+        """Counts of missing / stale / unreviewed and explicit decisions."""
+        return checklist_summary(self._sections, unreviewed=self._unreviewed)
 
     def set_hidden_values(self, entries: tuple[tuple[str, str], ...]) -> None:
         """Show «Скрытые: N» with a «вернуть» action per row (item 9)."""
@@ -142,9 +228,8 @@ class ReportSectionsPanel(QFrame):
 
     def reload_text(self) -> None:
         """Re-localize section and measurement labels in place."""
-        self._sections = build_report_sections(self._projection, get_language())
+        self._refresh()
         self._retranslate()
-        self._rebuild()
 
     # ── View ────────────────────────────────────────────────────────────
     def _retranslate(self) -> None:
@@ -160,6 +245,18 @@ class ReportSectionsPanel(QFrame):
             if widget is not None:
                 widget.deleteLater()
 
+        summary = self.checklist_summary()
+        self._summary.setText(
+            tr(
+                "report.checklist.summary",
+                missing=summary.missing,
+                stale=summary.stale,
+                unreviewed=summary.unreviewed,
+            )
+        )
+        self._summary.setToolTip(tr("report.checklist.summary_hint"))
+        self._summary.setVisible(bool(self._sections))
+
         for section in self._sections:
             self._list.insertWidget(self._list.count() - 1, self._section_row(section))
 
@@ -167,19 +264,32 @@ class ReportSectionsPanel(QFrame):
             item
             for section in self._sections
             for item in section.items
-            if not item.filled and item.key not in self._not_evaluated
+            if not item.filled and not item.stale and not item.decision
         ]
-        marked = [item for section in self._sections for item in section.items if item.key in self._not_evaluated]
+        stale = [item for section in self._sections for item in section.items if item.stale]
+        marked = [item for section in self._sections for item in section.items if item.decision]
 
         if missing:
             self._list.insertWidget(self._list.count() - 1, self._subheader(tr("report.not_filled")))
-            for item in missing:
-                self._list.insertWidget(self._list.count() - 1, self._missing_row(item, marked=False))
+            for row_item in missing:
+                self._list.insertWidget(self._list.count() - 1, self._checklist_row(row_item, state="missing"))
+
+        if stale:
+            self._list.insertWidget(self._list.count() - 1, self._subheader(tr("report.checklist.stale")))
+            for row_item in stale:
+                self._list.insertWidget(self._list.count() - 1, self._checklist_row(row_item, state="stale"))
 
         if marked:
             self._list.insertWidget(self._list.count() - 1, self._subheader(tr("report.not_evaluated")))
-            for item in marked:
-                self._list.insertWidget(self._list.count() - 1, self._missing_row(item, marked=True))
+            for row_item in marked:
+                self._list.insertWidget(self._list.count() - 1, self._checklist_row(row_item, state="decided"))
+
+        if self._unreviewed:
+            self._list.insertWidget(self._list.count() - 1, self._subheader(tr("report.checklist.unreviewed")))
+            unreviewed = QLabel(tr("report.checklist.unreviewed_count", count=self._unreviewed))
+            unreviewed.setObjectName("reportChecklistUnreviewed")
+            unreviewed.setWordWrap(True)
+            self._list.insertWidget(self._list.count() - 1, unreviewed)
 
         if self._hidden_values:
             self._list.insertWidget(
@@ -246,20 +356,36 @@ class ReportSectionsPanel(QFrame):
         label.setObjectName("reportSectionsSubheader")
         return label
 
-    def _missing_row(self, item: ReportSectionItem, *, marked: bool) -> QWidget:
+    def _checklist_row(self, item: ReportSectionItem, *, state: str) -> QWidget:
+        """One pre-export checklist row: missing, stale or explicitly decided."""
         row = QWidget()
         row.setObjectName("reportMissingRow")
+        row.setProperty("state", state)
         layout = QHBoxLayout(row)
         layout.setContentsMargins(2, 0, 2, 0)
         layout.setSpacing(4)
 
+        if state == "stale":
+            glyph = QLabel("⟳")
+            glyph.setObjectName("reportChecklistGlyph")
+            glyph.setToolTip(tr("report.checklist.stale_hint"))
+            layout.addWidget(glyph)
+
         label = QLabel(item.label)
         label.setObjectName("reportMissingLabel")
-        label.setProperty("marked", marked)
+        label.setProperty("marked", state == "decided")
+        label.setProperty("stale", state == "stale")
         label.setWordWrap(True)
         layout.addWidget(label, 1)
 
-        if not marked:
+        hint = self._context_hint(item)
+        if hint:
+            context = QLabel(hint)
+            context.setObjectName("reportChecklistHint")
+            context.setToolTip(tr("report.checklist.context_hint"))
+            layout.addWidget(context)
+
+        if state in ("missing", "stale") and (item.protocol_id or item.tool_id):
             measure = QPushButton(tr("report.measure"))
             measure.setObjectName("reportMeasureLink")
             measure.setEnabled(not self._frozen)
@@ -267,33 +393,79 @@ class ReportSectionsPanel(QFrame):
             measure.setCursor(Qt.CursorShape.PointingHandCursor)
             measure.setProperty("key", item.key)
             measure.setToolTip(tr("report.measure_hint"))
-            measure.clicked.connect(
-                lambda _checked=False, p=item.protocol_id, s=item.step_index: self.measure_requested.emit(p, s)
-            )
+            if item.protocol_id:
+                measure.clicked.connect(
+                    lambda _checked=False, p=item.protocol_id, s=item.step_index: self.measure_requested.emit(p, s)
+                )
+            else:
+                measure.clicked.connect(lambda _checked=False, tool_id=item.tool_id: self.tool_requested.emit(tool_id))
             layout.addWidget(measure)
 
-        toggle = QPushButton("✓" if marked else "○")
-        toggle.setObjectName("reportNotEvaluated")
-        toggle.setFlat(True)
-        toggle.setCheckable(True)
-        toggle.setChecked(marked)
-        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle.setProperty("key", item.key)
-        toggle.setEnabled(not self._frozen)
-        toggle.setToolTip(tr("report.not_evaluated_undo") if marked else tr("report.not_evaluated_hint"))
-        toggle.clicked.connect(lambda _checked=False, key=item.key: self._toggle_not_evaluated(key))
-        layout.addWidget(toggle)
+        if state == "decided":
+            decision = QLabel(
+                tr("report.checklist.decision", kind=tr(self._decision_key(item.decision)), reason=item.reason)
+            )
+            decision.setObjectName("reportChecklistDecision")
+            decision.setWordWrap(True)
+            layout.addWidget(decision)
+            undo = QPushButton("✓")
+            undo.setObjectName("reportNotEvaluated")
+            undo.setFlat(True)
+            undo.setCheckable(True)
+            undo.setChecked(True)
+            undo.setCursor(Qt.CursorShape.PointingHandCursor)
+            undo.setProperty("key", item.key)
+            undo.setEnabled(not self._frozen)
+            undo.setToolTip(tr("report.not_evaluated_undo"))
+            undo.clicked.connect(lambda _checked=False, key=item.key: self.clear_decision(key))
+            layout.addWidget(undo)
+        elif state == "missing":
+            toggle = QPushButton("○")
+            toggle.setObjectName("reportNotEvaluated")
+            toggle.setFlat(True)
+            toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            toggle.setProperty("key", item.key)
+            toggle.setEnabled(not self._frozen)
+            toggle.setToolTip(tr("report.checklist.decision_hint"))
+            toggle.clicked.connect(lambda _checked=False, key=item.key: self._toggle_not_evaluated(key))
+            layout.addWidget(toggle)
+        else:
+            toggle = QPushButton("✓")
+            toggle.setObjectName("reportNotEvaluated")
+            toggle.setFlat(True)
+            toggle.setCheckable(True)
+            toggle.setChecked(True)
+            toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            toggle.setProperty("key", item.key)
+            toggle.setEnabled(not self._frozen)
+            toggle.setToolTip(tr("report.not_evaluated_undo"))
+            toggle.clicked.connect(lambda _checked=False, key=item.key: self.clear_decision(key))
+            layout.addWidget(toggle)
         return row
+
+    def _context_hint(self, item: ReportSectionItem) -> str:
+        """«A4C · ED» — where the missing measurement is taken."""
+        frame_key = {"ed": "protocol.frame_ed", "es": "protocol.frame_es"}.get(item.frame_hint)
+        frame = tr(frame_key) if frame_key else item.frame_hint
+        return " · ".join(part for part in (item.view, frame) if part)
+
+    @staticmethod
+    def _decision_key(kind: str) -> str:
+        return "report.checklist.not_applicable" if kind == "not_applicable" else "report.checklist.not_obtained"
 
     def _toggle_not_evaluated(self, key: str) -> None:
         if self._frozen:
             return
-        if key in self._not_evaluated:
-            self._not_evaluated.discard(key)
-        else:
-            self._not_evaluated.add(key)
-        self._rebuild()
-        self.not_evaluated_changed.emit()
+        if key in self._decisions:
+            self.clear_decision(key)
+            return
+        item = next((item for section in self._sections for item in section.items if item.key == key), None)
+        if item is None:
+            return
+        decision = ChecklistDecisionDialog.ask(self, item.label, current=self._decisions.get(key))
+        if decision is None:
+            return
+        self.set_decision(key, decision.kind, decision.reason)
 
     # ── Styling ─────────────────────────────────────────────────────────
     def apply_theme(self) -> None:
@@ -310,6 +482,24 @@ class ReportSectionsPanel(QFrame):
             }}
             #reportSectionsCounter {{
                 color: {tokens["accent.text"]};
+            }}
+            #reportChecklistSummary {{
+                color: {tokens["text.3"]};
+                padding: 0 10px 4px 10px;
+            }}
+            #reportChecklistHint {{
+                color: {tokens["text.3"]};
+            }}
+            #reportChecklistGlyph {{
+                color: {tokens["state.warn"]};
+            }}
+            #reportChecklistDecision {{
+                color: {tokens["text.disabled"]};
+                font-style: italic;
+            }}
+            #reportChecklistUnreviewed {{
+                color: {tokens["state.warn"]};
+                padding: 0 2px;
             }}
             #reportSectionsHost, #reportSectionsScroll, #reportSectionsViewport {{
                 background: {tokens["surface.2"]};
@@ -340,6 +530,9 @@ class ReportSectionsPanel(QFrame):
             #reportMissingLabel[marked="true"] {{
                 color: {tokens["text.disabled"]};
                 font-style: italic;
+            }}
+            #reportMissingLabel[stale="true"] {{
+                color: {tokens["state.warn"]};
             }}
             #reportMeasureLink {{
                 color: {tokens["accent.text"]};

@@ -72,7 +72,15 @@ def test_missing_row_emits_the_protocol_step() -> None:
     assert emitted == [(first.protocol_id, first.step_index)]
 
 
-def test_not_evaluated_is_an_explicit_reversible_mark() -> None:
+def test_not_evaluated_is_an_explicit_reversible_mark(monkeypatch) -> None:
+    from echo_personal_tool.domain.services.report_sections import CHECK_NOT_OBTAINED, ChecklistDecision
+    from echo_personal_tool.presentation.report_mode import sections as sections_module
+
+    monkeypatch.setattr(
+        sections_module.ChecklistDecisionDialog,
+        "ask",
+        classmethod(lambda cls, *args, **kwargs: ChecklistDecision(CHECK_NOT_OBTAINED, "плохая визуализация")),
+    )
     panel = _panel()
     panel.set_projection(None)
     missing = panel.sections[0].items[0]
@@ -148,3 +156,120 @@ class TestHiddenValuesList:
 
         assert len(_buttons(panel, "reportRestoreValue")) == 1
         assert not _buttons(panel, "reportRestoreValue")[0].isEnabled()
+
+
+def test_checklist_summary_separates_missing_stale_and_unreviewed() -> None:
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    panel = _panel()
+    panel.set_projection(StudyProjection(values={"lv.ivsd": ProjectionValue(value=1.0, stale=True)}), unreviewed=2)
+    summary = panel.checklist_summary()
+
+    assert (summary.missing, summary.stale, summary.unreviewed) == (21, 1, 2)
+    summary_label = panel.findChild(type(panel._title), "reportChecklistSummary")
+    assert summary_label.text() == tr("report.checklist.summary", missing=21, stale=1, unreviewed=2)
+    assert summary_label.isVisibleTo(panel)
+    headers = [label.text() for label in panel.findChildren(type(panel._title), "reportSectionsSubheader")]
+    assert tr("report.checklist.stale") in headers
+    assert tr("report.checklist.unreviewed") in headers
+
+
+def test_stale_value_is_listed_apart_and_is_not_counted_as_filled() -> None:
+    panel = _panel()
+    panel.set_projection(StudyProjection(values={"lv.ivsd": ProjectionValue(value=1.0, stale=True)}))
+    lv = panel.sections[0]
+
+    assert lv.items[0].stale is True
+    assert lv.items[0].filled is False
+    assert lv.filled == 0
+    assert any(button.property("key") == "lv.ivsd" for button in _buttons(panel, "reportMeasureLink"))
+
+
+def test_organ_profile_rows_go_to_their_measurement_tool() -> None:
+    panel = _panel()
+    panel.set_profile("builtin.vascular")
+    panel.set_projection(None)
+    emitted: list[str] = []
+    panel.tool_requested.connect(emitted.append)
+
+    assert [section.id for section in panel.sections] == ["precerebral"]
+    first = panel.sections[0].items[0]
+    button = next(button for button in _buttons(panel, "reportMeasureLink") if button.property("key") == first.key)
+    button.click()
+
+    assert emitted == [first.tool_id]
+
+
+def test_a_decision_needs_a_known_kind_and_a_reason() -> None:
+    panel = _panel()
+    panel.set_projection(None)
+    key = panel.sections[0].items[0].key
+
+    with pytest.raises(ValueError):
+        panel.set_decision(key, "unknown", "причина")
+    with pytest.raises(ValueError):
+        panel.set_decision(key, "not_applicable", "   ")
+    assert panel.decisions() == {}
+
+
+def test_a_decision_moves_the_item_out_of_missing_and_keeps_its_reason() -> None:
+    from echo_personal_tool.domain.services.report_sections import CHECK_NOT_APPLICABLE
+
+    panel = _panel()
+    panel.set_projection(None)
+    item = panel.sections[0].items[0]
+    missing_before = panel.checklist_summary().missing
+
+    panel.set_decision(item.key, CHECK_NOT_APPLICABLE, "не входит в протокол исследования")
+    _flush()
+    summary = panel.checklist_summary()
+
+    assert summary.not_applicable == 1
+    assert summary.missing == missing_before - 1
+    assert panel.decisions()[item.key].reason == "не входит в протокол исследования"
+    labels = [label.text() for label in panel.findChildren(type(panel._title), "reportMissingLabel")]
+    assert labels.count(item.label) == 1  # one decided row, not one missing row plus one decided row
+    decisions = [label.text() for label in panel.findChildren(type(panel._title), "reportChecklistDecision")]
+    assert any("не входит в протокол исследования" in text for text in decisions)
+
+    panel.clear_decision(item.key)
+    assert panel.checklist_summary().missing == missing_before
+
+
+def test_the_decision_dialog_requires_a_reason(qapp) -> None:
+    from PySide6.QtWidgets import QComboBox, QDialogButtonBox, QLineEdit
+
+    from echo_personal_tool.domain.services.report_sections import CHECK_NOT_APPLICABLE
+    from echo_personal_tool.presentation.report_mode.checklist_decision import ChecklistDecisionDialog
+
+    dialog = ChecklistDecisionDialog(label="МЖП")
+    reason = dialog.findChild(QLineEdit, "checklistDecisionReason")
+    kind = dialog.findChild(QComboBox, "checklistDecisionKind")
+    buttons = dialog.findChild(QDialogButtonBox)
+    ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+    assert ok.isEnabled() is False
+
+    reason.setText("не входит в протокол")
+    kind.setCurrentIndex(kind.findData(CHECK_NOT_APPLICABLE))
+
+    assert ok.isEnabled() is True
+    assert dialog.decision().kind == CHECK_NOT_APPLICABLE
+    assert dialog.decision().reason == "не входит в протокол"
+
+    reason.setText("   ")
+    assert ok.isEnabled() is False
+
+
+def test_the_decision_dialog_reopens_on_the_current_decision(qapp) -> None:
+    from PySide6.QtWidgets import QComboBox, QDialogButtonBox, QLineEdit
+
+    from echo_personal_tool.domain.services.report_sections import CHECK_NOT_OBTAINED, ChecklistDecision
+    from echo_personal_tool.presentation.report_mode.checklist_decision import ChecklistDecisionDialog
+
+    dialog = ChecklistDecisionDialog(label="МЖП", current=ChecklistDecision(CHECK_NOT_OBTAINED, "плохая визуализация"))
+
+    assert dialog.findChild(QComboBox, "checklistDecisionKind").currentData() == CHECK_NOT_OBTAINED
+    assert dialog.findChild(QLineEdit, "checklistDecisionReason").text() == "плохая визуализация"
+    ok = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+    assert ok.isEnabled() is True

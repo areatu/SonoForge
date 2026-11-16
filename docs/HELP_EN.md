@@ -969,6 +969,14 @@ forbids extra PHI requests.
 
 In the `Report` mode a status line above the sheet names the document state: draft, no image scale, stale values, and unreviewed automatic contours. The same warnings print at the top of the PDF and travel in CSV/JSON; they cannot be hidden, because they describe the document rather than its styling. `Finish` freezes the status with the sheet version.
 
+The column left of the sheet is the **completeness checklist**: the measurements the selected study type expects. It is not an automatic diagnosis and does not suggest what to write; it shows what the chosen protocol still lacks and links to the measurement. The states are listed separately:
+
+- **Missing** — no value yet; `measure` opens the protocol step (for organ studies, the matching measurement-panel tool) with the required view and phase hint;
+- **Stale** — a value exists but its source changed; it must be measured again and does not count as filled;
+- **Unreviewed** — automatic contours are not confirmed by the physician; their count is shown separately.
+
+The summary line “Missing … · Stale … · Unreviewed …” follows the study projection. When a measurement is genuinely outside the protocol or cannot be obtained, click “○” on its row and choose **not applicable** / **not obtained** plus a **reason** — a decision without a reason is not saved. The decision is reversible, prints in the PDF as its own “Not applicable/Not obtained — reason” row, and is never treated as a measured value.
+
 Copying the source DICOM or converting video to MP4 is not measurement export.
 
 ### 17.2 PDF measurement report
@@ -980,6 +988,8 @@ Copying the source DICOM or converting video to MP4 is not measurement export.
 5. The PDF font size comes from `Settings → Other → PDF font`.
 
 The report is built from the current `MeasurementSnapshot`: Doppler, Simpson/LVEF, Teichholz, LA/RA/RV, LV mass/RWT, diastology, planimeter, linear, vessel, strain, and indexed fields when computed. Repeated linear labels are reduced to the last value in the text report. A PDF is not DICOM SR and does not contain the entire cine.
+
+When the completeness checklist is not closed, the PDF starts with “The protocol is incomplete: … missing, … stale.” The same warning travels in CSV/JSON with the other document states, so an incomplete export never looks complete. Explicit not-applicable/not-obtained decisions print as rows with their reason; stale values are never substituted by such a row.
 
 ### 17.3 Sending an annotated DICOM payload
 
