@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(comparison)`: #562 — сравнение с явно выбранным предыдущим исследованием без автоматической регистрации ([полностью](changelog.d/055-feat-study-comparison-562.md))
+
 - `feat(doppler)`: #559 — принятые/исключённые повторы с явным выбором циклов, n, mean/SD/CV и диалогом «Повторы Допплера…» ([полностью](changelog.d/054-feat-doppler-repeats-559.md))
 
 - `feat(key-images)`: #561 — «Ключевые кадры»: закладки исследования, переход к кадру после смены сортировки и честный статус `available/missing/changed` ([полностью](changelog.d/053-feat-key-images-561.md))
