@@ -10,6 +10,7 @@ Qt-free; the dialog in ``presentation`` only renders these values.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -50,13 +51,27 @@ def first_clip(study: StudyMetadata) -> InstanceMetadata | None:
     return clips[0] if clips else None
 
 
-def _surnames(study: StudyMetadata) -> set[str]:
-    return {
-        instance.patient_surname.strip()
-        for series in study.series
-        for instance in series.instances
-        if instance.patient_surname.strip()
-    }
+def _single_text(values: Iterable[str], *, casefold: bool = True) -> str:
+    """One unambiguous non-empty value of a study.
+
+    Instances of one study normally repeat the same patient fields.  If they
+    disagree, the field is empty («not proven»), never the first or the most
+    common value: an identity check must not guess.  PatientID/issuer keep
+    their case because identifiers are case-sensitive (562).
+    """
+    seen: dict[str, str] = {}
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            seen.setdefault(text.casefold() if casefold else text, text)
+    return next(iter(seen.values())) if len(seen) == 1 else ""
+
+
+def _study_field(study: StudyMetadata, attribute: str, *, casefold: bool = True) -> str:
+    return _single_text(
+        (getattr(instance, attribute, "") for series in study.series for instance in series.instances),
+        casefold=casefold,
+    )
 
 
 def study_identity(
@@ -67,13 +82,16 @@ def study_identity(
     tab_number: int = 0,
 ) -> StudyIdentity:
     """Identity fields the metadata can actually prove for one study."""
-    surnames = _surnames(study)
     modality = next((series.modality for series in study.series if series.modality), "")
     return StudyIdentity(
         study_uid=study.study_uid,
         study_datetime=study.study_datetime,
         # A conflicting name is not a patient identity: keep it empty.
-        patient_surname=surnames.pop() if len(surnames) == 1 else "",
+        patient_surname=_study_field(study, "patient_surname"),
+        patient_id=_study_field(study, "patient_id", casefold=False),
+        issuer_of_patient_id=_study_field(study, "issuer_of_patient_id", casefold=False),
+        patient_birth_date=_study_field(study, "patient_birth_date"),
+        patient_sex=_study_field(study, "patient_sex"),
         modality=modality,
         source=source,
         tab_id=tab_id,

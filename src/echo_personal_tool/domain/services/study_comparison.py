@@ -2,10 +2,15 @@
 
 The comparison shows two studies side by side without automatic registration:
 the physician chooses the other study explicitly, and the application only
-checks what the metadata can actually prove.  Study UIDs must differ; the
-patient is considered the same only when both studies carry exactly one
-non-empty family name and those names match.  An empty or ambiguous name is
-reported as *unverified* — never silently treated as the same patient.
+checks what the metadata can actually prove.  Study UIDs must differ.
+
+A patient is *proven the same* only when both studies carry a non-empty
+``PatientID`` **and** the same non-empty ``IssuerOfPatientID``.  A matching
+family name alone is not proof: the same surname is common, so without matching
+PatientID/issuer the result is *unverified*.  Corroborating fields
+(``PatientBirthDate``, ``PatientSex``, family name) can prove a mismatch, but
+never establish identity on their own.  An empty, ambiguous or contradictory
+value is always *unverified*, never silently treated as the same patient.
 
 The module is Qt-free so the rules can be tested without a window.  The
 presentation layer owns the wording; these values are stable identifiers.
@@ -26,8 +31,9 @@ class PatientMatch(str, Enum):
 
     SAME = "same"
     DIFFERENT = "different"
-    #: One or both studies have no unambiguous family name.  Not a synonym of
-    #: ``SAME``: the UI asks the physician to verify the identity.
+    #: The metadata cannot prove either way: no matching PatientID + issuer,
+    #: a missing field, or a contradiction that does not prove a mismatch.
+    #: Not a synonym of ``SAME``: the UI asks the physician to verify.
     UNVERIFIED = "unverified"
 
 
@@ -40,21 +46,43 @@ class StudyOrder(str, Enum):
     UNKNOWN = "unknown"
 
 
-def _clean_name(value: str) -> str:
-    return " ".join(value.split()).casefold()
+def _clean_text(value: str) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _clean_identifier(value: str) -> str:
+    """Trim an identifier without changing its case: PatientID is case-sensitive."""
+    return " ".join(str(value or "").split())
+
+
+def _clean_date(value: str) -> str:
+    """Normalise a DICOM DA (YYYYMMDD) or a display date for comparison."""
+    text = str(value or "")
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits if len(digits) == 8 else _clean_text(text)
+
+
+def _clean_sex(value: str) -> str:
+    return str(value or "").strip().upper()
 
 
 @dataclass(frozen=True)
 class StudyIdentity:
     """Displayable identity of one study in a comparison.
 
-    ``patient_surname`` is the single unambiguous family name of the study;
-    an empty value means «not recorded or conflicting», not «no patient».
+    Every patient field is the single unambiguous value of the study; an empty
+    value means «not recorded or conflicting», not «no patient».  PatientID and
+    its issuer are the only fields that can prove two studies are the same
+    patient; surname, birth date and sex are corroborating evidence.
     """
 
     study_uid: str
     study_datetime: datetime | None = None
     patient_surname: str = ""
+    patient_id: str = field(default="", repr=False)
+    issuer_of_patient_id: str = field(default="", repr=False)
+    patient_birth_date: str = field(default="", repr=False)
+    patient_sex: str = field(default="", repr=False)
     modality: str = ""
     source: str = ""
     tab_id: str = ""
@@ -81,6 +109,16 @@ class StudyIdentity:
         return self.clip_count > 0
 
 
+def _corroborating_conflict(left: StudyIdentity, right: StudyIdentity) -> bool:
+    """True when both sides carry the field and the values disagree."""
+    pairs = (
+        (_clean_text(left.patient_surname), _clean_text(right.patient_surname)),
+        (_clean_date(left.patient_birth_date), _clean_date(right.patient_birth_date)),
+        (_clean_sex(left.patient_sex), _clean_sex(right.patient_sex)),
+    )
+    return any(a and b and a != b for a, b in pairs)
+
+
 @dataclass(frozen=True)
 class ComparisonIdentity:
     """The checked pair: current study and the explicitly chosen other one."""
@@ -94,11 +132,34 @@ class ComparisonIdentity:
 
     @property
     def patient_match(self) -> PatientMatch:
-        left = _clean_name(self.current.patient_surname)
-        right = _clean_name(self.previous.patient_surname)
-        if not left or not right:
-            return PatientMatch.UNVERIFIED
-        return PatientMatch.SAME if left == right else PatientMatch.DIFFERENT
+        """Identity evidence, not a surname guess.
+
+        A strong identifier (``PatientID`` + ``IssuerOfPatientID``) is compared
+        first.  With the same issuer, equal IDs prove the same patient and
+        different IDs prove different patients.  Without a comparable strong
+        identifier, only a conflict in corroborating fields proves a mismatch;
+        everything else stays *unverified*.
+        """
+        current = self.current
+        previous = self.previous
+        current_id = _clean_identifier(current.patient_id)
+        previous_id = _clean_identifier(previous.patient_id)
+        current_issuer = _clean_identifier(current.issuer_of_patient_id)
+        previous_issuer = _clean_identifier(previous.issuer_of_patient_id)
+        same_issuer = bool(current_issuer and previous_issuer and current_issuer == previous_issuer)
+
+        if same_issuer and current_id and previous_id:
+            if current_id != previous_id:
+                return PatientMatch.DIFFERENT
+            if _corroborating_conflict(current, previous):
+                # The strong ID agrees, but the rest of the header contradicts
+                # itself: report unverified instead of silently choosing a side.
+                return PatientMatch.UNVERIFIED
+            return PatientMatch.SAME
+
+        if _corroborating_conflict(current, previous):
+            return PatientMatch.DIFFERENT
+        return PatientMatch.UNVERIFIED
 
     @property
     def order(self) -> StudyOrder:

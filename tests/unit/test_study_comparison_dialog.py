@@ -19,11 +19,21 @@ from echo_personal_tool.domain.services.study_comparison import (
 from echo_personal_tool.presentation.study_comparison_dialog import StudyComparisonDialog, ask_comparison_candidate
 
 
-def _identity(uid: str, date: datetime, surname: str, *, source: str = "/data") -> StudyIdentity:
+def _identity(
+    uid: str,
+    date: datetime,
+    surname: str,
+    *,
+    source: str = "/data",
+    patient_id: str = "",
+    issuer: str = "",
+) -> StudyIdentity:
     return StudyIdentity(
         study_uid=uid,
         study_datetime=date,
         patient_surname=surname,
+        patient_id=patient_id,
+        issuer_of_patient_id=issuer,
         modality="US",
         source=source,
         tab_id="tab-2",
@@ -32,7 +42,15 @@ def _identity(uid: str, date: datetime, surname: str, *, source: str = "/data") 
     )
 
 
-def _candidate(uid: str, date: datetime, surname: str, *, source: str = "/data") -> ComparisonCandidate:
+def _candidate(
+    uid: str,
+    date: datetime,
+    surname: str,
+    *,
+    source: str = "/data",
+    patient_id: str = "",
+    issuer: str = "",
+) -> ComparisonCandidate:
     instance = InstanceMetadata(
         sop_instance_uid=f"sop-{uid}",
         series_uid="series",
@@ -43,6 +61,8 @@ def _candidate(uid: str, date: datetime, surname: str, *, source: str = "/data")
         series_description="A4C",
         path=Path("/data/a.dcm"),
         patient_surname=surname,
+        patient_id=patient_id,
+        issuer_of_patient_id=issuer,
     )
     study = StudyMetadata(
         study_uid=uid,
@@ -50,7 +70,7 @@ def _candidate(uid: str, date: datetime, surname: str, *, source: str = "/data")
         series=(SeriesMetadata("series", uid, "US", "A4C", (instance,)),),
     )
     return ComparisonCandidate(
-        identity=_identity(uid, date, surname, source=source),
+        identity=_identity(uid, date, surname, source=source, patient_id=patient_id, issuer=issuer),
         instance=instance,
         study=study,
         tab_id="tab-2",
@@ -67,12 +87,16 @@ def _labels(dialog, name: str):
 def test_the_picker_shows_dates_patient_and_source(qapp) -> None:
     from PySide6.QtWidgets import QTableWidget
 
-    current = _identity("current", datetime(2026, 3, 1), "Ivanov", source="/current")
+    current = _identity(
+        "current", datetime(2026, 3, 1), "Ivanov", source="/current", patient_id="MRN-1", issuer="HOSP-A"
+    )
     dialog = StudyComparisonDialog(
         current=current,
         candidates=(
-            _candidate("older", datetime(2026, 1, 1), "Ivanov", source="/previous"),
-            _candidate("newer", datetime(2026, 4, 1), "Petrov", source="/next"),
+            _candidate(
+                "older", datetime(2026, 1, 1), "Ivanov", source="/previous", patient_id="MRN-1", issuer="HOSP-A"
+            ),
+            _candidate("newer", datetime(2026, 4, 1), "Petrov", source="/next", patient_id="MRN-2", issuer="HOSP-A"),
         ),
     )
 
@@ -89,16 +113,19 @@ def test_the_picker_shows_dates_patient_and_source(qapp) -> None:
     assert selected is not None
     assert selected.patient_match is PatientMatch.SAME
     assert selected.order is StudyOrder.PREVIOUS
-    assert "Пациент совпадает" in _labels(dialog, "comparisonHint")[0].text()
+    assert "Пациент подтверждён по PatientID и issuer" in _labels(dialog, "comparisonHint")[0].text()
     dialog.deleteLater()
 
 
 def test_a_proven_different_patient_is_called_out(qapp) -> None:
-    current = _identity("current", datetime(2026, 3, 1), "Ivanov")
-    dialog = StudyComparisonDialog(current=current, candidates=(_candidate("other", datetime(2026, 1, 1), "Petrov"),))
+    current = _identity("current", datetime(2026, 3, 1), "Ivanov", patient_id="MRN-1", issuer="HOSP-A")
+    dialog = StudyComparisonDialog(
+        current=current,
+        candidates=(_candidate("other", datetime(2026, 1, 1), "Petrov", patient_id="MRN-2", issuer="HOSP-A"),),
+    )
 
     hint = _labels(dialog, "comparisonHint")[0].text()
-    assert "Пациенты различаются" in hint
+    assert "Данные пациента различаются" in hint
     assert "Ivanov" in hint and "Petrov" in hint
     dialog.deleteLater()
 
@@ -123,4 +150,19 @@ def test_no_open_study_disables_the_action(qapp) -> None:
     assert ok.isEnabled() is False
     assert dialog.selected_candidate() is None
     assert ask_comparison_candidate(dialog, current=current, candidates=()) is None
+    dialog.deleteLater()
+
+
+def test_a_matching_surname_without_ids_is_unverified_in_the_picker(qapp) -> None:
+    current = _identity("current", datetime(2026, 3, 1), "Ivanov")
+    dialog = StudyComparisonDialog(
+        current=current,
+        candidates=(_candidate("other", datetime(2026, 1, 1), "Ivanov"),),
+    )
+
+    hint = _labels(dialog, "comparisonHint")[0].text()
+    assert "не подтверждена" in hint
+    assert "PatientID" in hint
+    assert dialog.identity() is not None
+    assert dialog.identity().patient_match is PatientMatch.UNVERIFIED
     dialog.deleteLater()

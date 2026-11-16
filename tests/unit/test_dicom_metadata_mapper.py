@@ -334,3 +334,22 @@ def test_padding_and_monochrome1_are_preserved_for_the_renderer() -> None:
     assert meta.display.is_monochrome1 is True
     assert meta.display.pixel_padding_value == -2000.0
     assert meta.display.pixel_padding_range_limit == -1990.0
+
+
+def test_patient_identifiers_are_mapped_and_kept_out_of_repr() -> None:
+    dataset = _minimal_dataset()
+    dataset.PatientID = "MRN-42"
+    dataset.IssuerOfPatientID = "HOSP-A"
+    dataset.PatientBirthDate = "19800517"
+    dataset.PatientSex = "F"
+
+    metadata = map_instance_metadata(dataset)
+
+    assert metadata.patient_id == "MRN-42"
+    assert metadata.issuer_of_patient_id == "HOSP-A"
+    assert metadata.patient_birth_date == "19800517"
+    assert metadata.patient_sex == "F"
+    rendered = repr(metadata)
+    assert "MRN-42" not in rendered
+    assert "HOSP-A" not in rendered
+    assert "19800517" not in rendered
