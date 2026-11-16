@@ -221,6 +221,10 @@ class ComparisonCoordinator:
         return StudyIdentity(
             study_uid=study_uid or "",
             patient_surname=getattr(instance, "patient_surname", ""),
+            patient_id=getattr(instance, "patient_id", ""),
+            issuer_of_patient_id=getattr(instance, "issuer_of_patient_id", ""),
+            patient_birth_date=getattr(instance, "patient_birth_date", ""),
+            patient_sex=getattr(instance, "patient_sex", ""),
             modality=instance.modality,
             source="",
             tab_id=active_tab_id or "",

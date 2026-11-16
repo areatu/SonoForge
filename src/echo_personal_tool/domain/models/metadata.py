@@ -60,6 +60,15 @@ class InstanceMetadata:
     #: Family-name component of DICOM PatientName, for the opt-in start page.
     #: RAM metadata only: never included in measurement exports or diagnostics.
     patient_surname: str = field(default="", repr=False, compare=False)
+    #: DICOM PatientID and IssuerOfPatientID.  Together they identify a patient
+    #: inside one issuer; without the issuer a matching ID is not proof (562).
+    #: RAM metadata only, never serialized into reports or diagnostics.
+    patient_id: str = field(default="", repr=False, compare=False)
+    issuer_of_patient_id: str = field(default="", repr=False, compare=False)
+    #: DICOM PatientBirthDate (YYYYMMDD) and PatientSex (M/F/O): corroborating
+    #: identity evidence that can prove a mismatch, never identity on its own.
+    patient_birth_date: str = field(default="", repr=False, compare=False)
+    patient_sex: str = field(default="", repr=False, compare=False)
     #: DICOM display chain facts (rescale, VOI windows, LUT, MONOCHROME1).
     #: ``None`` for ultrasound/plain images, which keep the US W/L path.
     display: DicomDisplay | None = field(default=None, compare=False, repr=False)

@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `fix(comparison)`: #562 — идентичность пациента подтверждается по `PatientID` + issuer, совпадение фамилии само по себе больше не даёт «пациент совпадает» ([полностью](changelog.d/057-fix-comparison-patient-id-562.md))
+
 - `feat(dicom)`: #542 — тракт DICOM display: modality → VOI → presentation, окна из заголовка и числовые W/L, MONOCHROME1 и Pixel Padding ([полностью](changelog.d/056-feat-dicom-display-542.md))
 
 - `feat(comparison)`: #562 — сравнение с явно выбранным предыдущим исследованием без автоматической регистрации ([полностью](changelog.d/055-feat-study-comparison-562.md))
