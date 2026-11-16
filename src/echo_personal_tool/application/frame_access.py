@@ -28,6 +28,10 @@ class FrameAccess:
         """Readiness, total and resident frame counts without mutating the cache."""
         return self._cache.status()
 
+    def budget_bytes(self) -> int:
+        """Byte ceiling shared by the active study's cached frames."""
+        return self._cache.memory_budget
+
     def frame(self, source_path: Path | str | None, index: int) -> np.ndarray | None:
         """Return one resident frame for ``source_path``, or ``None`` on a miss.
 
