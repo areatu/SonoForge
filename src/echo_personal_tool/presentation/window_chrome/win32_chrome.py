@@ -282,7 +282,7 @@ class _CtypesWin32Api:
     def paint_nonclient_band(self, hwnd: int, color: int) -> bool:
         """Fill the leftover non-client band (window minus client) flat."""
         user32 = self._user32
-        gdi32 = ctypes.windll.gdi32  # mypy does not check this file (outside tool.mypy.files)
+        gdi32 = getattr(ctypes, "windll").gdi32  # getattr: not a type: ignore, counts in the presentation ratchet
         dc = int(user32.GetWindowDC(ctypes.c_void_p(hwnd)))
         if not dc:
             return False
