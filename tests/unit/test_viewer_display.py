@@ -12,6 +12,7 @@ pytest.importorskip("pytestqt")
 
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.domain.models.dicom_display import DicomDisplay, WindowPreset
 from echo_personal_tool.imaging.display import compute_display_levels, dr_percentiles_from_slider
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.viewer.display import ViewerDisplay
@@ -38,10 +39,11 @@ def _frame(seed: int = 0, *, dtype: type = np.uint8, shape: tuple[int, ...] = (3
 
 
 class _Harness:
-    def __init__(self, qtbot) -> None:
+    def __init__(self, qtbot, display: DicomDisplay | None = None) -> None:
         self.host = QWidget()
         qtbot.addWidget(self.host)
         self.frame: np.ndarray | None = _frame()
+        self.display_metadata = display
         self.enabled = True
         self.color_source: np.ndarray | None = None
         self.color_active = False
@@ -55,6 +57,7 @@ class _Harness:
             color_active_provider=lambda: self.color_active,
             image_item=self.image,
             invalidate_edge_map=self._invalidate,
+            display_provider=lambda: self.display_metadata,
         )
 
     def _invalidate(self) -> None:
@@ -210,3 +213,125 @@ def test_binding_external_slider_mirrors_values_and_enabled(harness: _Harness) -
     assert harness.display.window_slider.isEnabled() is False
 
     harness.display.disconnect_external()
+
+
+# ── DICOM display chain (542) ───────────────────────────────────────
+
+
+def _ct_display(**kwargs) -> DicomDisplay:
+    base = dict(rescale_slope=1.0, rescale_intercept=-1024.0, value_unit="HU")
+    base.update(kwargs)
+    return DicomDisplay(**base)
+
+
+def test_dicom_ct_renders_negative_values_through_the_display_chain(qtbot) -> None:
+    harness = _Harness(qtbot, _ct_display(window_presets=(WindowPreset(center=0, width=1000),)))
+    harness.frame = np.array([[0, 524, 1024, 1524, 2048]], dtype=np.int16)
+
+    harness.display.update_levels()
+
+    assert harness.image.frames[-1].tolist() == [[0, 0, 128, 255, 255]]
+    assert harness.display.window_level_values() == (0.0, 1000.0)
+
+
+def test_monochrome1_is_inverted_on_screen(qtbot) -> None:
+    preset = (WindowPreset(center=0, width=2000),)
+    normal = _Harness(qtbot, _ct_display(window_presets=preset))
+    inverted = _Harness(qtbot, _ct_display(photometric="MONOCHROME1", window_presets=preset))
+    frame = np.array([[0, 1024, 2048]], dtype=np.int16)
+    normal.frame = frame.copy()
+    inverted.frame = frame.copy()
+
+    normal.display.update_levels()
+    inverted.display.update_levels()
+
+    assert inverted.image.frames[-1].tolist() == [[255 - int(v) for v in normal.image.frames[-1][0]]]
+
+
+def test_header_presets_are_selectable_and_numeric_wl_overrides_them(qtbot) -> None:
+    harness = _Harness(
+        qtbot,
+        _ct_display(
+            window_presets=(
+                WindowPreset(center=0, width=1000, explanation="soft"),
+                WindowPreset(center=0, width=100, explanation="bone"),
+            )
+        ),
+    )
+    harness.frame = np.array([[1024]], dtype=np.int16)
+
+    assert [preset.label for preset in harness.display.window_presets()] == ["soft", "bone"]
+    assert harness.display.apply_window_preset(1) is True
+    assert harness.display.window_level_values() == (0.0, 100.0)
+
+    assert harness.display.apply_numeric_window(-500.0, 100.0) is True
+    harness.display.update_levels()
+    assert harness.display.window_level_values() == (-500.0, 100.0)
+    assert harness.image.frames[-1].tolist() == [[255]]
+
+
+def test_invalid_numeric_window_is_rejected(qtbot) -> None:
+    harness = _Harness(qtbot, _ct_display())
+
+    assert harness.display.apply_numeric_window(0.0, 0.0) is False
+    assert harness.display.apply_window_preset(9) is False
+
+
+def test_switching_files_clears_the_numeric_dicom_window(qtbot) -> None:
+    harness = _Harness(qtbot, _ct_display(window_presets=(WindowPreset(center=0, width=1000),)))
+    harness.frame = np.array([[1024]], dtype=np.int16)
+    assert harness.display.apply_numeric_window(500.0, 50.0) is True
+
+    harness.display.set_values(100, 50, 50, update_display=False)
+
+    assert harness.display.window_level_values() == (0.0, 1000.0)
+    harness.display.update_levels()
+    assert harness.display.window_level_values() == (0.0, 1000.0)
+
+
+def test_context_menu_offers_header_windows_only_for_dicom_display(qtbot) -> None:
+    from PySide6.QtWidgets import QMenu
+
+    from echo_personal_tool.presentation.viewer.dicom_window_menu import add_dicom_window_actions
+
+    plain = _Harness(qtbot)
+    menu = QMenu(plain.host)
+    add_dicom_window_actions(menu, plain.display)
+    assert menu.actions() == []
+
+    ct = _Harness(qtbot, _ct_display(window_presets=(WindowPreset(center=40, width=400),)))
+    menu = QMenu(ct.host)
+    add_dicom_window_actions(menu, ct.display)
+    window_menu = menu.actions()[0].menu()
+
+    assert window_menu is not None
+    assert [action.text() for action in window_menu.actions()][0] == "40 / 400"
+
+
+def test_numeric_dicom_window_is_remembered_per_instance_uid(qtbot) -> None:
+    harness = _Harness(qtbot, _ct_display(window_presets=(WindowPreset(center=0, width=1000),)))
+    harness.frame = np.array([[1024]], dtype=np.int16)
+    harness.display.apply_numeric_window(500.0, 100.0)
+    harness.display.remember_instance("1.2.3")
+    harness.display.set_values(100, 50, 50, update_display=False)
+
+    assert harness.display.restore_instance("1.2.3") is True
+    assert harness.display.window_level_values() == (500.0, 100.0)
+
+
+def test_path_switch_keeps_the_numeric_window_restored_for_the_clip(qtbot) -> None:
+    harness = _Harness(qtbot, _ct_display(window_presets=(WindowPreset(center=0, width=1000),)))
+    harness.frame = np.array([[1024]], dtype=np.int16)
+    harness.display.apply_numeric_window(500.0, 100.0)
+    harness.display.remember_instance("1.2.3")
+    harness.display.set_values(100, 50, 50, update_display=False)
+    assert harness.display.restore_instance("1.2.3") is True
+
+    harness.display.set_current_path(Path("clip.dcm"))
+
+    assert harness.display.window_level_values() == (500.0, 100.0)
+
+
+def test_numeric_window_is_rejected_without_a_dicom_display(qtbot) -> None:
+    harness = _Harness(qtbot)
+    assert harness.display.apply_numeric_window(40.0, 80.0) is False
