@@ -44,3 +44,24 @@ def test_gallery_only_switch_preserves_controller_until_comparison_ends():
     coordinator.finish_comparison_browsing()
     coordinator.load_content.assert_called_once_with(second)
     assert coordinator.comparison_origin_tab_id is None
+
+
+def test_switching_tabs_ends_an_explicit_previous_study_pair():
+    tabs = TabSessionManager()
+    tabs.open_tab(origin=TAB_ORIGIN_FOLDER, root="/first", studies=[])
+    second = tabs.open_tab(origin=TAB_ORIGIN_FOLDER, root="/second", studies=[], activate=False)
+    gallery = SimpleNamespace(populate=Mock(), request_visible_previews=Mock())
+    comparison = SimpleNamespace(previous_identity=Mock(return_value=object()), close_previous_comparison=Mock())
+    host = SimpleNamespace(
+        _multiview_mode=True,
+        _gallery=gallery,
+        _tab_flush_or_block=Mock(return_value=True),
+        _comparison=comparison,
+    )
+    coordinator = TabCoordinator(host, manager=tabs)
+    coordinator.park_active = Mock()
+    coordinator.refresh_strip = Mock()
+
+    assert coordinator.switch_to(second.tab_id)
+
+    comparison.close_previous_comparison.assert_called_once_with(announce=False)

@@ -858,3 +858,33 @@ def test_stale_completion_does_not_consume_new_request(rig):
     assert rig.mv._inflight[PaneId.RIGHT] == current
     rig.mv._on_pane_frame_failed(PaneId.RIGHT, pane.generation - 1, "old failure")
     assert rig.mv._inflight[PaneId.RIGHT] == current
+
+
+def test_cancel_pending_drops_late_frames_without_clearing_the_clips(rig) -> None:
+    _load_both(rig)
+    left, right = rig.mv.session.pane(PaneId.LEFT), rig.mv.session.pane(PaneId.RIGHT)
+    old_left, old_right = left.generation, right.generation
+    old_pair = rig.mv.session.generation
+    rig.mv._inflight[PaneId.RIGHT] = (old_right, 1, old_pair)
+    painted = len(rig.panes[PaneId.RIGHT].viewer.frames)
+
+    rig.mv.cancel_pending()
+
+    assert left.instance is not None and right.instance is not None
+    assert left.generation > old_left and right.generation > old_right
+    assert rig.mv.session.generation > old_pair
+    assert rig.mv._inflight == {}
+
+    rig.mv._on_pane_frame(PaneId.RIGHT, old_right, 1, np.full((2, 2), 99, dtype=np.uint8))
+    assert len(rig.panes[PaneId.RIGHT].viewer.frames) == painted
+
+
+def test_a_painted_frame_reports_its_byte_size(rig) -> None:
+    decoded: list[tuple[str, int]] = []
+    rig.mv.frame_decoded.connect(lambda pane, size: decoded.append((pane, size)))
+
+    _load_both(rig)
+
+    # The left pane belongs to the main controller and is not painted here;
+    # only the independently loaded right pane reports a decoded frame.
+    assert decoded == [("right", 4)]

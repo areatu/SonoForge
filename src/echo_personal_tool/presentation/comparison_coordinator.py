@@ -4,7 +4,8 @@ A slice of ``MainWindow`` moved into its own module: the two-pane comparison
 mode — its session controller, the pane wrappers, the shared transport bar, the
 gallery→pane routing (plain click, Ctrl+click arming, «Открыть слева/справа»),
 the pane badges «вкладка N · дата · модальность/вид» (Э10 §6.3, no PHI, also in
-the Presenter mirror) and the stage-1 gate that refuses measurement tools until
+the Presenter mirror; an explicit previous-study pair adds the patient context,
+because issue 562 requires the identity to be visible) and the stage-1 gate that refuses measurement tools until
 pane-scoped state exists (spec §10.2).
 
 Since Э10 the two clips may come from different studies/tabs: comparability is
@@ -26,7 +27,7 @@ roadmap row N-08.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QStackedWidget, QStatusBar, QWidget
@@ -34,8 +35,16 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QStackedWidg
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.application.study_comparison import current_study_identity
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
+from echo_personal_tool.domain.services.study_comparison import (
+    ComparisonIdentity,
+    ComparisonMemoryBudget,
+    PatientMatch,
+    StudyIdentity,
+    StudyOrder,
+)
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
@@ -94,6 +103,7 @@ class ComparisonCoordinator:
         self._session.replace_requested.connect(self.on_replace_requested)
         self._session.session_changed.connect(self.refresh_transport)
         self._session.left_pane_released.connect(self.on_left_released)
+        self._session.frame_decoded.connect(self._on_frame_decoded)
         self.pane_left: MultiViewPaneWidget | None = None
         self.pane_right: MultiViewPaneWidget | None = None
         self.transport: MultiViewTransportBar | None = None
@@ -102,6 +112,11 @@ class ComparisonCoordinator:
         #: UID of the first Ctrl+click pick while Multiview is still off.
         self.start_hint_uid: str | None = None
         self.active_viewer: ViewerWidget | None = None
+        #: Explicit current↔previous pair; ``None`` keeps ordinary Multiview.
+        self._previous: ComparisonIdentity | None = None
+        self._budget = ComparisonMemoryBudget()
+        #: Read-only results of the previous study, applied on its first frame.
+        self._pending_results: tuple[str, object] | None = None
 
     # ── state ───────────────────────────────────────────────────────
 
@@ -130,13 +145,25 @@ class ComparisonCoordinator:
 
     # ── pane badges (Э10 §6.3) ───────────────────────────────────────
 
-    def pane_badge(self, instance: InstanceMetadata, study_uid: str | None, *, view_override: str = "") -> str:
+    def pane_badge(
+        self,
+        instance: InstanceMetadata,
+        study_uid: str | None,
+        *,
+        view_override: str = "",
+        pane_id: PaneId | None = None,
+    ) -> str:
         """«вкладка N · дата · модальность/вид» for one pane.
 
-        Carries no patient data (N-01): only the tab number, the study date and
-        the modality/view of the clip.
+        Normally carries no patient data (N-01): only the tab number, the
+        study date and the modality/view.  An explicit previous-study pair
+        replaces it with «Текущее/Прошлое: дата · пациент» (issue 562): the whole
+        point of that mode is that both sides stay identifiable on screen.
         """
         window = self._window
+        comparison_badge = self._comparison_badge(instance, study_uid, pane_id)
+        if comparison_badge:
+            return comparison_badge
         tabs = window._tab_coordinator.tabs
         tab_number = next((i for i, tab in enumerate(tabs.tabs, start=1) if tab.tab_id == tabs.active_tab_id), 1)
         study_date = ""
@@ -167,7 +194,228 @@ class ComparisonCoordinator:
         pane = self._session.session.pane(pane_id)
         if pane.instance is None:
             return
-        self._session.set_pane_badge(pane_id, self.pane_badge(pane.instance, pane.study_uid, view_override=label))
+        self._session.set_pane_badge(
+            pane_id, self.pane_badge(pane.instance, pane.study_uid, view_override=label, pane_id=pane_id)
+        )
+        self.refresh_transport()
+
+    # ── previous-study comparison (issue 562) ───────────────────────
+
+    def current_identity(self) -> StudyIdentity | None:
+        """Identity of the study in the main viewer, or None before a load."""
+        state = self._window._controller.state_manager.snapshot
+        instance = getattr(state, "instance", None)
+        if instance is None:
+            return None
+        study_uid = self.study_uid(instance)
+        if not study_uid:
+            return None
+        active_tab_id = self._window._tab_coordinator.tabs.active_tab_id
+        known = current_study_identity(
+            self._window._tab_coordinator.tabs.tabs,
+            active_tab_id=active_tab_id,
+            study_uid=study_uid,
+        )
+        if known is not None:
+            return known
+        return StudyIdentity(
+            study_uid=study_uid or "",
+            patient_surname=getattr(instance, "patient_surname", ""),
+            modality=instance.modality,
+            source="",
+            tab_id=active_tab_id or "",
+            clip_count=1,
+        )
+
+    def previous_identity(self) -> ComparisonIdentity | None:
+        """The explicit pair currently on screen, if this is a study comparison."""
+        return self._previous
+
+    def start_previous(
+        self,
+        previous: StudyIdentity,
+        instance: InstanceMetadata,
+        *,
+        measurements: object | None = None,
+    ) -> bool:
+        """Open *instance* beside the current study after identity checks.
+
+        The study is chosen explicitly by the physician; this method only
+        refuses an impossible pair (the same study, no current study) and asks
+        for confirmation when the metadata prove different patients.  Neither
+        study's measurements, calibration or playback state is copied to the
+        other pane.
+        """
+        current = self.current_identity()
+        if current is None:
+            self._window._show_status(tr("comparison.status.no_current"))
+            return False
+        identity = ComparisonIdentity(current, previous)
+        if not identity.can_start:
+            self._window._show_status(tr("comparison.status.same_study"))
+            return False
+        if identity.needs_patient_confirmation and not self._confirm_different_patient(identity):
+            return False
+        if self._previous is not None:
+            self.close_previous_comparison(announce=False)
+        if not self.enabled():
+            self._window._enable_multiview_mode()
+        self._previous = identity
+        self._budget = ComparisonMemoryBudget(self._budget_cap())
+        self._pending_results = (instance.sop_instance_uid, measurements) if measurements is not None else None
+        if not self.load_into_pane(PaneId.RIGHT, instance):
+            self._previous = None
+            self._pending_results = None
+            self._budget.clear()
+            return False
+        # The current study stays the measuring side: a stale selection of the
+        # right pane from an earlier session must not block its tools.
+        self._session.activate(PaneId.LEFT)
+        self.active_viewer = self._window._viewer
+        self._refresh_left_badge()
+        self.refresh_transport()
+        self._window._show_status(
+            tr("comparison.status.started", date=previous.date_text, patient=previous.patient_text)
+        )
+        return True
+
+    def close_previous_comparison(self, *, announce: bool = True) -> bool:
+        """End the study pair, invalidating late loads and releasing its frames."""
+        if self._previous is None:
+            return False
+        self._previous = None
+        self._pending_results = None
+        self._budget.clear()
+        self._session.cancel_pending()
+        if self._session.session.pane(PaneId.RIGHT).has_clip:
+            self._session.clear_pane(PaneId.RIGHT)
+        self._refresh_left_badge()
+        if announce:
+            self._window._show_status(tr("comparison.status.closed"))
+        self.refresh_transport()
+        return True
+
+    def _refresh_left_badge(self) -> None:
+        """Re-label the main pane after the pair starts or ends."""
+        left = self._session.session.pane(PaneId.LEFT)
+        if left.instance is not None:
+            self._session.set_pane_badge(
+                PaneId.LEFT,
+                self.pane_badge(left.instance, left.study_uid, pane_id=PaneId.LEFT),
+            )
+
+    def _comparison_badge(
+        self,
+        instance: InstanceMetadata,
+        study_uid: str | None,
+        pane_id: PaneId | None,
+    ) -> str:
+        pair = self._previous
+        if pair is None or pane_id is None:
+            return ""
+        if pane_id is PaneId.LEFT and study_uid == pair.current.study_uid:
+            identity = pair.current
+            key = "comparison.badge.current"
+        elif pane_id is PaneId.RIGHT and study_uid == pair.previous.study_uid:
+            identity = pair.previous
+            key = "comparison.badge.previous"
+        else:
+            return ""
+        return tr(key, date=identity.date_text, patient=identity.patient_text)
+
+    def _comparison_status(self) -> str:
+        pair = self._previous
+        if pair is None:
+            return ""
+        order = {
+            StudyOrder.PREVIOUS: "comparison.order.previous",
+            StudyOrder.SAME_DAY: "comparison.order.same_day",
+            StudyOrder.NEXT: "comparison.order.next",
+            StudyOrder.UNKNOWN: "comparison.order.unknown",
+        }[pair.order]
+        patient = {
+            PatientMatch.SAME: "comparison.patient.same",
+            PatientMatch.DIFFERENT: "comparison.patient.different",
+            PatientMatch.UNVERIFIED: "comparison.patient.unverified",
+        }[pair.patient_match]
+        return " · ".join(
+            (
+                tr(order),
+                tr(
+                    patient,
+                    current=pair.current.patient_text,
+                    previous=pair.previous.patient_text,
+                    patient=pair.previous.patient_text,
+                ),
+            )
+        )
+
+    def _confirm_different_patient(self, pair: ComparisonIdentity) -> bool:
+        answer = QMessageBox.question(
+            cast("QWidget", self._window),
+            tr("comparison.confirm.title"),
+            tr(
+                "comparison.confirm.body",
+                current=pair.current.patient_text,
+                previous=pair.previous.patient_text,
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _budget_cap(self) -> int | None:
+        access = getattr(self._window._controller, "frame_access", None)
+        budget = getattr(access, "budget_bytes", None)
+        if not callable(budget):
+            return None
+        try:
+            cap = int(budget())
+        except (TypeError, ValueError):
+            return None
+        return cap if cap > 0 else None
+
+    def _on_frame_decoded(self, pane_id: str, frame_bytes: int) -> None:
+        """Charge a comparison frame against the shared budget and paint results."""
+        if self._previous is None:
+            return
+        if not self._budget.reserve(pane_id, frame_bytes):
+            self._abort_for_memory()
+            return
+        if pane_id == PaneId.RIGHT.value and self._pending_results is not None:
+            uid, data = self._pending_results
+            self._pending_results = None
+            self._apply_previous_results(uid, data)
+
+    def _apply_previous_results(self, instance_uid: str, data: object) -> None:
+        """Show the previous study's stored manual results read-only."""
+        pane = self.pane_right
+        if pane is None:
+            return
+        viewer = pane.viewer
+        contours = [
+            contour
+            for contour in getattr(data, "contours", ())
+            if getattr(contour, "sop_instance_uid", "") == instance_uid
+        ]
+        measurements = [
+            measurement
+            for measurement in getattr(data, "linear_measurements", ())
+            if getattr(measurement, "sop_instance_uid", "") == instance_uid
+        ]
+        if contours:
+            viewer.apply_contours(contours)
+        if measurements:
+            viewer.add_linear_measurements(measurements)
+
+    def _abort_for_memory(self) -> None:
+        self._budget.clear()
+        self._previous = None
+        self._pending_results = None
+        self._session.cancel_pending()
+        if self._session.session.pane(PaneId.RIGHT).has_clip:
+            self._session.clear_pane(PaneId.RIGHT)
+        self._window._show_status(tr("comparison.memory.body"))
         self.refresh_transport()
 
     # ── panes and transport ─────────────────────────────────────────
@@ -201,11 +449,14 @@ class ComparisonCoordinator:
         """Leave Multiview: hide the panes, hand the main viewer back.
 
         The session itself survives so re-enabling the mode restores the second
-        clip, its frame and its markers (spec 4.3).
+        clip, its frame and its markers (spec 4.3).  An explicit previous-study
+        pair is different: leaving it cancels its loads and drops the read-only
+        side, so no result is carried into the next comparison.
         """
         window = self._window
         if self.enabled():
             return
+        self.close_previous_comparison(announce=False)
         self._session.pause()
         transport = self.transport
         if transport is not None and window._root_layout.indexOf(transport) >= 0:
@@ -265,13 +516,18 @@ class ComparisonCoordinator:
         pane = self._session.session.pane(PaneId.LEFT)
         if pane.instance is not None and pane.instance.sop_instance_uid == instance.sop_instance_uid:
             return
+        study_uid = self.study_uid(instance)
+        if self._previous is not None and study_uid != self._previous.current.study_uid:
+            # The main viewer moved to another study: the explicit pair no
+            # longer describes what is on screen.
+            self.close_previous_comparison(announce=False)
         pane.instance = instance
-        pane.study_uid = self.study_uid(instance)
+        pane.study_uid = study_uid
         pane.current_frame = state.current_frame_index
         pane.load_error = None
         pane.generation += 1
         pane.clear_markers()
-        self._session.set_pane_badge(PaneId.LEFT, self.pane_badge(instance, pane.study_uid))
+        self._session.set_pane_badge(PaneId.LEFT, self.pane_badge(instance, pane.study_uid, pane_id=PaneId.LEFT))
         self._session.session.common_start[PaneId.LEFT] = pane.current_frame
         if self._session.session.active_pane is None:
             self._session.activate(PaneId.LEFT)
@@ -326,7 +582,12 @@ class ComparisonCoordinator:
         """
         if not self.enabled():
             return False
-        self._window._show_status(tr("multiview.blocked.tools"))
+        if self._previous is not None and self._session.session.active_pane in (None, PaneId.LEFT):
+            # The current study keeps its normal tools; the previous study is
+            # a read-only side and never receives the active tool.
+            return False
+        message = "comparison.tool.readonly" if self._previous is not None else "multiview.blocked.tools"
+        self._window._show_status(tr(message))
         logger.info("[multiview] tool %s refused: pane-scoped state not ready", tool_name)
         return True
 
@@ -339,6 +600,14 @@ class ComparisonCoordinator:
 
     def on_pane_cleared(self, pane_id: PaneId) -> None:
         self._session.clear_pane(pane_id)
+        if pane_id is PaneId.RIGHT and self._previous is not None:
+            # The physician closed the read-only side: end the pair instead of
+            # leaving a stale identity and its frame reservation behind.
+            self._previous = None
+            self._pending_results = None
+            self._budget.clear()
+            self._refresh_left_badge()
+            self.refresh_transport()
 
     def on_pane_frame_selected(self, pane_id: PaneId, index: int) -> None:
         if self._session.session.playback_mode is PlaybackMode.INDEPENDENT:
@@ -422,7 +691,9 @@ class ComparisonCoordinator:
             return
         transport.refresh_mode(self._session.session.playback_mode)
         transport.set_playing(self._session.any_playback_active())
-        transport.set_status(self._session.status_text())
+        status = self._session.status_text()
+        comparison_status = self._comparison_status()
+        transport.set_status(f"{comparison_status} · {status}" if comparison_status else status)
         left_rate, right_rate = self._session.pane_rate_texts()
         transport.set_pane_rates(left_rate, right_rate)
         left_badge, right_badge = self.pane_badge_texts()
@@ -544,6 +815,13 @@ class ComparisonCoordinator:
         """
         session = self._session.session
         target_pane = session.pane(pane_id)
+        if pane_id is PaneId.RIGHT and self._previous is not None:
+            target_uid = self.study_uid(instance)
+            if target_uid != self._previous.previous.study_uid:
+                # Replacing the right clip by hand ends the named pair instead
+                # of leaving its date/patient badge on a different study.
+                self.close_previous_comparison(announce=False)
+                target_pane = session.pane(pane_id)
         other_id = session.other(pane_id)
         other_pane = session.pane(other_id)
         if other_pane.instance is not None and other_pane.instance_uid == instance.sop_instance_uid:
@@ -554,7 +832,9 @@ class ComparisonCoordinator:
             self._session.activate(pane_id)
             return False
         study_uid = self.study_uid(instance)
-        self._session.load_instance(pane_id, instance, study_uid, badge=self.pane_badge(instance, study_uid))
+        self._session.load_instance(
+            pane_id, instance, study_uid, badge=self.pane_badge(instance, study_uid, pane_id=pane_id)
+        )
         reason = self._session.comparison_reason()
         if reason is not None:
             self._window._show_status(reason)
@@ -564,7 +844,13 @@ class ComparisonCoordinator:
 
     def reset_session(self) -> None:
         """A new study/patient invalidates every pane (spec 4.3)."""
+        self._previous = None
+        self._pending_results = None
+        self._budget.clear()
         self._session.reset_session()
 
     def shutdown(self) -> None:
+        self._budget.clear()
+        self._previous = None
+        self._pending_results = None
         self._session.shutdown()

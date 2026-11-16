@@ -18,11 +18,14 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+from datetime import datetime
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMessageBox, QSlider, QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget
 
-from echo_personal_tool.domain.models.metadata import InstanceMetadata
+from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
+from echo_personal_tool.domain.services.study_comparison import StudyIdentity
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation import comparison_coordinator as cc
 from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoordinator
@@ -42,6 +45,14 @@ class FakeViewer(QWidget):
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.transport = SimpleNamespace(timeline_slider=self._timeline_slider)
         self.transport_states: list[dict[str, Any]] = []
+        self.applied_contours: list[object] = []
+        self.added_measurements: list[object] = []
+
+    def apply_contours(self, contours) -> None:
+        self.applied_contours.extend(contours)
+
+    def add_linear_measurements(self, measurements) -> None:
+        self.added_measurements.extend(measurements)
 
     def set_transport_state(self, **kwargs: Any) -> None:
         self.transport_states.append(kwargs)
@@ -792,3 +803,181 @@ def test_other_tab_gallery_routes_clip_to_right_pane(host, coordinator, ctrl_mod
     assert _right(coordinator).instance == right
     assert _right(coordinator).study_uid == "other"
     assert coordinator.session.session.active_pane is PaneId.RIGHT
+
+
+# ── previous-study comparison (issue 562) ───────────────────────────
+
+
+def _study(uid: str, date: datetime, instance: InstanceMetadata, surname: str = "Ivanov") -> StudyMetadata:
+    instance = instance.__class__(**{**instance.__dict__, "patient_surname": surname})
+    return StudyMetadata(
+        study_uid=uid,
+        study_datetime=date,
+        series=(SeriesMetadata("series", uid, "US", "A4C", (instance,)),),
+    )
+
+
+def _with_current_study(host: FakeWindow) -> None:
+    current = _instance("sop.left")
+    host._controller.state_manager.snapshot = SimpleNamespace(instance=current, current_frame_index=0, is_playing=False)
+    host._tab_coordinator.tabs = _FakeTabs(
+        (
+            SimpleNamespace(
+                tab_id="tab-1",
+                root="/current",
+                studies=[_study("study.1", datetime(2026, 3, 1), current)],
+            ),
+        ),
+        active_tab_id="tab-1",
+    )
+
+
+def _previous(host: FakeWindow) -> StudyIdentity:
+    host._controller.study_uid_by_sop["sop.prev"] = "study.2"
+    return StudyIdentity(
+        study_uid="study.2",
+        study_datetime=datetime(2026, 1, 1),
+        patient_surname="Ivanov",
+        modality="US",
+        source="/previous",
+        tab_id="tab-2",
+        tab_number=2,
+        clip_count=1,
+    )
+
+
+def test_the_current_identity_comes_from_the_open_tabs(host, coordinator) -> None:
+    _with_current_study(host)
+
+    identity = coordinator.current_identity()
+
+    assert identity is not None
+    assert identity.study_uid == "study.1"
+    assert identity.date_text == "01.03.2026"
+    assert identity.patient_text == "Ivanov"
+
+
+def test_an_explicit_previous_study_opens_beside_the_current_one(host, coordinator) -> None:
+    _with_current_study(host)
+
+    assert coordinator.start_previous(_previous(host), _instance("sop.prev")) is True
+
+    pair = coordinator.previous_identity()
+    assert pair is not None
+    assert pair.previous.study_uid == "study.2"
+    assert _right(coordinator).instance is not None
+    assert _right(coordinator).instance.sop_instance_uid == "sop.prev"
+    assert host._multiview_mode is True
+    assert coordinator.session.session.active_pane is PaneId.LEFT
+    assert coordinator.active_viewer is host._viewer
+    badges = coordinator.pane_badge_texts()
+    assert "Текущее: 01.03.2026 · Ivanov" in badges[0]
+    assert "Прошлое: 01.01.2026 · Ivanov" in badges[1]
+    assert host.statuses[-1] == tr("comparison.status.started", date="01.01.2026", patient="Ivanov")
+
+
+def test_the_same_study_is_refused(host, coordinator) -> None:
+    _with_current_study(host)
+    previous = StudyIdentity(study_uid="study.1", study_datetime=datetime(2026, 1, 1), patient_surname="Ivanov")
+
+    assert coordinator.start_previous(previous, _instance("sop.same")) is False
+    assert host.statuses[-1] == tr("comparison.status.same_study")
+    assert coordinator.previous_identity() is None
+
+
+def test_a_different_patient_requires_confirmation(host, coordinator, monkeypatch) -> None:
+    _with_current_study(host)
+    previous = StudyIdentity(study_uid="study.2", study_datetime=datetime(2026, 1, 1), patient_surname="Petrov")
+    host._controller.study_uid_by_sop["sop.prev"] = "study.2"
+    answers = iter([QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes])
+    monkeypatch.setattr(cc.QMessageBox, "question", lambda *args, **kwargs: next(answers))
+
+    assert coordinator.start_previous(previous, _instance("sop.prev")) is False
+    assert coordinator.previous_identity() is None
+
+    assert coordinator.start_previous(previous, _instance("sop.prev")) is True
+    assert coordinator.previous_identity() is not None
+
+
+def test_closing_the_comparison_cancels_and_drops_the_second_study(host, coordinator) -> None:
+    _with_current_study(host)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+
+    assert coordinator.close_previous_comparison() is True
+
+    assert coordinator.previous_identity() is None
+    assert _right(coordinator).instance is None
+    assert host.statuses[-1] == tr("comparison.status.closed")
+
+
+def test_loading_another_study_into_the_right_pane_ends_the_pair(host, coordinator) -> None:
+    _with_current_study(host)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+    host._controller.study_uid_by_sop["sop.other"] = "study.3"
+
+    assert coordinator.load_into_pane(PaneId.RIGHT, _instance("sop.other")) is True
+
+    assert coordinator.previous_identity() is None
+    assert _right(coordinator).instance.sop_instance_uid == "sop.other"
+
+
+def test_a_new_study_resets_the_pair_and_its_budget(host, coordinator) -> None:
+    _with_current_study(host)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+
+    coordinator.reset_session()
+
+    assert coordinator.previous_identity() is None
+    assert _right(coordinator).instance is None
+    assert _right(coordinator).badge_text == ""
+
+
+def test_clearing_the_previous_pane_ends_the_pair(host, coordinator) -> None:
+    _with_current_study(host)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+
+    coordinator.on_pane_cleared(PaneId.RIGHT)
+
+    assert coordinator.previous_identity() is None
+    assert _right(coordinator).instance is None
+    assert coordinator.pane_badge_texts()[0].startswith("Вкладка 1")
+
+
+def test_the_current_study_keeps_its_tools_but_the_previous_pane_is_read_only(host, coordinator) -> None:
+    _with_current_study(host)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+
+    coordinator.session.activate(PaneId.LEFT)
+    assert coordinator.tool_blocked("caliper") is False
+
+    coordinator.session.activate(PaneId.RIGHT)
+    assert coordinator.tool_blocked("caliper") is True
+    assert host.statuses[-1] == tr("comparison.tool.readonly")
+
+
+def test_two_frames_over_the_budget_abort_the_comparison(host, coordinator) -> None:
+    _with_current_study(host)
+    host._controller.frame_access = SimpleNamespace(budget_bytes=lambda: 10)
+    coordinator.start_previous(_previous(host), _instance("sop.prev"))
+
+    coordinator.session.frame_decoded.emit(PaneId.RIGHT.value, 8)
+    assert coordinator.previous_identity() is not None
+    coordinator.session.frame_decoded.emit(PaneId.LEFT.value, 8)
+
+    assert coordinator.previous_identity() is None
+    assert _right(coordinator).instance is None
+    assert host.statuses[-1] == tr("comparison.memory.body")
+
+
+def test_stored_manual_results_are_painted_read_only_on_the_previous_pane(host, coordinator) -> None:
+    _with_current_study(host)
+    contour = SimpleNamespace(sop_instance_uid="sop.prev")
+    measurement = SimpleNamespace(sop_instance_uid="sop.prev")
+    data = SimpleNamespace(contours=(contour,), linear_measurements=(measurement,))
+
+    coordinator.start_previous(_previous(host), _instance("sop.prev"), measurements=data)
+    coordinator.session.frame_decoded.emit(PaneId.RIGHT.value, 8)
+
+    assert host._viewer2 is not None
+    assert host._viewer2.applied_contours == [contour]
+    assert host._viewer2.added_measurements == [measurement]
