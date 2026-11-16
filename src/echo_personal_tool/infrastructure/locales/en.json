@@ -3355,6 +3355,8 @@
   "calibration.assumption.nominal_scanned": "NominalScannedPixelSpacing is a nominal scanning scale",
   "calibration.assumption.seconds_as_length": "time-axis seconds used as length (2D tissue region)",
   "calibration.badge.assumed": " · assumption",
+  "calibration.badge.short": "Calibration",
+  "calibration.badge.short_unavailable": "Calibration: none",
   "calibration.detail.assumption": "Assumption: {assumption}",
   "properties.calibration.assumption": "Assumption:",
   "properties.calibration.scales": "Scales in this clip:",

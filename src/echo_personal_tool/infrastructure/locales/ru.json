@@ -3355,6 +3355,8 @@
   "calibration.assumption.nominal_scanned": "NominalScannedPixelSpacing — номинальный масштаб сканирования",
   "calibration.assumption.seconds_as_length": "секунды шкалы времени приняты за длину (2D tissue region)",
   "calibration.badge.assumed": " · предположение",
+  "calibration.badge.short": "Калибровка",
+  "calibration.badge.short_unavailable": "Калибровка: нет",
   "calibration.detail.assumption": "Предположение: {assumption}",
   "properties.calibration.assumption": "Предположение:",
   "properties.calibration.scales": "Масштабы клипа:",

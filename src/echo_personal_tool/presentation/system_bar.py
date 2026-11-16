@@ -919,8 +919,17 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._render_calibration()
 
     def _render_calibration(self) -> None:
+        """A narrow colour strip on the patient line (2026-11-16, п.4).
+
+        The long «Масштаб: …» sentence used to overwrite «Рост · Вес · ППТ»;
+        the visible badge is now «Калибровка» plus a state word, and the full
+        sentence (source, confidence, scope, role) lives in the tooltip and in
+        the accessible name.
+        """
         from echo_personal_tool.presentation.calibration_status import (
             details,
+            indicator_text,
+            indicator_unavailable_text,
             reason_text,
             summary,
             tone,
@@ -932,15 +941,15 @@ class SystemBar(CaptionDragMixin, QWidget):
             return
         calibration = self._calibration_context
         if calibration is None:
-            text = unavailable_text(self._calibration_reason)
+            text = indicator_unavailable_text()
             tone_name = "error"
             tooltip = reason_text(self._calibration_reason)
-            accessible = text
+            accessible = unavailable_text(self._calibration_reason)
         else:
-            text = summary(calibration)
+            text = indicator_text(calibration)
             tone_name = tone(calibration)
             tooltip = details(calibration)
-            accessible = text
+            accessible = summary(calibration)
         self._calibration_label.setText(text)
         self._calibration_label.setToolTip(tooltip)
         self._calibration_label.setAccessibleName(accessible)

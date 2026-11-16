@@ -46,7 +46,13 @@ def test_system_bar_study_context_and_status(qtbot) -> None:
 
 
 def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtbot) -> None:
-    """#555: the badge is permanent, but only a measured scale is green."""
+    """#555: the badge is permanent, but only a measured scale is green.
+
+    2026-11-16, п.4: the badge is a *narrow strip* («Калибровка») — the old
+    «Масштаб: …» sentence used to overwrite «Рост · Вес · ППТ» on the row.
+    Colour is never the only label: the assumed state keeps its word, and the
+    full sentence stays in the tooltip and the accessible name.
+    """
     from PySide6.QtWidgets import QLabel
 
     from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
@@ -62,8 +68,21 @@ def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtb
 
     assert badge.isVisible()
     assert badge.property("tone") == "warn"
-    assert badge.text().endswith(tr("calibration.badge.assumed"))
+    assert badge.text() == tr("calibration.badge.short") + tr("calibration.badge.assumed")
+    assert len(badge.text()) < 40, "a narrow strip, not the old «Масштаб: …» sentence"
+    assert "Масштаб" not in badge.text()
     assert badge.toolTip()
+    assert tr("calibration.source.manual") in badge.toolTip(), "the tooltip carries the full sentence"
+    assert len(badge.accessibleName()) >= len(badge.text()), "the screen reader keeps the full words"
+
+    measured = CalibrationContext(spacing=(0.1, 0.1), source="manual", confidence=CalibrationConfidence.MEASURED)
+    bar.set_calibration_status(measured, "", visible=True)
+    assert badge.text() == tr("calibration.badge.short")
+    assert badge.property("tone") == "ok"
+
+    bar.set_calibration_status(None, "", visible=True)
+    assert badge.text() == tr("calibration.badge.short_unavailable")
+    assert badge.property("tone") == "error"
 
 
 def test_system_bar_pacs_menu_holds_load_and_send(qtbot) -> None:

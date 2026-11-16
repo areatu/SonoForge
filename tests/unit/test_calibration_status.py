@@ -152,3 +152,28 @@ def test_an_assumed_scale_is_named_in_words_in_both_languages(_restore_language,
 
     assert assumed in badge.lower()
     assert calibration_status.tone(context) == "warn"
+
+
+def test_the_patient_line_badge_is_a_narrow_strip() -> None:
+    """2026-11-16, п.4: «Калибровка» вместо длинного «Масштаб: …».
+
+    The long sentence overwrote «Рост · Вес · ППТ» on the patient row.  The
+    strip stays narrow, keeps the state in words (colour is never the only
+    label), and never says «Масштаб».
+    """
+    measured = _context(CalibrationConfidence.MEASURED)
+    assumed = _context(CalibrationConfidence.ASSUMED)
+
+    strip = calibration_status.indicator_text(measured)
+    assert strip == tr("calibration.badge.short")
+    assert len(strip) < 20
+
+    assumed_strip = calibration_status.indicator_text(assumed)
+    assert assumed_strip.endswith(tr("calibration.badge.assumed"))
+    assert len(assumed_strip) < 40
+    assert len(assumed_strip) < len(calibration_status.summary(assumed))
+    assert "Масштаб" not in assumed_strip and "Scale" not in assumed_strip
+
+    unavailable = calibration_status.indicator_unavailable_text()
+    assert len(unavailable) < 30
+    assert "Масштаб" not in unavailable and "Scale" not in unavailable

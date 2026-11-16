@@ -165,6 +165,26 @@ def unavailable_text(reason: str) -> str:
     return tr("calibration.badge.unavailable")
 
 
+def indicator_text(context: CalibrationContext) -> str:
+    """Compact patient-line badge: «Калибровка» with the state in words.
+
+    The long «Масштаб: …» sentence ate the width of «Рост · Вес · ППТ» on the
+    42 px patient row (2026-11-16 list, item 4 follow-up): the badge is now a
+    narrow colour-coded strip.  Colour is still never the only label — the
+    assumed scale keeps its «· предположение» suffix — and the full sentence
+    (source, confidence, scope, revision) stays in the tooltip and the
+    accessible name.
+    """
+    if context.needs_assumption_note:
+        return tr("calibration.badge.short") + assumption_note(context)
+    return tr("calibration.badge.short")
+
+
+def indicator_unavailable_text() -> str:
+    """Compact badge when no scale can be selected (tone: error)."""
+    return tr("calibration.badge.short_unavailable")
+
+
 def tone(context: CalibrationContext | None) -> str:
     """Semantic colour of a calibration: ok / warn / error.
 
