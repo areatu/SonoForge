@@ -15,7 +15,13 @@ from echo_personal_tool.domain.doppler_catalog import (
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerTrace
 from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults
-from echo_personal_tool.domain.services.doppler_repeats import REPORT_WINDOW, mean_of_last
+from echo_personal_tool.domain.services.doppler_repeats import (
+    REPORT_WINDOW,
+    RepeatStatistics,
+    mean_of_last,
+    repeat_statistics,
+    select_last_accepted,
+)
 
 
 def _normalize_label(label: str) -> str:
@@ -29,7 +35,7 @@ def _matching_peaks(dto: DopplerMeasurementDTO, labels: set[str]) -> list[float]
     negative); every clinical read — ratios, criteria, norms — uses the
     magnitude, so the sign is normalized here, at the compute boundary (Э2).
     """
-    return [abs(peak.velocity_cm_s) for peak in dto.peaks if _normalize_label(peak.label) in labels]
+    return [abs(peak.velocity_cm_s) for peak in dto.peaks if peak.accepted and _normalize_label(peak.label) in labels]
 
 
 def _find_peak_velocity(dto: DopplerMeasurementDTO, *labels: str) -> float | None:
@@ -48,7 +54,7 @@ def _find_interval_duration_ms(dto: DopplerMeasurementDTO, label: str) -> float 
     return mean_of_last(
         abs(interval.end_time_ms - interval.start_time_ms)
         for interval in dto.intervals
-        if _normalize_label(interval.label) == wanted
+        if interval.accepted and _normalize_label(interval.label) == wanted
     )
 
 
@@ -65,7 +71,7 @@ def _find_heart_rate_bpm(dto: DopplerMeasurementDTO) -> float | None:
     rates = (
         heart_rate_from_interval_ms(abs(marker.end_time_ms - marker.start_time_ms))
         for marker in dto.intervals
-        if _normalize_label(marker.label) == _normalize_label(HEART_RATE_INTERVAL_LABEL)
+        if marker.accepted and _normalize_label(marker.label) == _normalize_label(HEART_RATE_INTERVAL_LABEL)
     )
     return mean_of_last(rate for rate in rates if rate is not None)
 
@@ -73,22 +79,42 @@ def _find_heart_rate_bpm(dto: DopplerMeasurementDTO) -> float | None:
 def _find_interval_bounds_ms(dto: DopplerMeasurementDTO, label: str) -> tuple[float, float] | None:
     wanted = _normalize_label(label)
     for interval in reversed(dto.intervals):
-        if _normalize_label(interval.label) == wanted:
+        if interval.accepted and _normalize_label(interval.label) == wanted:
             low, high = sorted((interval.start_time_ms, interval.end_time_ms))
             return (low, high)
     return None
 
 
-def _site_traces(dto: DopplerMeasurementDTO, site: str | None, *, window: int = REPORT_WINDOW) -> list[DopplerTrace]:
-    """The most recent *window* VTI traces of one site (or of every site)."""
-    matching = [
+def _matching_traces(dto: DopplerMeasurementDTO, site: str | None) -> list[DopplerTrace]:
+    """Every usable VTI trace of one site, accepted or not."""
+    return [
         trace
         for trace in dto.traces
         if flow_site_from_trace_label(trace.label) is not None
         and (site is None or flow_site_from_trace_label(trace.label) == site)
         and len(trace.points) >= 2
     ]
-    return matching[-window:]
+
+
+def _site_traces(dto: DopplerMeasurementDTO, site: str | None, *, window: int = REPORT_WINDOW) -> list[DopplerTrace]:
+    """The most recent *window* accepted VTI traces of one site (or every site)."""
+    return list(
+        select_last_accepted(_matching_traces(dto, site), accepted_of=lambda trace: trace.accepted, window=window)
+    )
+
+
+def trace_vti_cm(trace: DopplerTrace) -> float:
+    times = [point[0] for point in trace.points]
+    velocities = [point[1] for point in trace.points]
+    return abs(float(np.trapezoid(velocities, times)) / 1000.0)
+
+
+def _vti_statistics(dto: DopplerMeasurementDTO, site: str | None = None) -> RepeatStatistics:
+    traces = _matching_traces(dto, site)
+    return repeat_statistics(
+        [trace_vti_cm(trace) for trace in traces],
+        [trace.accepted for trace in traces],
+    )
 
 
 def _find_vti_cm(dto: DopplerMeasurementDTO, site: str | None = None) -> float | None:
@@ -106,14 +132,7 @@ def _find_vti_cm(dto: DopplerMeasurementDTO, site: str | None = None) -> float |
     Trace timestamps are milliseconds, so the raw trapezoidal integral of
     (cm/s) over (ms) is 1000x too large; dividing by 1000 yields cm.
     """
-    values: list[float] = []
-    for trace in _site_traces(dto, site):
-        times = [point[0] for point in trace.points]
-        velocities = [point[1] for point in trace.points]
-        values.append(float(np.trapezoid(velocities, times)) / 1000.0)
-    if not values:
-        return None
-    return abs(sum(values) / len(values))
+    return _vti_statistics(dto, site).mean
 
 
 def _find_vti_repeats(dto: DopplerMeasurementDTO, site: str | None = None) -> int:
@@ -249,13 +268,19 @@ def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult
     for site in FLOW_SITES:
         if site not in measured_sites:
             continue
-        site_peaks = [
-            abs(float(peak.velocity_cm_s)) for peak in dto.peaks if flow_site_from_peak_label(peak.label) == site
-        ]
-        vmax_cm_s = mean_of_last(site_peaks)
+        site_peaks = [peak for peak in dto.peaks if flow_site_from_peak_label(peak.label) == site]
+        vmax_stats = repeat_statistics(
+            [abs(float(peak.velocity_cm_s)) for peak in site_peaks],
+            [peak.accepted for peak in site_peaks],
+        )
+        vmax_cm_s = vmax_stats.mean
         if vmax_cm_s is None:
-            vmax_cm_s = _find_peak_velocity_from_trace(dto, site)
-        vti_cm = _find_vti_cm(dto, site)
+            trace_peaks = [max(abs(point[1]) for point in trace.points) for trace in _matching_traces(dto, site)]
+            trace_flags = [trace.accepted for trace in _matching_traces(dto, site)]
+            vmax_stats = repeat_statistics(trace_peaks, trace_flags)
+            vmax_cm_s = vmax_stats.mean
+        vti_stats = _vti_statistics(dto, site)
+        vti_cm = vti_stats.mean
         et_ms = _find_interval_duration_ms(dto, f"{site} ET")
         if et_ms is None and site == "AV":
             et_ms = _find_interval_duration_ms(dto, "ET")
@@ -274,6 +299,8 @@ def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult
                 pgmean_mmhg=_find_mean_pressure_gradient_from_trace(dto, site),
                 vmax_repeats=len(site_peaks),
                 vti_repeats=_find_vti_repeats(dto, site),
+                vmax_stats=vmax_stats,
+                vti_stats=vti_stats,
                 mode=_site_mode(dto, site),
             )
         )

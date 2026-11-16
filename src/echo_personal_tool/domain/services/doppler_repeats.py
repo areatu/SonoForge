@@ -20,8 +20,10 @@ re-commit of the same overlay state.
 
 from __future__ import annotations
 
+import math
 import uuid
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from typing import TypeVar
 
 #: Number of most recent measurements of one parameter that enter the mean.
@@ -55,6 +57,95 @@ def report_sample_count(count: int, *, window: int = REPORT_WINDOW) -> int:
     available for review.
     """
     return min(max(int(count), 0), max(int(window), 0))
+
+
+@dataclass(frozen=True)
+class RepeatStatistics:
+    """Accepted, excluded and selected values behind one averaged parameter.
+
+    ``selected`` is the tail of ``accepted`` that enters the report window; it
+    is never a second arithmetic path.  ``sd`` is the sample standard
+    deviation (``n - 1``), because the beats are a sample of the patient's
+    cycles, and ``cv_percent`` is ``sd / mean * 100``.  Both stay ``None``
+    for fewer than two selected values, and CV is also ``None`` when the mean
+    is zero (a relative spread of zero has no meaning).
+    """
+
+    accepted: tuple[float, ...] = ()
+    excluded: tuple[float, ...] = ()
+    selected: tuple[float, ...] = ()
+
+    @property
+    def accepted_count(self) -> int:
+        return len(self.accepted)
+
+    @property
+    def excluded_count(self) -> int:
+        return len(self.excluded)
+
+    @property
+    def n(self) -> int:
+        return len(self.selected)
+
+    @property
+    def mean(self) -> float | None:
+        if not self.selected:
+            return None
+        return sum(self.selected) / len(self.selected)
+
+    @property
+    def sd(self) -> float | None:
+        if len(self.selected) < 2:
+            return None
+        mean = self.mean
+        if mean is None:
+            return None
+        variance = sum((value - mean) ** 2 for value in self.selected) / (len(self.selected) - 1)
+        return math.sqrt(max(variance, 0.0))
+
+    @property
+    def cv_percent(self) -> float | None:
+        mean = self.mean
+        sd = self.sd
+        if mean is None or sd is None or mean == 0:
+            return None
+        return sd / abs(mean) * 100.0
+
+
+def repeat_statistics(
+    values: Sequence[float],
+    accepted: Sequence[bool] | None = None,
+    *,
+    window: int = REPORT_WINDOW,
+) -> RepeatStatistics:
+    """Split values into accepted/excluded and select the report window.
+
+    ``accepted=None`` means every stored value is accepted, which is the wire
+    behavior of documents written before issue 559.  Selection only ever
+    removes values: the mean of the selected values is exactly the mean the
+    report already showed for an all-accepted legacy record.
+    """
+    numbers = tuple(float(value) for value in values)
+    flags = tuple(bool(flag) for flag in accepted) if accepted is not None else (True,) * len(numbers)
+    if len(flags) != len(numbers):
+        raise ValueError("accepted flags must match values")
+    accepted_values = tuple(value for value, flag in zip(numbers, flags) if flag)
+    excluded_values = tuple(value for value, flag in zip(numbers, flags) if not flag)
+    limit = max(int(window), 0)
+    selected = accepted_values[-limit:] if limit else ()
+    return RepeatStatistics(accepted=accepted_values, excluded=excluded_values, selected=selected)
+
+
+def select_last_accepted(
+    items: Sequence[T],
+    *,
+    accepted_of: Callable[[T], bool],
+    window: int = REPORT_WINDOW,
+) -> tuple[T, ...]:
+    """The accepted tail of *items* that enters the report window."""
+    accepted = [item for item in items if accepted_of(item)]
+    limit = max(int(window), 0)
+    return tuple(accepted[-limit:]) if limit else ()
 
 
 def keep_newest_per_label(

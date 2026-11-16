@@ -26,6 +26,11 @@ class DopplerPeakMarker:
     several markers into one Vmax/VTI row and must still be able to answer
     «откуда значение», so the identity travels with the marker instead of being
     dropped at the compute boundary.  Legacy records leave both empty.
+
+    ``accepted`` is the explicit repeat-selection decision (issue 559): a bad
+    or extrasystolic beat stays visible and stored, but its value is excluded
+    from the mean, SD and CV.  It defaults to ``True`` so every legacy marker
+    and every document written before the flag existed keeps contributing.
     """
 
     label: str
@@ -35,6 +40,7 @@ class DopplerPeakMarker:
     mode: str = ""
     sop_instance_uid: str = ""
     frame_index: int | None = None
+    accepted: bool = True
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,8 @@ class DopplerIntervalMarker:
     #: Clip and frame of the interval (issue 555); empty on legacy records.
     sop_instance_uid: str = ""
     frame_index: int | None = None
+    #: Explicit repeat selection (issue 559), see :class:`DopplerPeakMarker`.
+    accepted: bool = True
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,8 @@ class DopplerTrace:
     #: Clip and frame of the traced envelope (issue 555); empty on legacy records.
     sop_instance_uid: str = ""
     frame_index: int | None = None
+    #: Explicit repeat selection (issue 559), see :class:`DopplerPeakMarker`.
+    accepted: bool = True
 
 
 @dataclass(frozen=True)

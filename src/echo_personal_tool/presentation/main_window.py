@@ -104,6 +104,7 @@ from echo_personal_tool.presentation.coordinators.report_coordinator import (
 )
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.display_formats import format_confidence_pct, format_fps, format_whole_pct
+from echo_personal_tool.presentation.doppler_repeats import show_doppler_repeats
 from echo_personal_tool.presentation.download_coordinator import DownloadCoordinator
 from echo_personal_tool.presentation.focus_mode import (
     FocusHeaderInfo,
@@ -266,9 +267,7 @@ class MainWindow(QMainWindow):
         self._resize_cursor_active = False
         self._normal_geometry: QRect | None = None
         self._win32_chrome = Win32Chrome(
-            self,
-            geometry_provider=self._chrome_geometry_provider,
-            button_Lookup=self._chrome_button_lookup,
+            self, geometry_provider=self._chrome_geometry_provider, button_Lookup=self._chrome_button_lookup
         )
         self._apply_window_frame_flags(native=self.is_native_window_frame(), preserve_visibility=False)
         self._recent_store = deps.recent_folders
@@ -365,10 +364,7 @@ class MainWindow(QMainWindow):
             pass
         # N-08: the Z3 cache, the run's download history and the purge queue of
         # closed tabs live in DownloadCoordinator; the window keeps the widgets.
-        self._download_coordinator = DownloadCoordinator(
-            self,
-            cache=orthanc_cache,
-        )
+        self._download_coordinator = DownloadCoordinator(self, cache=orthanc_cache)
         self._download_coordinator.prepare()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
@@ -1633,6 +1629,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
         menu.addAction(tr("key_images.open")).triggered.connect(lambda: show_key_images(self))
+        menu.addAction(tr("doppler_repeats.open")).triggered.connect(lambda: show_doppler_repeats(self))
         menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
         menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_guide)
         menu.addSeparator()
@@ -1703,6 +1700,7 @@ class MainWindow(QMainWindow):
             "open_calculators": self._open_calculators,
             "references": self._show_references,
             "key_images": lambda: show_key_images(self),
+            "doppler_repeats": lambda: show_doppler_repeats(self),
             "help": self._show_help,
             "guide": self._open_user_guide,
             "about": self._show_about,

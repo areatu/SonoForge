@@ -21,6 +21,12 @@ Versioning (WP4.1 §6.4): ``schema_version`` describes the document structure,
   calculator inputs in canonical input units.  They are primary user inputs,
   not widget text, result caches, or invented source/frame references.
 
+Issue 559 adds an optional ``accepted`` flag to repeat markers and traces.  It
+is omitted when true, so an all-accepted document (and every legacy document)
+keeps its old wire shape and its old mean; only an explicitly excluded beat
+adds the field.  This is an additive, backward-readable extension of v6, not a
+new schema version.
+
 Version 1 documents are migrated on read: duplicate peak/interval labels are
 collapsed to the newest one, which is exactly what version 1 itself displayed
 and merged.  The migration changes no visible value, so no quarantine backup is
@@ -194,12 +200,15 @@ def _encode(value: object) -> object:
             # a study without strain lineage keeps the exact shape older
             # schemas already accepted (issue 555).
             fields = fields - {"lineage_by_view"}
-        if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)) and not (
-            value.sop_instance_uid or value.frame_index is not None
-        ):
-            # A marker measured before lineage was recorded keeps its old wire
-            # shape; an empty source is not written as ``null`` noise.
-            fields = fields - {"sop_instance_uid", "frame_index"}
+        if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
+            if not (value.sop_instance_uid or value.frame_index is not None):
+                # A marker measured before lineage was recorded keeps its old wire
+                # shape; an empty source is not written as ``null`` noise.
+                fields = fields - {"sop_instance_uid", "frame_index"}
+            if value.accepted:
+                # The default decision stays implicit, so the byte shape of an
+                # all-accepted record does not change (issue 559).
+                fields = fields - {"accepted"}
         return {name: _encode(getattr(value, name)) for name in sorted(fields)}
     if isinstance(value, Enum):
         return value.value
@@ -391,10 +400,10 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     seen_ids: set[tuple[str, str]] = set()
     per_label: dict[str, int] = {}
 
-    def check_repeats(label: str, measurement_id: str, mode: str = "") -> None:
+    def check_repeats(label: str, measurement_id: str, mode: str = "", accepted: object = True) -> None:
         if len(label) > 256 or len(measurement_id) > 256:
             raise MeasurementStorageError("invalid")
-        if mode not in ("", "CW", "PW", "TDI"):
+        if mode not in ("", "CW", "PW", "TDI") or type(accepted) is not bool:
             raise MeasurementStorageError("invalid")
         # An empty id keeps the historical identity: at most one marker per
         # label may omit it, so old documents stay unambiguous.
@@ -415,10 +424,10 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
                 per_label.clear()
                 for item in values:
                     # Intervals carry no acquisition mode (ms need no units).
-                    check_repeats(item.label, item.measurement_id, getattr(item, "mode", ""))
+                    check_repeats(item.label, item.measurement_id, getattr(item, "mode", ""), item.accepted)
     for uid, _, frame, area in data.simpson_area_by_frame:
         check(uid, frame)
-        if area < 0:
+        if area < 0:  # noqa: E701 - keep validate_data inside its line ratchet
             raise MeasurementStorageError("invalid")
     for _, spacing in data.manual_spacing_by_instance:
         if any(v <= 0 for v in spacing):

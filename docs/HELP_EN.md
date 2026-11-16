@@ -459,6 +459,8 @@ Examples:
 
 **Doppler HR:** choose `General → Doppler HR` and click matching peaks of **adjacent cardiac cycles** (for example, E–E, not E–A within one cycle). Only the horizontal interval is measured; peak height and click order do not affect the result. After the second click the tool switches off, and the horizontal caliper shows Δt and **HR = 60,000 / Δt (ms)** in bpm. A trusted Doppler time calibration is required; a velocity scale is not. A zero-length interval is not saved — select the second peak again. The measurement is saved with the other measurements for the current file/frame and included in the study report; repeats report the mean of the last three valid heart rates. Cine `Auto-HR` remains a separate tool.
 
+Repeating one parameter (for example `TR Vmax` on several consecutive beats in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report uses the **mean of the last three accepted** values. The report shows the number of measurements, SD and CV — `(n=3) · SD … · CV …%`. Choose **Doppler repeats…** in the application menu (or `Ctrl+K`): the dialog lists every beat, an **Accepted** checkbox and the summary “accepted/excluded · n · mean · SD · CV”. Clearing the checkbox excludes a bad or extrasystolic beat from the mean while keeping it in the document and on the spectrum (dashed). The same exclusion applies to heart rate from RR intervals. The application **does not detect atrial fibrillation automatically** and applies no universal rule: the operator selects the beats, and the documented method is the mean of the last three accepted values. To remove a repeat completely, hover the marker, interval or trace and use the registered delete action (section 18); over empty space it still works on calipers.
+
 Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
 
 Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and use the registered delete action (section 18); with the cursor on nothing, that action keeps its previous caliper behavior.
@@ -472,7 +474,7 @@ For a Doppler trace:
 3. finish with the registered finish action or a double click;
 4. verify the cycle, baseline side, and direction.
 
-The registered VTI action (section 18) starts a workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
+The registered VTI action (section 18) starts a workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three accepted measurements and their count (exclusions are set in **Doppler repeats…**), but a completed trace is not a quality guarantee.
 
 ### 9.4 Vessel measurements
 

@@ -545,6 +545,10 @@
           "type": "string",
           "maxLength": 256,
           "description": "Identity of the measurement act (D-23); empty in legacy documents."
+        },
+        "accepted": {
+          "type": "boolean",
+          "description": "Explicit repeat selection (issue 559); omitted when true so legacy documents keep their wire shape."
         }
       },
       "required": [
@@ -624,6 +628,10 @@
             "TDI"
           ],
           "description": "Acquisition mode captured at measurement time (E2); empty when unknown."
+        },
+        "accepted": {
+          "type": "boolean",
+          "description": "Explicit repeat selection (issue 559); omitted when true so legacy documents keep their wire shape."
         }
       },
       "required": [
@@ -708,6 +716,10 @@
             "TDI"
           ],
           "description": "Acquisition mode captured at measurement time (E2); empty when unknown."
+        },
+        "accepted": {
+          "type": "boolean",
+          "description": "Explicit repeat selection (issue 559); omitted when true so legacy documents keep their wire shape."
         }
       },
       "required": [

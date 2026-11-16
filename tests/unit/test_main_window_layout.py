@@ -648,6 +648,7 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
         tr("app_menu.layout"),
         tr("app_menu.references"),
         tr("key_images.open"),
+        tr("doppler_repeats.open"),
         tr("app_menu.help"),
         tr("app_menu.guide"),
         tr("app_menu.about"),

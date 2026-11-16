@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 import statistics
 from math import isfinite
+from typing import cast
 
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QPen
+from PySide6.QtGui import QBrush, QPen
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure
@@ -109,6 +110,52 @@ def peak_marker_caption(marker: DopplerPeakMarker) -> str:
             pg_text = format_measurement("doppler.pg_peak", pg, "mmHg")
             text += f" · PGmax {pg_text} mmHg"
     return text
+
+
+def _peak_scatter_spot(marker: DopplerPeakMarker, mapping: DopplerAxisMapping, tokens: dict[str, str]) -> dict:
+    if marker.accepted:
+        pen = pg.mkPen(tokens["overlay.peak"], width=2)
+        brush = pg.mkBrush(tokens["overlay.peak.fill"])
+    else:
+        pen = pg.mkPen(tokens["text.disabled"], width=1, style=Qt.PenStyle.DashLine)
+        brush = pg.mkBrush(tokens["text.disabled"])
+    return {
+        "pos": (mapping.x_from_time_ms(marker.time_ms), mapping.y_from_velocity_cm_s(marker.velocity_cm_s)),
+        "data": marker.label,
+        "pen": pen,
+        "brush": brush,
+    }
+
+
+def _peak_caption_item(marker: DopplerPeakMarker, mapping: DopplerAxisMapping) -> pg.TextItem:
+    caption = peak_marker_caption(marker)
+    color = dark_theme.get_theme_tokens()["overlay.peak.caption"]
+    if not marker.accepted:
+        caption = tr("doppler_repeats.excluded_marker", caption=caption)
+        color = dark_theme.get_theme_tokens()["text.disabled"]
+    item = pg.TextItem(caption, color=color, fill=(0, 0, 0, 180), anchor=(0.0, 1.0))
+    item.setZValue(21)
+    item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+    item.setPos(mapping.x_from_time_ms(marker.time_ms), mapping.y_from_velocity_cm_s(marker.velocity_cm_s))
+    return item
+
+
+def _trace_pen_brush(trace: DopplerTrace) -> tuple[QPen, QBrush | None]:
+    if trace.accepted:
+        return (
+            cast(QPen, pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2)),
+            cast(QBrush, pg.mkBrush(21, 101, 192, 70)),
+        )
+    return (
+        cast(QPen, pg.mkPen(dark_theme.get_theme_tokens()["text.disabled"], width=1, style=Qt.PenStyle.DashLine)),
+        None,
+    )
+
+
+def _interval_pen(marker: DopplerIntervalMarker) -> QPen:
+    if marker.accepted:
+        return cast(QPen, pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.interval"], width=3))
+    return cast(QPen, pg.mkPen(dark_theme.get_theme_tokens()["text.disabled"], width=2, style=Qt.PenStyle.DashLine))
 
 
 class _PeakScatterItem(pg.ScatterPlotItem):
@@ -587,6 +634,7 @@ class DopplerOverlayTools(QWidget):
             points=existing.points,
             measurement_id=existing.measurement_id or new_measurement_id(),
             mode=existing.mode or self._doppler_mode,
+            accepted=existing.accepted,
         )
         self._traces = list(
             keep_newest_per_label(self._traces, label_of=lambda item: canonical_trace_label(item.label))
@@ -641,13 +689,19 @@ class DopplerOverlayTools(QWidget):
     def _append_trace(self, trace: DopplerTrace) -> None:
         """Append a committed trace and draw its filled envelope."""
         if not trace.measurement_id:
-            trace = DopplerTrace(label=trace.label, points=trace.points, measurement_id=new_measurement_id())
+            trace = DopplerTrace(
+                label=trace.label,
+                points=trace.points,
+                measurement_id=new_measurement_id(),
+                accepted=trace.accepted,
+            )
         if not trace.mode:
             trace = DopplerTrace(
                 label=trace.label,
                 points=trace.points,
                 measurement_id=trace.measurement_id,
                 mode=self._doppler_mode,
+                accepted=trace.accepted,
             )
         self._traces.append(trace)
         self._traces = list(
@@ -787,6 +841,7 @@ class DopplerOverlayTools(QWidget):
             velocity_cm_s=self._axis_mapping.velocity_cm_s_from_y(float(y_px)),
             measurement_id=dragged.measurement_id,
             mode=dragged.mode,
+            accepted=dragged.accepted,
         )
         self._refresh_peak_scatter()
         self._emit_markers_changed()
@@ -1422,16 +1477,8 @@ class DopplerOverlayTools(QWidget):
             self._baseline_item.setData([], [])
 
     def _refresh_peak_scatter(self) -> None:
-        spots = [
-            {
-                "pos": (
-                    self._axis_mapping.x_from_time_ms(marker.time_ms),
-                    self._axis_mapping.y_from_velocity_cm_s(marker.velocity_cm_s),
-                ),
-                "data": marker.label,
-            }
-            for marker in self._peak_markers
-        ]
+        tokens = dark_theme.get_theme_tokens()
+        spots = [_peak_scatter_spot(marker, self._axis_mapping, tokens) for marker in self._peak_markers]
         self._peak_scatter.setData(spots)
         self._refresh_peak_captions()
 
@@ -1441,19 +1488,7 @@ class DopplerOverlayTools(QWidget):
             self._plot.removeItem(item)
         self._peak_label_items = []
         for marker in self._peak_markers:
-            item = pg.TextItem(
-                peak_marker_caption(marker),
-                color=dark_theme.get_theme_tokens()["overlay.peak.caption"],
-                fill=(0, 0, 0, 180),
-                anchor=(0.0, 1.0),
-            )
-            item.setZValue(21)
-            # Captions must never steal the clicks/drags of the markers below.
-            item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-            item.setPos(
-                self._axis_mapping.x_from_time_ms(marker.time_ms),
-                self._axis_mapping.y_from_velocity_cm_s(marker.velocity_cm_s),
-            )
+            item = _peak_caption_item(marker, self._axis_mapping)
             self._plot.addItem(item)
             self._peak_label_items.append(item)
 
@@ -1514,7 +1549,7 @@ class DopplerOverlayTools(QWidget):
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
         x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
         y_base = self._baseline_y_for_interval()
-        interval_pen = pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.interval"], width=3)
+        interval_pen = _interval_pen(marker)
         interval_item = pg.PlotDataItem(
             [x_start, x_end],
             [y_base, y_base],
@@ -1562,10 +1597,8 @@ class DopplerOverlayTools(QWidget):
                 continue
             xs = [self._axis_mapping.x_from_time_ms(point[0]) for point in trace.points]
             ys = [self._axis_mapping.y_from_velocity_cm_s(point[1]) for point in trace.points]
-            item = pg.PlotDataItem(
-                pen=pg.mkPen(dark_theme.get_theme_tokens()["overlay.doppler.trace"], width=2),
-                brush=pg.mkBrush(21, 101, 192, 70),
-            )
+            pen, brush = _trace_pen_brush(trace)
+            item = pg.PlotDataItem(pen=pen, brush=brush)
             item.setZValue(15)
             item.setFillLevel(self._baseline_plot_y_px())
             item.setData(xs, ys)
