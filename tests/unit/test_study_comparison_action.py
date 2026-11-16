@@ -6,10 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from echo_personal_tool.application.study_comparison import ComparisonCandidate
 from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.services.study_comparison import StudyIdentity
 from echo_personal_tool.presentation import study_comparison as action
+
+pytestmark = pytest.mark.gui
 
 
 class _Comparison:
