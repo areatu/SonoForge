@@ -2063,7 +2063,9 @@ class TestReportProvenanceAndFinish:
     """UI-4 PR-4/PR-5: «откуда значение», «Открыть кадры», печать и «Завершить»."""
 
     def test_a_not_evaluated_mark_reaches_the_printed_sheet(self, main_window):
+        from echo_personal_tool.application.localization import tr
         from echo_personal_tool.domain.protocols import StudyProjection
+        from echo_personal_tool.domain.services.report_sections import CHECK_NOT_OBTAINED
 
         TestReportMode._study(main_window)
         main_window._controller.study_projection.return_value = StudyProjection()
@@ -2071,14 +2073,14 @@ class TestReportProvenanceAndFinish:
         page = main_window.report_coordinator.page
         item = page.sections.sections[0].items[0]
 
-        page.sections._toggle_not_evaluated(item.key)
+        page.sections.set_decision(item.key, CHECK_NOT_OBTAINED, "плохая визуализация")
         page.refresh_now()
 
         document = page.document
         assert document is not None
         rows = {value.label: value for group in document.groups for value in group.values}
         assert item.label in rows
-        assert rows[item.label].value == "не оценивалось"
+        assert rows[item.label].value == f"{tr('report.checklist.not_obtained')} — плохая визуализация"
 
     def test_finishing_freezes_the_version_of_the_tab(self, main_window):
         TestReportMode._study(main_window)

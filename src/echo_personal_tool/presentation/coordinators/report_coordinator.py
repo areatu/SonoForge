@@ -49,7 +49,7 @@ from echo_personal_tool.domain.services.report_profiles import (
     normalize_profile_id,
     profile_for_study,
 )
-from echo_personal_tool.domain.services.report_sections import not_evaluated_values
+from echo_personal_tool.domain.services.report_sections import checklist_notices, not_evaluated_values
 from echo_personal_tool.presentation.report_mode import ReportModePage
 from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
 
@@ -108,6 +108,8 @@ class ReportWindowPort:
     #: Select *instance* in the gallery and load it, like a click there.
     open_instance: Callable[[InstanceMetadata], None]
     protocol_session: Callable[[], ProtocolSession]
+    #: Activate a catalog tool of the measurement panel (organ checklist rows).
+    activate_tool: Callable[[str], None]
     #: Rename a planimetry contour of the clip on screen; False if it lives elsewhere.
     rename_contour: Callable[[str, str], bool]
     #: Mirror the mode into the patient-line switch.
@@ -287,17 +289,24 @@ class ReportCoordinator(QObject):
             draft=not self._finished(tab),
         )
         page = self._page
-        marks = page.marked_not_evaluated() if page is not None else frozenset()
-        if not marks or page is None:
+        if page is None:
             return document
-        # «не оценивалось» prints as an explicit mark instead of the
-        # screen-only «измерить» link (spec §4.6, PR-5).
+        # The checklist is the same value the left column shows: missing, stale
+        # and unreviewed counts become printable notices, so an incomplete
+        # export never looks complete (#560).  The explicit decisions print as
+        # rows with their reason instead of silently disappearing.
+        page.set_unreviewed(snapshot.unreviewed_contours if snapshot is not None else 0)
+        document = replace(document, notices=document.notices + checklist_notices(page.checklist_summary()))
+        marks = page.marked_not_evaluated()
+        if not marks:
+            return document
         return with_extra_values(
             document,
             not_evaluated_values(
                 page.sections.sections,
                 marks,
                 value_text=tr("report.not_evaluated"),
+                decisions=page.checklist_decisions(),
             ),
         )
 
@@ -322,6 +331,7 @@ class ReportCoordinator(QObject):
             )
             page.patient_field_changed.connect(self.set_patient_field)
             page.measure_requested.connect(self.measure_step)
+            page.tool_requested.connect(self.measure_tool)
             page.conclusion_changed.connect(self.set_conclusion)
             page.generated_conclusion_changed.connect(self.remember_generated_conclusion)
             page.open_frames_requested.connect(self.open_frames)
@@ -339,6 +349,7 @@ class ReportCoordinator(QObject):
             page.set_clip_label_provider(self.clip_label)
             stack.addWidget(page)
             self._page = page
+            page.set_checklist_profile(study_profile_id(self._port.preferences()))
         return self._page
 
     # ── Mode ────────────────────────────────────────────────────────────
@@ -486,6 +497,13 @@ class ReportCoordinator(QObject):
             session.start(protocol_id)
         session.arm(step_index)
 
+    def measure_tool(self, tool_id: str) -> None:
+        """«измерить» of an organ-profile checklist row (no TP protocol step)."""
+        if not tool_id:
+            return
+        self.set_mode(False)
+        self._port.activate_tool(tool_id)
+
     # ── Format, inputs footnote, hidden rows, template ──────────────────
 
     def allowed_profiles(self) -> tuple[str, ...]:
@@ -520,6 +538,7 @@ class ReportCoordinator(QObject):
             page.preview.set_allowed_profiles(allowed)
             page.preview.set_profile(chosen)
             page.phrases.set_profile(chosen)
+            page.set_checklist_profile(study_profile_id(self._port.preferences()))
         return chosen
 
     def _unset_format(self) -> str:

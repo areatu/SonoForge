@@ -5061,9 +5061,8 @@ class MainWindow(QMainWindow):
             focus_viewer=lambda: self._viewer.setFocus(),
             open_instance=open_instance,
             protocol_session=lambda: self.protocol.ensure_session(),
-            rename_contour=lambda measurement_id, label: bool(
-                self._viewer.rename_contour_measurement(measurement_id, label)
-            ),
+            activate_tool=lambda tool_id: self._tool_panel.activate_tool(tool_id),
+            rename_contour=lambda measurement_id, label: self._viewer.rename_contour_measurement(measurement_id, label),
             mirror_report_mode=mirror_report_mode,
             ask_save_path=ask_save_path,
             warn=lambda title, text: QMessageBox.warning(self, title, text),
