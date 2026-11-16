@@ -75,9 +75,11 @@ SCREEN_GOLDENS: Final[dict[str, dict[str, object]]] = {
 #: The printed sheet of the fixture below — one measured value and one
 #: «не оценивалось» mark.  These are the lines a PDF reader extracts.
 PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
+    # The status block («Итоговый протокол …» and the notice lines) belongs to
+    # the status panel, never to the printed sheet (2026-11-16 list, item 5) —
+    # the goldens used to pin the very leak that was removed.
     "ru": (
         "Протокол эхокардиографии",
-        "Итоговый протокол — подписан",
         "Пациент",
         "Левый желудочек",
         "Показатель",
@@ -93,7 +95,6 @@ PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     ),
     "en": (
         "Echocardiography report",
-        "Final report — signed off",
         "Patient",
         "Left ventricle",
         "Parameter",

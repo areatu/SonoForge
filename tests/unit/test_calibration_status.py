@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from echo_personal_tool.application.localization import get_language, set_language
+from echo_personal_tool.application.localization import get_language, set_language, tr
 from echo_personal_tool.domain.models.calibration import (
     ASSUMPTION_IMAGER_PLANE,
     ASSUMPTION_SECONDS_AS_LENGTH,
@@ -56,8 +56,23 @@ def test_details_explain_the_isotropy_assumption_and_an_unverified_scale() -> No
     context = _context(CalibrationConfidence.ASSUMED, assumed_isotropic=True)
     lines = calibration_status.details(context).splitlines()
 
-    assert len(lines) == 5
+    assert len(lines) == 6
     assert any("изотроп" in line.lower() or "isotrop" in line.lower() for line in lines)
+
+
+def test_details_explain_what_the_calibration_line_is_for() -> None:
+    """2026-11-16 list, item 4: the orange «Масштаб: …» line, explained.
+
+    The tooltip must say what the line is, what «предположение» means and what
+    the scale affects — the physician's question cannot be left to colour.
+    """
+    context = _context(CalibrationConfidence.ASSUMED)
+    detail = calibration_status.details(context)
+    role = tr("calibration.detail.role")
+
+    assert detail.endswith(role)
+    assert "калипер" in role or "caliper" in role
+    assert "предположение" in role.lower() or "assumption" in role.lower()
 
 
 def test_unavailable_badge_names_the_reason() -> None:
@@ -137,3 +152,28 @@ def test_an_assumed_scale_is_named_in_words_in_both_languages(_restore_language,
 
     assert assumed in badge.lower()
     assert calibration_status.tone(context) == "warn"
+
+
+def test_the_patient_line_badge_is_a_narrow_strip() -> None:
+    """2026-11-16, п.4: «Калибровка» вместо длинного «Масштаб: …».
+
+    The long sentence overwrote «Рост · Вес · ППТ» on the patient row.  The
+    strip stays narrow, keeps the state in words (colour is never the only
+    label), and never says «Масштаб».
+    """
+    measured = _context(CalibrationConfidence.MEASURED)
+    assumed = _context(CalibrationConfidence.ASSUMED)
+
+    strip = calibration_status.indicator_text(measured)
+    assert strip == tr("calibration.badge.short")
+    assert len(strip) < 20
+
+    assumed_strip = calibration_status.indicator_text(assumed)
+    assert assumed_strip.endswith(tr("calibration.badge.assumed"))
+    assert len(assumed_strip) < 40
+    assert len(assumed_strip) < len(calibration_status.summary(assumed))
+    assert "Масштаб" not in assumed_strip and "Scale" not in assumed_strip
+
+    unavailable = calibration_status.indicator_unavailable_text()
+    assert len(unavailable) < 30
+    assert "Масштаб" not in unavailable and "Scale" not in unavailable

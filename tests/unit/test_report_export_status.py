@@ -48,7 +48,14 @@ def test_a_final_export_of_a_scaled_reviewed_study_has_no_warnings() -> None:
     assert document.notices == ()
 
 
-def test_the_pdf_prints_the_status_and_every_notice(tmp_path: Path) -> None:
+def test_the_pdf_sheet_keeps_status_and_notices_off_the_page(tmp_path: Path) -> None:
+    """The sheet is the protocol; the draft statement lives on the status panel.
+
+    2026-11-16 list, item 5: protocols may be focused and partial, so the
+    «ЧЕРНОВИК / Протокол неполон» block must not print on the sheet.  The
+    JSON/CSV exports keep it (see the tests above) and the report-mode notice
+    banner shows it (test_report_preview).
+    """
     import fitz
 
     document = _document(draft=True)
@@ -57,6 +64,6 @@ def test_the_pdf_prints_the_status_and_every_notice(tmp_path: Path) -> None:
         text = "\n".join(page.get_text() for page in pdf)
 
     flat = " ".join(text.split())
-    assert " ".join(document.status_text.split()) in flat
+    assert " ".join(document.status_text.split()) not in flat
     for notice in document.notices:
-        assert " ".join(notice.split()) in flat
+        assert " ".join(notice.split()) not in flat

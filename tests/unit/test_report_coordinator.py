@@ -451,3 +451,40 @@ class TestFormatAndFinish:
 
     def test_the_study_profile_comes_from_the_preferences(self, window) -> None:
         assert study_profile_id(window.preferences)
+
+    def test_the_echo_study_profile_defaults_to_the_echo_format(self, coordinator, window) -> None:
+        """2026-11-16, п.6: «Эхокардиография» opens the sheet as «ЭхоКГ».
+
+        The old DICOM-header classification asked the vendor tags for cardiac
+        keywords first and buried the echo sheet under «УЗИ» whenever a Samsung
+        cine carried none of them.
+        """
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        window.preferences.study_profile = "builtin.adult_echo"
+        window.tab.report_profile = ""
+        assert coordinator.profile_id() == PROFILE_ECHO
+
+    def test_another_study_profile_keeps_its_own_default_format(self, coordinator, window) -> None:
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
+
+        window.preferences.study_profile = "builtin.vascular"
+        window.tab.report_profile = ""
+        chosen = coordinator.profile_id()
+        assert chosen != PROFILE_ECHO
+        assert chosen in coordinator.allowed_profiles()
+
+    def test_apply_preferences_mirrors_the_saved_template(self, coordinator, window) -> None:
+        """2026-11-16, п.6: «колонки измерений — две» reaches the sheet at once."""
+        import json
+
+        from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
+
+        coordinator.set_mode(True)
+        window.preferences.report_template_json = json.dumps(ReportTemplate(columns=COLUMNS_TWO).as_dict())
+
+        coordinator.apply_preferences(window.preferences)
+
+        template = coordinator.page.preview.template
+        assert template is not None
+        assert template.normalized_columns == COLUMNS_TWO

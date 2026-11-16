@@ -55,7 +55,13 @@ class LoopControls(QObject):
         font = self.a_button.font()
         font.setBold(True)
         for button in self.buttons():
-            button.setFixedSize(32, 32)
+            # Full 32 px at normal widths, but a 0 px horizontal minimum: the
+            # window must still fit a 1366 px screen at 150 % (911 logical px)
+            # with the trio added (2026-11-16, п.3).  The transport hides the
+            # buttons rather than clipping them (see ``_fit_loop_buttons``).
+            button.setFixedHeight(32)
+            button.setMaximumWidth(32)
+            button.setMinimumWidth(0)
             button.setFlat(True)
             button.setFont(font)
         self.a_button.clicked.connect(on_in)

@@ -79,7 +79,7 @@ def _job(window: QWidget, target: Path, outcomes: list[tuple[str, str]]) -> Repo
 
 
 def _slow_render(delay_s: float) -> callable:
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         time.sleep(delay_s)
         return SimpleNamespace(pdf=b"%PDF-1.7 fake report", anchors={})
 
@@ -150,7 +150,7 @@ def test_cancelling_before_the_run_publishes_nothing(window, tmp_path: Path) -> 
 def test_a_render_failure_is_reported_as_a_stable_code(window, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from echo_personal_tool.application.report_export import ReportExportError
 
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         raise ReportExportError("pdf_export_failed")
 
     monkeypatch.setattr(worker_module, "render_report", _render)

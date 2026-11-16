@@ -371,6 +371,10 @@ def test_preset_switch_fits_the_300ms_budget(qtbot) -> None:
     Building the window is measured here, in the same run, as the yardstick.
     A 25% share still rejects a regression that recreated the widgets on
     every switch: that costs about one build, four times the allowed share.
+
+    Each switch is sampled three times and the fastest pass is judged: the
+    noise of a hosted runner is one-sided (GC, a competing job), and a perf
+    budget takes the minimum — the threshold itself is unchanged.
     """
     started = perf_counter()
     window = _window(qtbot)
@@ -381,11 +385,15 @@ def test_preset_switch_fits_the_300ms_budget(qtbot) -> None:
     for preset in rotation:  # warm-up: build the rail and the bottom strip once
         window._on_layout_preset_selected(preset)
     QApplication.processEvents()
-    for preset in rotation:
-        started = perf_counter()
-        window._on_layout_preset_selected(preset)
-        QApplication.processEvents()
-        elapsed_ms = (perf_counter() - started) * 1000.0
+    fastest: dict[str, float] = {}
+    for _ in range(3):
+        for preset in rotation:
+            started = perf_counter()
+            window._on_layout_preset_selected(preset)
+            QApplication.processEvents()
+            elapsed_ms = (perf_counter() - started) * 1000.0
+            fastest[preset] = min(fastest.get(preset, elapsed_ms), elapsed_ms)
+    for preset, elapsed_ms in fastest.items():
         assert elapsed_ms < budget_ms, f"{preset}: {elapsed_ms:.1f} ms of {budget_ms:.0f} (build {build_ms:.0f} ms)"
     assert window._layout_document.preset == PRESET_CLASSIC
 

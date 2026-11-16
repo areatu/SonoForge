@@ -150,11 +150,11 @@ def _report_story(
     # the renderer — a generic ultrasound protocol must not be headed «Протокол
     # ЭхоКГ».  An empty title is the echocardiography default of older builds.
     story: list = [Paragraph(_xml_escape(document.title or tr("report.title")), styles["title"])]
-    # The export status travels with the document (#555): a draft or a sheet
-    # with unreviewed/unscaled values never looks like a signed-off protocol.
-    story.append(Paragraph(_xml_escape(document.status_text), styles["note"]))
-    for notice in document.notices:
-        story.append(Paragraph(_xml_escape(notice), styles["note"]))
+    # The draft/incomplete statement lives on the status panel of the report
+    # mode (the notice banner above the sheet), never on the sheet itself
+    # (2026-11-16 list, item 5): protocols may legitimately be focused and
+    # partial, and a signed sheet is the printed protocol — not a status log.
+    # The JSON/CSV exports keep the status block for the machine reader.
     story.append(Spacer(1, 4 * mm))
     # An empty field list is a real choice: no header table at all, rather than
     # a table that prints the «Patient» placeholder the empty fallback uses.
@@ -348,6 +348,7 @@ def export_report_document_pdf(
     output_path: Path,
     *,
     font_size: int = 10,
+    template: ReportTemplate | None = None,
 ) -> Path:
     """Write the structured study protocol to a PDF file and return the path.
 
@@ -358,7 +359,7 @@ def export_report_document_pdf(
     shows — and the file is published atomically (UI-4 PR-5): a failed export
     leaves an existing report untouched instead of truncating it.
     """
-    rendered = render_report(document, font_size=font_size)
+    rendered = render_report(document, font_size=font_size, template=template)
     output_path.write_bytes(rendered.pdf)
     return output_path
 

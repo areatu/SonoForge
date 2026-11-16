@@ -339,11 +339,14 @@ class ReportDocument:
     #: Kept in the document so CSV/JSON exports and the header of the sheet name
     #: the same thing as the PDF.
     profile_id: str = ""
-    #: Export status (#555): a draft is not a signed-off protocol. The PDF,
-    #: JSON and CSV print it, so nobody mistakes an early export for final.
+    #: Export status (#555): a draft is not a signed-off protocol. The JSON
+    #: and CSV exports and the report-mode status banner print it; the PDF
+    #: sheet does not (2026-11-16 list, item 5) — protocols may be focused
+    #: and partial, and the printed sheet is the protocol itself.
     draft: bool = False
     #: Export-level warnings (no scale, stale record, unreviewed contours),
-    #: already localized. Kept in the document so every format prints the same.
+    #: already localized. Kept in the document so the banner and the machine
+    #: exports say the same thing.
     notices: tuple[str, ...] = ()
 
     @property

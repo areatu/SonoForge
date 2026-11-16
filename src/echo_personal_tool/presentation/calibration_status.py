@@ -131,7 +131,12 @@ def scale_line(context: CalibrationContext) -> str:
 
 
 def details(context: CalibrationContext) -> str:
-    """Hover text: the same facts plus revision and the isotropy assumption."""
+    """Hover text: the same facts plus revision and the isotropy assumption.
+
+    The last paragraph explains what this line *is for* (2026-11-16 list,
+    item 4): the physician kept asking why the orange «Масштаб: … —
+    предполагаемая» line sits above the study and what it changes.
+    """
     lines = [
         tr("calibration.detail.source", source=source_text(context)),
         tr("calibration.detail.confidence", confidence=confidence_text(context.confidence)),
@@ -144,6 +149,7 @@ def details(context: CalibrationContext) -> str:
         lines.append(tr("calibration.detail.assumed_isotropic"))
     if not context.is_calibrated:
         lines.append(tr("calibration.detail.unverified"))
+    lines.append(tr("calibration.detail.role"))
     return "\n".join(lines)
 
 
@@ -157,6 +163,26 @@ def unavailable_text(reason: str) -> str:
     if reason:
         return tr("calibration.badge.unavailable_reason", reason=reason_text(reason))
     return tr("calibration.badge.unavailable")
+
+
+def indicator_text(context: CalibrationContext) -> str:
+    """Compact patient-line badge: «Калибровка» with the state in words.
+
+    The long «Масштаб: …» sentence ate the width of «Рост · Вес · ППТ» on the
+    42 px patient row (2026-11-16 list, item 4 follow-up): the badge is now a
+    narrow colour-coded strip.  Colour is still never the only label — the
+    assumed scale keeps its «· предположение» suffix — and the full sentence
+    (source, confidence, scope, revision) stays in the tooltip and the
+    accessible name.
+    """
+    if context.needs_assumption_note:
+        return tr("calibration.badge.short") + assumption_note(context)
+    return tr("calibration.badge.short")
+
+
+def indicator_unavailable_text() -> str:
+    """Compact badge when no scale can be selected (tone: error)."""
+    return tr("calibration.badge.short_unavailable")
 
 
 def tone(context: CalibrationContext | None) -> str:

@@ -53,6 +53,13 @@ def ui_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> Q
     One unit for the whole UI: the same pixel size goes into the QSS
     stylesheet and into the application font (Э4).  ``pt`` remains only in
     PDF/print output.
+
+    Hinting is vertical-only (2026-11-16 list, item 8): at fractional DPI
+    scaling (125 %/150 %) Qt rounds glyph advances to whole pixels, and full
+    hinting narrows the glyphs to the rounded advance — UI text came out
+    horizontally condensed, «visibly stretched» against the printed sheet
+    (word «Протокол» ~1.6× wider on the sheet).  Vertical-only hinting keeps
+    the baselines crisp and leaves the horizontal proportions alone.
     """
     from PySide6.QtGui import QFont
 
@@ -60,6 +67,7 @@ def ui_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> Q
     font = QFont(FONT_FAMILY_UI)
     font.setPixelSize(pixel_size)
     font.setBold(bold)
+    font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
     return font
 
 
@@ -70,6 +78,7 @@ def mono_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) ->
     font = QFont(FONT_FAMILY_MONO)
     font.setPixelSize(pixel_size)
     font.setBold(bold)
+    font.setHintingPreference(QFont.HintingPreference.PreferVerticalHinting)
     return font
 
 

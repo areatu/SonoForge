@@ -38,7 +38,7 @@ def _dark_bands(gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol:
     return bands
 
 
-def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> int:
+def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> tuple[int, bool]:
     """Extend the dark band bottom downward to include the time scale ruler.
 
     The spectral Doppler band is DARK, and the time scale ruler sits BELOW
@@ -46,18 +46,20 @@ def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> int:
     B-mode frames have a black strip at the bottom but NO bright axis line.
 
     This function scans rows below the dark band for the axis line and
-    returns the extended y1 that includes the ruler.
+    returns ``(extended y1 that includes the ruler, ruler_found)``.  The
+    flag is the *visual proof* of a spectrum: a dark band alone is not one
+    (a B-mode sector frame has dark letterbox rows too).
     """
     h, w = gray.shape
     # Scan up to 80px below the dark band (typical ruler height is 10-40px).
     scan_limit = min(h, dark_band_y1 + 80)
     if dark_band_y1 >= scan_limit:
-        return dark_band_y1
+        return dark_band_y1, False
 
     # Compute brightness profile of rows below the dark band.
     rows_below = gray[dark_band_y1:scan_limit, :]
     if rows_below.size == 0:
-        return dark_band_y1
+        return dark_band_y1, False
     row_means = np.mean(rows_below, axis=1)
 
     # The dark band is near-black; the time scale axis is a bright line.
@@ -78,9 +80,9 @@ def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> int:
                 dark_band_y1 + i,
                 mean_val,
             )
-            return int(min(extended_y1, h))
+            return int(min(extended_y1, h)), True
 
-    return dark_band_y1
+    return dark_band_y1, False
 
 
 def detect_spectrogram_roi(
@@ -89,6 +91,7 @@ def detect_spectrogram_roi(
     search_top_fraction: float = 0.35,
     search_bottom_fraction: float = 0.95,
     region_bounds: tuple[float, float, float, float] | None = None,
+    require_time_axis: bool = False,
 ) -> tuple[float, float, float, float] | None:
     """Locate the spectral Doppler spectrogram bounding box.
 
@@ -96,6 +99,14 @@ def detect_spectrogram_roi(
     bounding box of the *lowest* band broad enough to be a Doppler panel
     (Doppler panels sit at the bottom of composite echo frames). If no band is
     found, falls back to ``region_bounds`` when supplied; otherwise ``None``.
+
+    ``require_time_axis`` demands *clear image evidence* of a spectrum: the
+    bright time-scale ruler must sit below the dark band.  A B-mode sector
+    frame has a black letterbox at the bottom edge but no ruler, so the
+    strict mode rejects it instead of feeding the Doppler-calibration prompt
+    (the fallback veto of ``DopplerController.sync_manual_calibration_hint``).
+    In the strict mode the ``region_bounds`` fallback is skipped as well —
+    the caller asked for visual proof, not for a plausible rectangle.
 
     Returns (x0, y0, x1, y1) in pixel coordinates.
     """
@@ -113,6 +124,9 @@ def detect_spectrogram_roi(
         return None
 
     def _fallback_bounds() -> tuple[float, float, float, float] | None:
+        if require_time_axis:
+            # Strict mode: visual proof only, never a plausible rectangle.
+            return None
         if region_bounds is None:
             return None
         b0, b1, b2, b3 = region_bounds
@@ -128,24 +142,44 @@ def detect_spectrogram_roi(
     if not bands:
         return _fallback_bounds()
 
+    def _band_extent(y0: int, y1: int) -> tuple[float, float] | None:
+        """Horizontal extent of a band, or None when the band is too thin."""
+        band_region = gray[int(y0) : int(y1), :]
+        col_mean = np.mean(band_region, axis=0)
+        bright_cols = np.where(col_mean > np.median(col_mean) * 0.3)[0]
+        if len(bright_cols) < w * 0.3:
+            return None
+        if (y1 - y0) < h * 0.10:
+            return None
+        return float(bright_cols[0]), float(bright_cols[-1] + 1)
+
+    if require_time_axis:
+        # Visual proof only: walk the bands bottom-up and keep the lowest one
+        # that carries a bright time ruler below it.  A letterbox under the
+        # ruler (or a B-mode sector's black margin) has no ruler and is
+        # skipped, so a spectrum below/above it still wins.
+        for band_y0, band_y1 in reversed(bands):
+            extent = _band_extent(band_y0, band_y1)
+            if extent is None:
+                continue
+            ext_y1, ruler_found = _extend_to_time_scale(gray, band_y1)
+            if not ruler_found:
+                continue
+            x0, x1 = extent
+            return (x0, float(band_y0), x1, float(ext_y1))
+        return None
+
     # Prefer the lowest band (Doppler panel at the bottom).
     y0, y1 = bands[-1]
 
     # Detect horizontal extent within the chosen band.
-    band_region = gray[int(y0) : int(y1), :]
-    col_mean = np.mean(band_region, axis=0)
-    bright_cols = np.where(col_mean > np.median(col_mean) * 0.3)[0]
-    if len(bright_cols) < w * 0.3:
+    extent = _band_extent(y0, y1)
+    if extent is None:
         return _fallback_bounds()
-
-    x0 = float(bright_cols[0])
-    x1 = float(bright_cols[-1] + 1)
-
-    if (y1 - y0) < h * 0.10:
-        return _fallback_bounds()
+    x0, x1 = extent
 
     # Extend y1 downward to include the time scale ruler below the dark band.
     # The ruler is a thin bright horizontal axis line with vertical ticks.
-    y1 = _extend_to_time_scale(gray, y1)
+    y1, _ruler_found = _extend_to_time_scale(gray, y1)
 
     return (x0, float(y0), x1, float(y1))

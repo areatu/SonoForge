@@ -920,7 +920,7 @@ class ViewerWidget(QWidget):
     loop_in_requested = Signal()
     loop_out_requested = Signal()
     loop_toggle_requested = Signal()
-    loop_bound_changed = Signal(str, int)
+    loop_bound_changed, loop_clear_requested = Signal(str, int), Signal()
 
     # A5: contour drawing/storage state lives in ``contour_state``.  These
     # descriptors keep the reviewed private names readable for ViewerContract

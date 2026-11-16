@@ -630,8 +630,9 @@ class ReportPreview(QWidget):
 
         A final, clean document hides the banner: it is not a decoration but a
         statement that the sheet is a draft or carries a warning.  The words
-        come from the document itself, so the screen, PDF, CSV and JSON cannot
-        disagree (issue 555).
+        come from the document itself, so the screen, CSV and JSON cannot
+        disagree (issue 555).  The banner is the *only* place this statement
+        shows (2026-11-16 list, item 5): the sheet stays a focused protocol.
         """
         document = self._document
         if document is None:

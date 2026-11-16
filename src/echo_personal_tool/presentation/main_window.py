@@ -908,7 +908,7 @@ class MainWindow(QMainWindow):
     # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
 
     def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
-        viewer = ViewerWidget(loop_controls=False)
+        viewer = ViewerWidget()
         self._prepared_anatomy = PreparedAnatomyLayer(viewer)
         self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
         viewer._view._prepared_draw_tool = self._prepared_draw

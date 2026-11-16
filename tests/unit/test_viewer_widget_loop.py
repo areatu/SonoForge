@@ -99,3 +99,81 @@ def test_auxiliary_viewer_hides_loop_controls(qtbot):
     loop.strip.set_total_frames(100)
     loop.set_region(10, 20, True)
     assert loop.strip.isHidden()
+
+
+# ── timeline context menu (2026-11-16 list, item 3) ───────────────────────
+
+
+def test_timeline_slider_exposes_the_loop_menu(widget):
+    from PySide6.QtCore import Qt
+
+    slider = widget.transport.timeline_slider
+    assert slider.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+    assert hasattr(widget, "loop_clear_requested")
+
+
+def test_loop_menu_places_markers_on_the_clicked_frame(widget, qtbot):
+    """Right-click on the timeline sets A/B on the clicked frame, not the playhead."""
+    loop = controls(widget)
+    transport = widget.transport
+    transport.timeline_slider.setRange(0, 99)
+    loop.set_region(None, None, False)
+
+    seen: list[tuple[str, int]] = []
+    widget.loop_bound_changed.connect(lambda which, frame: seen.append((which, frame)))
+    widget.loop_clear_requested.connect(lambda: seen.append(("clear", -1)))
+
+    width = transport.timeline_slider.width()
+    assert width > 2, "the fixture must be laid out"
+    mid_frame = transport.frame_at_slider_x(width // 2)
+    assert abs(mid_frame - 50) <= 1
+
+    menu = transport.build_loop_menu(mid_frame)
+    act_a, act_b, _sep, act_toggle, act_clear = menu.actions()
+
+    act_a.trigger()
+    transport.build_loop_menu(99).actions()[1].trigger()
+
+    assert [entry[0] for entry in seen] == ["a", "b"]
+    (_a_which, a_frame), (_b_which, b_frame) = seen
+    assert a_frame == mid_frame, "the marker lands on the clicked position"
+    assert b_frame == 99
+
+    # «Зациклить A→B» flips the toggle button; «Сбросить петлю» clears.
+    loop.set_total_frames(100)
+    loop.set_region(10, 20, True)
+    toggles: list[bool] = []
+    widget.loop_toggle_requested.connect(lambda: toggles.append(True))
+    act_toggle = transport.build_loop_menu(mid_frame).actions()[3]
+    act_toggle.trigger()
+    assert toggles == [True]
+
+    act_clear = transport.build_loop_menu(mid_frame).actions()[4]
+    assert act_clear.isEnabled()
+    act_clear.trigger()
+    assert seen[-1] == ("clear", -1)
+
+
+def test_loop_coordinator_clears_the_region(widget, qtbot):
+    from types import SimpleNamespace
+
+    from echo_personal_tool.application.state_manager import StateManager
+    from echo_personal_tool.presentation.loop_coordinator import LoopCoordinator
+
+    manager = StateManager()
+    manager.set_total_frames(100)
+    manager.set_loop_bounds(10, 20)
+    statuses: list[str] = []
+    coordinator = LoopCoordinator(
+        widget,
+        SimpleNamespace(state_manager=manager),
+        statuses.append,
+        parent=widget,
+    )
+    coordinator.sync()
+
+    widget.loop_clear_requested.emit()
+
+    assert manager.loop_state() == (None, None, False)
+    assert statuses == ["Петля сброшена"]
+    coordinator.deleteLater()

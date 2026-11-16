@@ -13,9 +13,9 @@ the same names, order and count.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation import dark_theme
@@ -58,12 +58,18 @@ class ViewerTransport(QObject):
 
         self.bar = QWidget(parent)
         self.bar.setObjectName("viewerTransport")
+        self._viewer_widget = parent
         controls = QVBoxLayout(self.bar)
         timeline_row = QHBoxLayout()
 
         self.timeline_slider = QSlider(Qt.Orientation.Horizontal, self.bar)
         self.timeline_slider.setSingleStep(1)
         self.timeline_slider.valueChanged.connect(self.on_timeline_changed)
+        # Right-click on the timeline is the discoverable entry point of the
+        # A→B loop (2026-11-16 list, item 3): the markers are placed on the
+        # clicked frame, not on the playhead.
+        self.timeline_slider.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.timeline_slider.customContextMenuRequested.connect(self._show_loop_menu)
 
         self.first_frame_button = self._make_transport_button(
             "cine_first", "viewer.first_frame", "a11y.viewer_first_desc"
@@ -115,13 +121,111 @@ class ViewerTransport(QObject):
         if loop is not None:
             slider_column_layout.addWidget(loop.strip)
         slider_column_layout.addWidget(self.timeline_slider)
+        # The timeline yields first when the row runs out of room.
+        slider_column.setMinimumWidth(0)
+        self._slider_column = slider_column
         timeline_row.addWidget(slider_column, stretch=1)
         timeline_row.addWidget(self.source_label)
         timeline_row.addWidget(phase_label)
         timeline_row.addWidget(self.fps_label)
         controls.addLayout(timeline_row)
+        self._timeline_row = timeline_row
 
         self.fix_play_button_width()
+        self.bar.installEventFilter(self)
+        self._fit_loop_buttons()
+
+    # ── A→B loop context menu (2026-11-16 list, item 3) ─────────────────
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt naming
+        if obj is self.bar and event.type() == QEvent.Type.Resize:
+            self._fit_loop_buttons()
+        return super().eventFilter(obj, event)
+
+    def _fit_loop_buttons(self) -> None:
+        """Show the «A»/«B»/«↻» trio at full size, or drop it entirely.
+
+        Three fixed 32 px buttons spent the last of the width budget that the
+        window needs to fit a 1366 px screen at 150 % (911 logical px — pinned
+        by ``test_classic_left_gallery_compacts_at_1366_physical_pixels``).
+        Squeezed below 32 px the letters clip into dashes, so the rule is:
+        full size when the row can afford the whole trio (the timeline column
+        yields first), otherwise the buttons hide — the «ПКМ» menu of the
+        timeline keeps every action reachable.
+        """
+        loop = self._loop
+        if loop is None or not getattr(loop, "enabled", True):
+            return
+        row = getattr(self, "_timeline_row", None)
+        if row is None:
+            return
+        preferred = 0
+        for index in range(row.count()):
+            widget = row.itemAt(index).widget()
+            if widget is None or widget is getattr(self, "_slider_column", None):
+                continue
+            preferred += widget.sizeHint().width()
+        preferred += max(0, row.count() - 1) * row.spacing()
+        margins = row.contentsMargins()
+        preferred += margins.left() + margins.right()
+        show = self.bar.width() >= preferred
+        for button in loop.buttons():
+            button.setVisible(show)
+
+    def frame_at_slider_x(self, x: int) -> int:
+        """Frame index under a right-click on the timeline slider (public: tests)."""
+        slider = self.timeline_slider
+        width = max(1, slider.width() - 2)
+        fraction = min(1.0, max(0.0, (x - 1) / width))
+        span = slider.maximum() - slider.minimum()
+        return slider.minimum() + round(fraction * span)
+
+    def _show_loop_menu(self, pos: QPoint) -> None:
+        """«ПКМ по ползунку»: place the A/B markers on the clicked frame.
+
+        The buttons «A»/«B»/«↻» stay on the transport for the playhead, and
+        this menu gives the same tools at an arbitrary frame of the timeline —
+        the pair the physician needs to loop one cardiac cycle without ECG.
+        """
+        if self._loop is None or not getattr(self._loop, "enabled", True):
+            return
+        frame = self.frame_at_slider_x(int(pos.x()))
+        menu = self.build_loop_menu(frame)
+        menu.exec(self.timeline_slider.mapToGlobal(pos))
+
+    def build_loop_menu(self, frame: int) -> QMenu:
+        """The «ПКМ» menu of the timeline; every action is wired to a slot."""
+        loop = self._loop
+        if loop is None:
+            raise RuntimeError("the timeline loop menu needs loop controls")
+        menu = QMenu(self.timeline_slider)
+        menu.setObjectName("loopContextMenu")
+        act_a = menu.addAction(tr("viewer.loop_menu_set_a", frame=frame + 1))
+        act_b = menu.addAction(tr("viewer.loop_menu_set_b", frame=frame + 1))
+        menu.addSeparator()
+        act_toggle = menu.addAction(tr("viewer.loop_menu_toggle"))
+        act_toggle.setCheckable(True)
+        act_toggle.setChecked(loop.repeat_button.isChecked())
+        act_clear = menu.addAction(tr("viewer.loop_menu_clear"))
+        act_clear.setEnabled(loop.strip.region() is not None)
+        act_a.triggered.connect(lambda: self._menu_set_bound("a", frame))
+        act_b.triggered.connect(lambda: self._menu_set_bound("b", frame))
+        act_toggle.triggered.connect(loop.repeat_button.click)
+        act_clear.triggered.connect(self._menu_clear_loop)
+        return menu
+
+    def _menu_set_bound(self, which: str, frame: int) -> None:
+        viewer = getattr(self, "_viewer_widget", None)
+        if viewer is not None and hasattr(viewer, "loop_bound_changed"):
+            viewer.loop_bound_changed.emit(which, frame)
+        elif self._loop is not None:
+            button = self._loop.a_button if which == "a" else self._loop.b_button
+            button.click()
+
+    def _menu_clear_loop(self) -> None:
+        viewer = getattr(self, "_viewer_widget", None)
+        if viewer is not None and hasattr(viewer, "loop_clear_requested"):
+            viewer.loop_clear_requested.emit()
 
     # ── construction helpers ─────────────────────────────────────────
 

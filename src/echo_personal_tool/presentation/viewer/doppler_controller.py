@@ -557,8 +557,11 @@ class DopplerController(QObject):
             frame = self._port.frame()
             # A few composite cines describe only their B-mode region in the
             # tags while still showing an untagged spectrum. Let clear image
-            # evidence preserve the fallback prompt in those cases.
-            visual_spectrum = frame is not None and detect_spectrogram_roi(frame) is not None
+            # evidence preserve the fallback prompt in those cases — but only
+            # *clear* evidence: the strict detector demands the bright
+            # time-scale ruler of a spectrum, so the black letterbox of a
+            # B-mode sector frame can never re-trigger the Doppler prompt.
+            visual_spectrum = frame is not None and detect_spectrogram_roi(frame, require_time_axis=True) is not None
             b_mode_only = not visual_spectrum
         wanted = (
             clip_open

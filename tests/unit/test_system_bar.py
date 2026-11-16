@@ -46,7 +46,13 @@ def test_system_bar_study_context_and_status(qtbot) -> None:
 
 
 def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtbot) -> None:
-    """#555: the badge is permanent, but only a measured scale is green."""
+    """#555: the badge is permanent, but only a measured scale is green.
+
+    2026-11-16, п.4: the badge is a *narrow strip* («Калибровка») — the old
+    «Масштаб: …» sentence used to overwrite «Рост · Вес · ППТ» on the row.
+    Colour is never the only label: the assumed state keeps its word, and the
+    full sentence stays in the tooltip and the accessible name.
+    """
     from PySide6.QtWidgets import QLabel
 
     from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
@@ -62,8 +68,21 @@ def test_calibration_badge_is_hidden_without_a_study_and_tones_an_assumption(qtb
 
     assert badge.isVisible()
     assert badge.property("tone") == "warn"
-    assert badge.text().endswith(tr("calibration.badge.assumed"))
+    assert badge.text() == tr("calibration.badge.short") + tr("calibration.badge.assumed")
+    assert len(badge.text()) < 40, "a narrow strip, not the old «Масштаб: …» sentence"
+    assert "Масштаб" not in badge.text()
     assert badge.toolTip()
+    assert tr("calibration.source.manual") in badge.toolTip(), "the tooltip carries the full sentence"
+    assert len(badge.accessibleName()) >= len(badge.text()), "the screen reader keeps the full words"
+
+    measured = CalibrationContext(spacing=(0.1, 0.1), source="manual", confidence=CalibrationConfidence.MEASURED)
+    bar.set_calibration_status(measured, "", visible=True)
+    assert badge.text() == tr("calibration.badge.short")
+    assert badge.property("tone") == "ok"
+
+    bar.set_calibration_status(None, "", visible=True)
+    assert badge.text() == tr("calibration.badge.short_unavailable")
+    assert badge.property("tone") == "error"
 
 
 def test_system_bar_pacs_menu_holds_load_and_send(qtbot) -> None:
@@ -423,3 +442,62 @@ class TestStudyProfileButton:
         layout = bar.layout()
         names = [layout.itemAt(index).widget().objectName() for index in range(layout.count())]
         assert names.index("studyProfileButton") > names.index("modeSwitch")
+
+
+def test_reload_text_keeps_the_study_file_name(qtbot) -> None:
+    """A language reload must not erase the file name from the patient line.
+
+    2026-11-16 list, item 7: opening the settings re-rendered the row and the
+    study slot fell back to «Загрузка не выполнена» while a study was on
+    screen.
+    """
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+
+    bar.set_study_context("i-09c72afa5a22ffc5af1dc282d196f36e.dcm")
+    bar.reload_text()
+    assert bar._study_label.text() == "i-09c72afa5a22ffc5af1dc282d196f36e.dcm"
+
+    bar.clear_study_context()
+    bar.reload_text()
+    assert bar._study_label.text() == tr("system_bar.no_study")
+
+
+def test_metrics_host_is_hidden_before_its_fields_can_overlap(qtbot) -> None:
+    """«Рост · Вес · ППТ» hide instead of collapsing into one glyph cluster.
+
+    2026-11-16 list, item 7: squeezed below their size hint, the fixed-width
+    fields drew on top of each other on the file-name row.
+    """
+    from PySide6.QtWidgets import QHBoxLayout, QLabel, QSpinBox, QWidget
+
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    host = bar.patient_metrics_host()
+    host.layout().setContentsMargins(0, 0, 0, 0)
+
+    strip = QWidget(host)
+    row = QHBoxLayout(strip)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.addWidget(QLabel("Рост"))
+    spin_height = QSpinBox(strip)
+    spin_height.setFixedWidth(76)
+    row.addWidget(spin_height)
+    row.addWidget(QLabel("Вес"))
+    spin_weight = QSpinBox(strip)
+    spin_weight.setFixedWidth(76)
+    row.addWidget(spin_weight)
+    row.addWidget(QLabel("ППТ: 1.85 м²"))
+    host.layout().addWidget(strip)
+    strip.show()
+
+    bar.resize(600, 42)
+    bar.show()
+    qtbot.waitExposed(bar)
+    qtbot.wait(30)
+    assert host.isHidden(), "no room for the editors — the row keeps the rest"
+
+    bar.resize(1800, 42)
+    qtbot.wait(30)
+    assert host.isVisibleTo(bar)
+    assert host.width() >= host.sizeHint().width() - 1, "visible editors must never be squeezed"
