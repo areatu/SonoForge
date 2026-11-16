@@ -189,6 +189,9 @@ class SystemBar(CaptionDragMixin, QWidget):
 
         self._profile_capabilities = profile_capabilities or get_profile_capabilities()
         self._study_label = QLabel(tr("system_bar.no_study"))
+        #: The study/file name of the loaded tab; ``None`` — the empty state.
+        #: Kept so a language reload re-renders the name instead of erasing it.
+        self._study_context_label: str | None = None
         # No reserved width: the patient phrase («Иванов · 164 см · 71 кг»)
         # is followed by the metrics, and a 120 px minimum both left a hole
         # after a short name and pushed the fields right of it.
@@ -722,6 +725,14 @@ class SystemBar(CaptionDragMixin, QWidget):
         patient, the actions and the mode switch stay — and they return as soon
         as the row has the room.  The values are still editable on the
         «Калькуляторы» tab, and the panel keeps its own copy of the state.
+
+        The editors must be hidden, never squeezed: given less than their size
+        hint, the fixed-width fields drew on top of each other («175», «70»
+        and «ППТ» glued into one cluster on the file-name row — 2026-11-16
+        list, item 7).  The measurement therefore counts *every* other slot of
+        the row — the calibration badge and the progress slot included, which
+        the earlier estimate forgot — and hides the host when they do not add
+        up.
         """
         host = getattr(self, "_metrics_host", None)
         if host is None or host.layout() is None or host.layout().count() == 0:
@@ -732,9 +743,18 @@ class SystemBar(CaptionDragMixin, QWidget):
         # row's minimum width follows the visibility, so measuring it would
         # make showing and hiding feed back into each other.
         actions = self._actions_widget.sizeHint().width() + self._fixed_controls_width()
-        margins = 24 + 8
+        # Root margins (12 + 12) with the four 8 px gaps between the row's
+        # slots, plus the right margin and the six gaps of the context column.
+        overhead = 24 + 4 * 8 + 12 + 6 * 8
         study = max(self._study_label.sizeHint().width(), 140)
-        fits = self.width() >= actions + margins + study + host.sizeHint().width()
+        # The status text elides away by design; the badge, the progress slot
+        # and the heart-rate button keep their natural width.
+        beside = (
+            self._calibration_label.sizeHint().width()
+            + self._progress_bar.minimumSizeHint().width()
+            + (self._btn_heart_rate.sizeHint().width() if self._btn_heart_rate.isVisibleTo(self) else 0)
+        )
+        fits = self.width() >= actions + overhead + study + beside + host.sizeHint().width()
         if host.isVisibleTo(self) != fits:
             host.setVisible(fits)
 
@@ -790,14 +810,29 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality
-        self._study_label.setText(label)
-        self._study_label.setToolTip(label)
+        self._study_context_label = label
+        self._render_study_label()
 
     def clear_study_context(self) -> None:
+        self._study_context_label = None
+        self._render_study_label()
+
+    def _render_study_label(self) -> None:
+        """The file/study name slot: the remembered context, or the empty state.
+
+        A language reload used to overwrite the slot with the empty-state text
+        («Загрузка не выполнена») even while a study was on screen — the file
+        name simply vanished from the patient line (2026-11-16, п.7).
+        """
         from echo_personal_tool.application.localization import tr
 
-        self._study_label.setText(tr("system_bar.no_study"))
-        self._study_label.setToolTip("")
+        label = self._study_context_label
+        if label:
+            self._study_label.setText(label)
+            self._study_label.setToolTip(label)
+        else:
+            self._study_label.setText(tr("system_bar.no_study"))
+            self._study_label.setToolTip("")
 
     def reload_icons(self) -> None:
         """Reload all icons with current theme colors."""
@@ -850,7 +885,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         if self._btn_presenter is not None:
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
-        self._study_label.setText(tr("system_bar.no_study_loaded"))
+        self._render_study_label()
         self._render_calibration()
         for button in self._action_captions:
             if isinstance(button, QToolButton):

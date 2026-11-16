@@ -42,6 +42,7 @@ class LoopCoordinator(QObject):
         viewer.loop_out_requested.connect(self._on_loop_out_requested)
         viewer.loop_toggle_requested.connect(self._on_loop_toggle_requested)
         viewer.loop_bound_changed.connect(self._on_loop_bound_changed)
+        viewer.loop_clear_requested.connect(self._on_loop_clear_requested)
         self.sync()
 
     def sync(self) -> None:
@@ -77,3 +78,9 @@ class LoopCoordinator(QObject):
             self._show_status(tr("status.loop_need_bounds"))
         else:
             self._show_status(tr("status.loop_disarmed"))
+
+    def _on_loop_clear_requested(self) -> None:
+        """«Сбросить петлю» of the timeline context menu (2026-11-16, п.3)."""
+        self._controller.state_manager.clear_loop_bounds()
+        self.sync()
+        self._show_status(tr("status.loop_cleared"))

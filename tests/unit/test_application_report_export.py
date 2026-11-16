@@ -13,6 +13,7 @@ from echo_personal_tool.application.report_export import (
     ReportExportError,
 )
 from echo_personal_tool.domain.services.report_builder import ReportDocument
+from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
 
 
 def test_render_returns_application_owned_anchor_types(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -69,8 +70,8 @@ def test_export_delegates_the_document_path_and_font_size(monkeypatch: pytest.Mo
     destination = tmp_path / "study-report.pdf"
     calls = []
 
-    def export(actual_document, actual_path, *, font_size):
-        calls.append((actual_document, actual_path, font_size))
+    def export(actual_document, actual_path, *, font_size, template=None):
+        calls.append((actual_document, actual_path, font_size, template))
         return actual_path
 
     monkeypatch.setattr(report_export._pdf_adapter, "export_report_document_pdf", export)
@@ -78,7 +79,13 @@ def test_export_delegates_the_document_path_and_font_size(monkeypatch: pytest.Mo
     result = report_export.export_report_document_pdf(document, destination, font_size=13)
 
     assert result == destination
-    assert calls == [(document, destination, 13)]
+    assert calls == [(document, destination, 13, None)]
+
+    # The printable form travels with the export: the PDF is the same sheet
+    # the preview shows (item 12 of the 2026-11-06 list).
+    template = ReportTemplate(columns=COLUMNS_TWO)
+    report_export.export_report_document_pdf(document, destination, font_size=13, template=template)
+    assert calls[-1] == (document, destination, 13, template)
 
 
 def test_export_translates_adapter_failure_to_safe_application_error(

@@ -131,7 +131,12 @@ def scale_line(context: CalibrationContext) -> str:
 
 
 def details(context: CalibrationContext) -> str:
-    """Hover text: the same facts plus revision and the isotropy assumption."""
+    """Hover text: the same facts plus revision and the isotropy assumption.
+
+    The last paragraph explains what this line *is for* (2026-11-16 list,
+    item 4): the physician kept asking why the orange «Масштаб: … —
+    предполагаемая» line sits above the study and what it changes.
+    """
     lines = [
         tr("calibration.detail.source", source=source_text(context)),
         tr("calibration.detail.confidence", confidence=confidence_text(context.confidence)),
@@ -144,6 +149,7 @@ def details(context: CalibrationContext) -> str:
         lines.append(tr("calibration.detail.assumed_isotropic"))
     if not context.is_calibrated:
         lines.append(tr("calibration.detail.unverified"))
+    lines.append(tr("calibration.detail.role"))
     return "\n".join(lines)
 
 

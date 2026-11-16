@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Qt, QThreadPool, Slot
 from PySide6.QtWidgets import QProgressDialog, QWidget
@@ -27,6 +28,9 @@ from PySide6.QtWidgets import QProgressDialog, QWidget
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.application.workers.report_export_worker import ReportExportWorker
 from echo_personal_tool.domain.services.report_builder import ReportDocument
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.report_template import ReportTemplate
 
 #: Outcome codes reported to the caller (never exception text).
 PDF_EXPORT_FINISHED = "finished"
@@ -51,6 +55,7 @@ class ReportPdfExportJob(QObject):
         dest_path: str | Path,
         *,
         font_size: int = 10,
+        template: ReportTemplate | None = None,
         on_outcome: OutcomeCallback | None = None,
     ) -> None:
         super().__init__(parent)
@@ -71,7 +76,7 @@ class ReportPdfExportJob(QObject):
         self._dialog.setMinimumDuration(0)
         self._dialog.setValue(0)
 
-        worker = ReportExportWorker(document, self._dest_path, font_size=font_size)
+        worker = ReportExportWorker(document, self._dest_path, font_size=font_size, template=template)
         worker.signals.finished.connect(self._on_finished, Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(self._on_failed, Qt.ConnectionType.QueuedConnection)
         worker.signals.cancelled.connect(self._on_cancelled, Qt.ConnectionType.QueuedConnection)

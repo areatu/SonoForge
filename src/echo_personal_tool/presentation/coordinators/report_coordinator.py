@@ -47,7 +47,6 @@ from echo_personal_tool.domain.services.report_builder import (
 from echo_personal_tool.domain.services.report_profiles import (
     DEFAULT_PROFILE_ID,
     normalize_profile_id,
-    profile_for_study,
 )
 from echo_personal_tool.domain.services.report_sections import checklist_notices, not_evaluated_values
 from echo_personal_tool.presentation.report_mode import ReportModePage
@@ -167,12 +166,16 @@ class ReportCoordinator(QObject):
     # ── Window lifecycle hooks ──────────────────────────────────────────
 
     def apply_preferences(self, preferences: UserPreferences) -> None:
-        """Font, theme, language and unit changes of the settings dialog."""
+        """Font, theme, language, template and unit changes of the settings dialog."""
         page = self._page
         if page is None:  # built on first entry into «Отчёт»
             return
         page.set_font_size(preferences.pdf_font_size)
         page.apply_theme()
+        # The printable form (header fields, notes, measurement columns) lives
+        # in the preferences too; without this mirror the «колонки измерений»
+        # setting changed nothing until the mode was toggled (2026-11-16, п.6).
+        self.refresh_template()
         # Language and the length unit change the document itself.
         page.request_refresh()
 
@@ -544,30 +547,18 @@ class ReportCoordinator(QObject):
     def _unset_format(self) -> str:
         """Format of a tab that has not chosen one.
 
-        Item 11 of the 2026-11-06 list: a non-cardiac study profile prints its
-        own protocol, so selecting «УЗИ артерий» must not leave a «Протокол
-        ЭхоКГ» on the sheet.  The cardiac profile keeps the older behaviour and
-        classifies the study from its DICOM header.
+        Item 11 of the 2026-11-06 list made the study profile own its protocol,
+        so «УЗИ артерий» must not leave a «Протокол ЭхоКГ» on the sheet.  The
+        2026-11-16 list (item 6) closes the same gap for the cardiac profile:
+        with «Эхокардиография» selected the sheet opens as «ЭхоКГ» — the old
+        DICOM-header classification buried it under «УЗИ» whenever the vendor
+        header carried no cardiac keywords (Samsung cines in particular).  The
+        profile picks only the *default*; the tab can still switch to «УЗИ»
+        explicitly.
         """
-        from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO, study_profile
+        from echo_personal_tool.domain.study_profiles import study_profile
 
-        profile_id = study_profile_id(self._port.preferences())
-        if profile_id != STUDY_PROFILE_ECHO:
-            return str(study_profile(profile_id).report_profile_id)
-        return profile_for_study(cardiac=self._study_looks_cardiac())
-
-    def _study_looks_cardiac(self) -> bool:
-        """Positive DICOM evidence of echocardiography, for the auto-selection."""
-        from echo_personal_tool.domain.services.cardiac_study import is_cardiac_study
-
-        instance = self._controller.state_manager.snapshot.instance
-        if instance is None:
-            return False
-        return is_cardiac_study(
-            body_part=str(getattr(instance, "body_part", "") or ""),
-            series_description=str(getattr(instance, "series_description", "") or ""),
-            study_description=str(getattr(instance, "study_description", "") or ""),
-        )
+        return str(study_profile(study_profile_id(self._port.preferences())).report_profile_id)
 
     def choose_profile(self, profile_id: str) -> None:
         """The header picked another format: rebuild the sheet of this tab."""
@@ -794,6 +785,7 @@ class ReportCoordinator(QObject):
             document,
             Path(path),
             font_size=self._port.preferences().pdf_font_size,
+            template=self.template(),
             on_outcome=_on_outcome,
         ).run()
 

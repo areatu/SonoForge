@@ -72,10 +72,17 @@ def export_report_document_pdf(
     output_path: Path,
     *,
     font_size: int = 10,
+    template: ReportTemplate | None = None,
 ) -> Path:
-    """Atomically export a study report and return its destination path."""
+    """Atomically export a study report and return its destination path.
+
+    ``template`` is the printable form of the protocol (item 12 of the
+    2026-11-06 list); the exported PDF is the same sheet the preview shows.
+    """
     try:
-        return _pdf_adapter.export_report_document_pdf(document, output_path, font_size=font_size)
+        return _pdf_adapter.export_report_document_pdf(
+            document, output_path, font_size=font_size, template=template
+        )
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
 

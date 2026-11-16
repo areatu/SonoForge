@@ -211,3 +211,54 @@ def test_pdf_failure_is_safe_and_preserves_destination(tmp_path: Path, stage: st
     assert caught.value.__suppress_context__
     assert output.read_bytes() == b"previous complete PDF"
     assert list(tmp_path.iterdir()) == [output]
+
+
+def _two_group_document():
+    from echo_personal_tool.domain.services.report_builder import (
+        PatientInfo,
+        ReportDocument,
+        ReportGroup,
+        ReportValue,
+    )
+
+    return ReportDocument(
+        patient=PatientInfo(name="Иванов И.И.", patient_id="12345"),
+        groups=(
+            ReportGroup(
+                title="Левый желудочек",
+                key="lv",
+                values=(ReportValue(label="КДО ЛЖ", value="120.0", unit="мл", group="lv"),),
+            ),
+            ReportGroup(
+                title="Левое предсердие",
+                key="la",
+                values=(ReportValue(label="КДР ЛП", value="42.0", unit="мм", group="la"),),
+            ),
+        ),
+    )
+
+
+def test_two_column_template_rebuilds_the_sheet(tmp_path: Path) -> None:
+    """«Колонки измерений — две» must visibly change the sheet (2026-11-16, п.6).
+
+    The renderer lays two or more groups side by side for the two-column
+    template; a template that changes nothing in the bytes is exactly the bug
+    the owner reported.
+    """
+    from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
+    from echo_personal_tool.infrastructure.measurement_report_pdf import render_report
+
+    document = _two_group_document()
+    one_column = render_report(document, template=ReportTemplate(columns=1))
+    two_column = render_report(document, template=ReportTemplate(columns=COLUMNS_TWO))
+
+    assert one_column.pdf != two_column.pdf
+
+    import fitz
+
+    with fitz.open(stream=two_column.pdf, filetype="pdf") as pdf:
+        text = "\n".join(page.get_text() for page in pdf)
+    flat = " ".join(text.split())
+    assert "Левый желудочек" in flat
+    assert "Левое предсердие" in flat
+    assert "120.0" in flat and "42.0" in flat

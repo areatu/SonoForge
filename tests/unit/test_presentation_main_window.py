@@ -2290,11 +2290,19 @@ class TestReportFormat:
         assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ECHO
         assert main_window.report_coordinator.current_document().profile_id == PROFILE_ECHO
 
-    def test_a_non_cardiac_study_starts_as_a_generic_ultrasound_protocol(self, main_window):
+    def test_the_format_follows_the_study_profile_not_the_dicom_classifier(self, main_window):
+        """2026-11-16 list, item 6a: the default format belongs to the study profile.
+
+        The cardiac *classifier* used to re-route non-cardiac studies to the
+        generic ultrasound protocol even under the ЭхоКГ study profile — which
+        is exactly what the owner reported («профиль ЭхоКГ выбран, а по
+        умолчанию формат протокола УЗИ»).  The study profile now owns the
+        default; the physician's explicit choice still wins per tab.
+        """
         from dataclasses import replace
 
         from echo_personal_tool.domain.models.metadata import InstanceMetadata
-        from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND
+        from echo_personal_tool.domain.services.report_profiles import PROFILE_ECHO
 
         self._study(main_window)
         main_window._controller.state_manager.snapshot = replace(
@@ -2312,7 +2320,7 @@ class TestReportFormat:
             ),
         )
         main_window.report_coordinator.set_mode(True)
-        assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ULTRASOUND
+        assert main_window.report_coordinator.page.preview.profile_id == PROFILE_ECHO
 
     def test_the_choice_is_remembered_per_tab(self, main_window):
         from echo_personal_tool.domain.services.report_profiles import PROFILE_ULTRASOUND

@@ -907,7 +907,10 @@ class MainWindow(QMainWindow):
     # ── Prepared teaching anatomy (display-only; Full + Presenter) ──
 
     def _create_viewer_with_prepared_anatomy(self) -> ViewerWidget:
-        viewer = ViewerWidget(loop_controls=False)
+        # The A→B loop controls belong to the primary viewer (2026-11-16, п.3):
+        # with ``loop_controls=False`` here the «A»/«B»/«↻» buttons and the loop
+        # strip of the transport never reached the interface at all.
+        viewer = ViewerWidget()
         self._prepared_anatomy = PreparedAnatomyLayer(viewer)
         self._prepared_draw = PreparedDrawTool(viewer, self._on_prepared_shape)
         viewer._view._prepared_draw_tool = self._prepared_draw

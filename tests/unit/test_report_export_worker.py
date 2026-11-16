@@ -110,8 +110,9 @@ def test_a_real_document_is_rendered_and_written(tmp_path: Path) -> None:
 def test_the_font_size_reaches_the_renderer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         captured["font_size"] = font_size
+        captured["template"] = template
         return _fake_render()
 
     monkeypatch.setattr(worker_module, "render_report", _render)
@@ -120,7 +121,27 @@ def test_the_font_size_reaches_the_renderer(tmp_path: Path, monkeypatch: pytest.
     worker.run()
 
     assert captured["font_size"] == 12
+    assert captured["template"] is None, "no template — the full form of older builds"
     assert (tmp_path / "out.pdf").read_bytes() == b"%PDF-1.7 fake report"
+
+
+def test_the_template_reaches_the_renderer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The exported PDF is the same sheet the preview shows (item 12)."""
+    from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
+
+    captured: dict[str, object] = {}
+
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
+        captured["template"] = template
+        return _fake_render()
+
+    monkeypatch.setattr(worker_module, "render_report", _render)
+    template = ReportTemplate(columns=COLUMNS_TWO)
+    worker = ReportExportWorker(_document(), tmp_path / "out.pdf", template=template)
+
+    worker.run()
+
+    assert captured["template"] == template
 
 
 # ── cancellation ─────────────────────────────────────────────────────
@@ -143,7 +164,7 @@ def test_a_cancel_during_rendering_never_publishes(tmp_path: Path, monkeypatch: 
     target = tmp_path / "out.pdf"
     worker = ReportExportWorker(_document(), target)
 
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         worker.cancel()  # the user presses «Отмена» while the sheet renders
         return _fake_render()
 
@@ -161,7 +182,7 @@ def test_a_cancel_during_rendering_never_publishes(tmp_path: Path, monkeypatch: 
 
 
 def test_a_render_failure_emits_the_stable_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         raise ReportExportError("pdf_export_failed")
 
     monkeypatch.setattr(worker_module, "render_report", _render)
@@ -176,7 +197,7 @@ def test_a_render_failure_emits_the_stable_code(tmp_path: Path, monkeypatch: pyt
 
 
 def test_an_unexpected_error_never_leaks_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def _render(document: object, *, font_size: int = 10) -> SimpleNamespace:
+    def _render(document: object, *, font_size: int = 10, template: object = None) -> SimpleNamespace:
         raise RuntimeError("/home/clinic/PHI_PATIENT.dcm is unreadable")
 
     monkeypatch.setattr(worker_module, "render_report", _render)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from echo_personal_tool.application.localization import get_language, set_language
+from echo_personal_tool.application.localization import get_language, set_language, tr
 from echo_personal_tool.domain.models.calibration import (
     ASSUMPTION_IMAGER_PLANE,
     ASSUMPTION_SECONDS_AS_LENGTH,
@@ -56,8 +56,23 @@ def test_details_explain_the_isotropy_assumption_and_an_unverified_scale() -> No
     context = _context(CalibrationConfidence.ASSUMED, assumed_isotropic=True)
     lines = calibration_status.details(context).splitlines()
 
-    assert len(lines) == 5
+    assert len(lines) == 6
     assert any("изотроп" in line.lower() or "isotrop" in line.lower() for line in lines)
+
+
+def test_details_explain_what_the_calibration_line_is_for() -> None:
+    """2026-11-16 list, item 4: the orange «Масштаб: …» line, explained.
+
+    The tooltip must say what the line is, what «предположение» means and what
+    the scale affects — the physician's question cannot be left to colour.
+    """
+    context = _context(CalibrationConfidence.ASSUMED)
+    detail = calibration_status.details(context)
+    role = tr("calibration.detail.role")
+
+    assert detail.endswith(role)
+    assert "калипер" in role or "caliper" in role
+    assert "предположение" in role.lower() or "assumption" in role.lower()
 
 
 def test_unavailable_badge_names_the_reason() -> None:

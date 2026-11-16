@@ -76,6 +76,7 @@ _HT_TO_BUTTON_ZONE: dict[int, Zone] = {
 
 # ── Win32 Messages ────────────────────────────────────────────────
 WM_NCCALCSIZE = 0x0083
+WM_NCPAINT = 0x0085
 WM_NCHITTEST = 0x0084
 WM_NCMOUSEMOVE = 0x00A0
 WM_NCLBUTTONDOWN = 0x00A1
@@ -119,6 +120,11 @@ DWMWCP_DEFAULT = 0
 DWMWCP_DONOTROUND = 1
 DWMWCP_ROUND = 2
 DWMWCP_ROUNDSMALL = 3
+
+#: Flat colour of the leftover non-client band, filled in ``WM_NCPAINT`` so no
+#: repaint can show the classic light frame (2026-11-16 list, item 1).  Written
+#: as a ``COLORREF`` (0x00BBGGRR): RGB(0x25, 0x25, 0x26) — the dark chrome tone.
+NCBAND_COLOR_COLORREF = 0x00262525
 
 # ── TrackMouseEvent Flags ─────────────────────────────────────────
 TME_LEAVE = 0x00000002
@@ -209,6 +215,10 @@ class Win32Api(Protocol):
 
     def extend_frame_into_client_area(self, hwnd: int, margins: tuple[int, int, int, int]) -> int: ...
 
+    def dwm_def_window_proc(self, hwnd: int, message: int, w_param: int, l_param: int) -> tuple[bool, int]: ...
+
+    def paint_nonclient_band(self, hwnd: int, color: int) -> bool: ...
+
     def is_zoomed(self, hwnd: int) -> bool: ...
 
     def frame_padding(self, hwnd: int) -> tuple[int, int]: ...
@@ -255,6 +265,63 @@ class _CtypesWin32Api:
     def extend_frame_into_client_area(self, hwnd: int, margins: tuple[int, int, int, int]) -> int:
         m = MARGINS(*margins)
         return int(self._dwmapi.DwmExtendFrameIntoClientArea(ctypes.c_void_p(hwnd), ctypes.byref(m)))
+
+    def dwm_def_window_proc(self, hwnd: int, message: int, w_param: int, l_param: int) -> tuple[bool, int]:
+        result = ctypes.c_ssize_t(0)
+        handled = int(
+            self._dwmapi.DwmDefWindowProc(
+                ctypes.c_void_p(hwnd),
+                ctypes.c_uint(message),
+                ctypes.c_size_t(w_param),
+                ctypes.c_ssize_t(l_param),
+                ctypes.byref(result),
+            )
+        )
+        return bool(handled), int(result.value)
+
+    def paint_nonclient_band(self, hwnd: int, color: int) -> bool:
+        """Fill the leftover non-client band (window minus client) flat."""
+        user32 = self._user32
+        gdi32 = ctypes.windll.gdi32  # type: ignore[attr-defined]  # mypy does not check this file (outside tool.mypy.files)
+        dc = int(user32.GetWindowDC(ctypes.c_void_p(hwnd)))
+        if not dc:
+            return False
+        try:
+            window_rect = RECT()
+            if not user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(window_rect)):
+                return False
+            client_rect = RECT()
+            if not user32.GetClientRect(ctypes.c_void_p(hwnd), ctypes.byref(client_rect)):
+                return False
+            top_left = POINT(0, 0)
+            if not user32.ClientToScreen(ctypes.c_void_p(hwnd), ctypes.byref(top_left)):
+                return False
+            width = int(window_rect.right) - int(window_rect.left)
+            height = int(window_rect.bottom) - int(window_rect.top)
+            cx = int(top_left.x) - int(window_rect.left)
+            cy = int(top_left.y) - int(window_rect.top)
+            cw = int(client_rect.right) - int(client_rect.left)
+            ch = int(client_rect.bottom) - int(client_rect.top)
+            bands = (
+                (0, 0, width, cy),
+                (0, cy + ch, width, height),
+                (0, cy, cx, cy + ch),
+                (cx + cw, cy, width, cy + ch),
+            )
+            brush = gdi32.CreateSolidBrush(ctypes.c_uint(color))
+            if not brush:
+                return False
+            try:
+                for left, top, right, bottom in bands:
+                    if right <= left or bottom <= top:
+                        continue
+                    rect = RECT(left, top, right, bottom)
+                    user32.FillRect(ctypes.c_void_p(dc), ctypes.byref(rect), ctypes.c_void_p(brush))
+            finally:
+                gdi32.DeleteObject(ctypes.c_void_p(brush))
+            return True
+        finally:
+            user32.ReleaseDC(ctypes.c_void_p(hwnd), ctypes.c_void_p(dc))
 
     def is_zoomed(self, hwnd: int) -> bool:
         return bool(self._user32.IsZoomed(ctypes.c_void_p(hwnd)))
@@ -451,6 +518,24 @@ class Win32Chrome:
             self._pressed_zone = None
         self._update_button_hover(None)
 
+    def _handle_ncpaint(self, hwnd: int, w_param: int) -> tuple[bool, int]:
+        """Own the non-client painting (2026-11-16 list, item 1 — «белая рамка»).
+
+        With the frame stripped in ``WM_NCCALCSIZE`` the window has almost no
+        non-client area left — but on Win10 (which ignores
+        ``DWMWA_BORDER_COLOR``) closing a dialog reactivates the window and
+        ``DefWindowProc`` paints its inactive frame first: a white outline
+        around the dark UI.  The rule: let DWM paint whatever it claims, colour
+        the remaining band with the app chrome tone ourselves, and swallow the
+        message — never hand it to ``DefWindowProc``.
+        """
+        if self._api is not None:
+            handled, result = self._api.dwm_def_window_proc(hwnd, WM_NCPAINT, w_param, 0)
+            if handled:
+                return True, int(result)
+            self._api.paint_nonclient_band(hwnd, NCBAND_COLOR_COLORREF)
+        return True, 0
+
     def handle_native_event(
         self,
         event_type: QByteArray | bytes | str,
@@ -483,6 +568,9 @@ class Win32Chrome:
                         params.rgrc[0].bottom -= fy
                 return True, 0
             return None
+
+        if message == WM_NCPAINT:
+            return self._handle_ncpaint(hwnd, int(msg.wParam))
 
         if message == WM_NCHITTEST:
             screen_x, screen_y = unpack_lparam_point(int(msg.lParam))
