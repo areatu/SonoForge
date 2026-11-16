@@ -415,6 +415,11 @@ class TabCoordinator:
         if not self._window._tab_flush_or_block():
             self.refresh_strip()
             return False
+        comparison = getattr(self._window, "_comparison", None)
+        if comparison is not None and comparison.previous_identity() is not None:
+            # Switching tabs changes the study on screen: the explicit pair and
+            # its pending decode end here, so no result crosses into the next tab.
+            comparison.close_previous_comparison(announce=False)
         target = self._tabs.get(tab_id)
         if getattr(self._window, "_multiview_mode", False):
             if self.comparison_origin_tab_id is None:

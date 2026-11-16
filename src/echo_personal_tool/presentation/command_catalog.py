@@ -42,6 +42,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("calculators", "tool_panel.calculators", "open_calculators"),
     Command("references", "app_menu.references", "references"),
     Command("key_images", "key_images.open", "key_images"),
+    Command("compare_previous", "app_menu.compare_previous", "compare_previous"),
     Command("doppler_repeats", "doppler_repeats.open", "doppler_repeats"),
     Command("help", "app_menu.help", "help"),
     Command("guide", "app_menu.guide", "guide"),

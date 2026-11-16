@@ -234,6 +234,8 @@ files = [
     "src/echo_personal_tool/presentation/speckle_overlay.py",
     "src/echo_personal_tool/presentation/speckle_settings_dialog.py",
     "src/echo_personal_tool/presentation/study_browser.py",
+    "src/echo_personal_tool/presentation/study_comparison.py",
+    "src/echo_personal_tool/presentation/study_comparison_dialog.py",
     "src/echo_personal_tool/presentation/styled_dialogs.py",
     "src/echo_personal_tool/presentation/theme/__init__.py",
     "src/echo_personal_tool/presentation/theme/contrast.py",
