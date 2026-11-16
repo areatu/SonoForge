@@ -10,7 +10,13 @@ from typing import Any
 import pydicom
 from pydicom.dataset import Dataset
 
-from echo_personal_tool.domain.models import InstanceMetadata, PatientDemographics
+from echo_personal_tool.domain.models import (
+    DicomDisplay,
+    InstanceMetadata,
+    LookupTable,
+    PatientDemographics,
+    WindowPreset,
+)
 from echo_personal_tool.domain.models.calibration import CalibrationContext
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     resolution_from_contexts,
@@ -113,6 +119,104 @@ def _positive_float(value: Any) -> float | None:
     return number if number is not None and number > 0 else None
 
 
+def _float_values(value: Any) -> tuple[float, ...]:
+    """DICOM multi-values and backslash strings as floats, skipping junk."""
+    if value is None:
+        return ()
+    raw = value.split("\\") if isinstance(value, str) else value
+    if not isinstance(raw, (list, tuple)) and not hasattr(raw, "__iter__"):
+        raw = (raw,)
+    result: list[float] = []
+    for item in raw:
+        number = _safe_float(item)
+        if number is not None:
+            result.append(number)
+    return tuple(result)
+
+
+def _text_values(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    raw = value.split("\\") if isinstance(value, str) else value
+    if not isinstance(raw, (list, tuple)) and not hasattr(raw, "__iter__"):
+        raw = (raw,)
+    return tuple(str(item).strip() for item in raw)
+
+
+def _lookup_table(dataset: Dataset, sequence_keyword: str) -> LookupTable | None:
+    """First LUT of a Modality/VOI LUT sequence, if it is usable."""
+    sequence = dataset.get(sequence_keyword) or ()
+    if not sequence:
+        return None
+    item = sequence[0]
+    entries = _float_values(item.get("LUTData"))
+    if not entries:
+        return None
+    descriptor = _float_values(item.get("LUTDescriptor"))
+    # LUTDescriptor is [number of entries, first mapped input value, bits per entry].
+    first_input = descriptor[1] if len(descriptor) > 1 else 0.0
+    bits = int(descriptor[2]) if len(descriptor) > 2 else 16
+    if bits <= 0 or bits > 32:
+        bits = 16
+    if descriptor:
+        count = int(descriptor[0]) or 65536
+        entries = entries[:count]
+    return LookupTable(first_input=first_input, entries=entries, bits_per_entry=bits)
+
+
+def _window_presets(dataset: Dataset) -> tuple[WindowPreset, ...]:
+    centers = _float_values(dataset.get("WindowCenter"))
+    widths = _float_values(dataset.get("WindowWidth"))
+    explanations = _text_values(dataset.get("WindowCenterWidthExplanation"))
+    presets: list[WindowPreset] = []
+    for index, (center, width) in enumerate(zip(centers, widths, strict=False)):
+        if width <= 0:
+            continue
+        label = explanations[index] if index < len(explanations) else ""
+        presets.append(WindowPreset(center=center, width=width, explanation=label))
+    return tuple(presets)
+
+
+def _display_metadata(dataset: Dataset, modality: str) -> DicomDisplay | None:
+    """Extract the display chain facts; ``None`` keeps the ultrasound path."""
+    photometric = str(dataset.get("PhotometricInterpretation", "") or "").strip().upper()
+    shape = str(dataset.get("PresentationLUTShape", "") or "").strip().upper()
+    slope = _safe_float(dataset.get("RescaleSlope"))
+    intercept = _safe_float(dataset.get("RescaleIntercept"))
+    presets = _window_presets(dataset)
+    voi_lut = _lookup_table(dataset, "VOILUTSequence")
+    modality_lut = _lookup_table(dataset, "ModalityLUTSequence")
+    padding = _safe_float(dataset.get("PixelPaddingValue"))
+    padding_limit = _safe_float(dataset.get("PixelPaddingRangeLimit"))
+    rescale_effective = slope is not None and intercept is not None and (slope != 1.0 or intercept != 0.0)
+    if not any(
+        (
+            photometric == "MONOCHROME1",
+            shape == "INVERSE",
+            rescale_effective,
+            presets,
+            voi_lut is not None,
+            modality_lut is not None,
+            padding is not None,
+        )
+    ):
+        return None
+    return DicomDisplay(
+        photometric=photometric or "MONOCHROME2",
+        rescale_slope=float(slope) if slope is not None else 1.0,
+        rescale_intercept=float(intercept) if intercept is not None else 0.0,
+        rescale_type=str(dataset.get("RescaleType", "") or "").strip(),
+        window_presets=presets,
+        voi_lut_function=str(dataset.get("VOILUTFunction", "LINEAR") or "LINEAR").strip().upper(),
+        voi_lut=voi_lut,
+        modality_lut=modality_lut,
+        pixel_padding_value=padding,
+        pixel_padding_range_limit=padding_limit,
+        presentation_lut_shape=shape,
+        value_unit="HU" if modality.upper() == "CT" and rescale_effective else "",
+    )
+
+
 def _file_mtime(path: Path | None) -> datetime | None:
     if path is None:
         return None
@@ -164,10 +268,11 @@ def map_instance_metadata(
     number_of_frames = infer_dicom_frame_count(dataset, pixel_data=pixel_data)
     series_description = str(dataset.get("SeriesDescription", "") or "").strip()
     spacing, spacing_source, calibration, calibrations = _pixel_spacing(dataset)
+    modality = str(dataset.get("Modality", "OT") or "OT")
     return InstanceMetadata(
         sop_instance_uid=str(dataset.get("SOPInstanceUID", "") or ""),
         series_uid=str(dataset.get("SeriesInstanceUID", "") or ""),
-        modality=str(dataset.get("Modality", "OT") or "OT"),
+        modality=modality,
         number_of_frames=number_of_frames,
         pixel_spacing=spacing,
         pixel_spacing_source=spacing_source,
@@ -186,6 +291,7 @@ def map_instance_metadata(
         patient_weight_kg=_safe_float(dataset.get("PatientWeight")),
         heart_rate_bpm=_positive_float(dataset.get("HeartRate")),
         created_at=_instance_created_at(dataset, path),
+        display=_display_metadata(dataset, modality),
     )
 
 

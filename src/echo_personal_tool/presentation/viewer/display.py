@@ -24,6 +24,13 @@ import numpy as np
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtWidgets import QSlider, QWidget
 
+from echo_personal_tool.domain.models.dicom_display import DicomDisplay, WindowPreset
+from echo_personal_tool.imaging.dicom_display import (
+    padding_mask,
+    render_dicom_frame,
+    resolve_window,
+    stored_to_modality,
+)
 from echo_personal_tool.imaging.display import (
     apply_window_level_rgb,
     compute_display_levels,
@@ -49,6 +56,7 @@ class ViewerDisplay(QObject):
         color_active_provider: Callable[[], bool],
         image_item: Any,
         invalidate_edge_map: Callable[[], None],
+        display_provider: Callable[[], DicomDisplay | None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._frame_provider = frame_provider
@@ -57,6 +65,10 @@ class ViewerDisplay(QObject):
         self._color_active_provider = color_active_provider
         self._image_item = image_item
         self._invalidate_edge_map = invalidate_edge_map
+        self._display_provider = display_provider or (lambda: None)
+        #: Numeric W/L chosen in the DICOM header/preset menu; None = automatic.
+        self._numeric_window: tuple[float, float] | None = None
+        self._last_window: tuple[float, float] | None = None
 
         self.window_slider = QSlider(Qt.Orientation.Horizontal, parent)
         self.window_slider.setRange(1, 400)
@@ -80,6 +92,7 @@ class ViewerDisplay(QObject):
         self._display_buf_idx = 0
 
         self._instance_wl_dr_cache: OrderedDict[str, tuple[int, int, int]] = OrderedDict()
+        self._instance_numeric_window: dict[str, tuple[float, float]] = {}
         self._per_file_wl_dr: dict[Path, tuple[int, int, int]] = {}
         self._current_path: Path | None = None
 
@@ -88,7 +101,59 @@ class ViewerDisplay(QObject):
         self._bound_sliders: list[tuple[Any, QSlider]] = []
 
         for slider in (self.window_slider, self.level_slider, self.dr_slider):
-            slider.valueChanged.connect(self.update_levels)
+            slider.valueChanged.connect(self._on_slider_changed)
+
+    def _on_slider_changed(self) -> None:
+        """A manual slider move leaves numeric DICOM W/L and re-renders."""
+        self._numeric_window = None
+        self.update_levels()
+
+    # ── DICOM display chain ─────────────────────────────────────────
+
+    def has_dicom_display(self) -> bool:
+        """Whether the current grayscale instance carries a DICOM display chain."""
+        frame = self._frame_provider()
+        if frame is None or np.asarray(frame).ndim != 2:
+            return False
+        return self._display_provider() is not None and not self._color_active_provider()
+
+    def window_presets(self) -> tuple[WindowPreset, ...]:
+        """Windows declared by the current DICOM header, in header order."""
+        display = self._display_provider()
+        return display.window_presets if display is not None else ()
+
+    def apply_window_preset(self, index: int) -> bool:
+        """Use one header window as an explicit numeric W/L."""
+        presets = self.window_presets()
+        if not 0 <= index < len(presets):
+            return False
+        preset = presets[index]
+        return self.apply_numeric_window(preset.center, preset.width)
+
+    def apply_numeric_window(self, center: float, width: float) -> bool:
+        """Use a physician-entered ``(center, width)`` in modality units."""
+        if self._display_provider() is None:
+            return False
+        if not np.isfinite(center) or not np.isfinite(width) or width < 1.0:
+            return False
+        self._numeric_window = (float(center), float(width))
+        self.update_levels()
+        return True
+
+    def reset_dicom_window(self) -> None:
+        """Return to the header default/auto window."""
+        self._numeric_window = None
+        self.update_levels()
+
+    def window_level_values(self) -> tuple[float, float] | None:
+        """The center/width of the last rendered DICOM image, if any."""
+        if self._last_window is not None:
+            return self._last_window
+        levels = self.effective_levels()
+        if levels is None:
+            return None
+        low, high = levels
+        return ((low + high) / 2.0, max(high - low, 1.0))
 
     # ── values and cache keys ────────────────────────────────────────
 
@@ -125,6 +190,8 @@ class ViewerDisplay(QObject):
         self._cached_levels_key = None
         self._cached_lut = None
         self._cached_lut_key = None
+        self._numeric_window = None
+        self._last_window = None
 
     # ── enabling and external sliders ────────────────────────────────
 
@@ -196,6 +263,7 @@ class ViewerDisplay(QObject):
         dr: int,
         *,
         update_display: bool = True,
+        clear_dicom_window: bool = True,
     ) -> None:
         """Set window/level/DR on internal + external sliders with signals blocked."""
         ext = self._external_wl_dr_sliders
@@ -209,6 +277,9 @@ class ViewerDisplay(QObject):
         self.window_slider.setValue(window)
         self.level_slider.setValue(level)
         self.dr_slider.setValue(dr)
+        if clear_dicom_window:
+            self._numeric_window = None
+        self._last_window = None
         if ext is not None:
             ext_win, ext_lev, ext_dr = ext
             if hasattr(ext_win, "setValue"):
@@ -239,9 +310,9 @@ class ViewerDisplay(QObject):
         self._current_path = path
         saved = self._per_file_wl_dr.get(path) if path is not None else None
         if saved is not None:
-            self.set_values(*saved)
+            self.set_values(*saved, clear_dicom_window=False)
         else:
-            self.set_values(100, 50, 50)
+            self.set_values(100, 50, 50, clear_dicom_window=False)
 
     # ── uid-keyed memory ─────────────────────────────────────────────
 
@@ -251,8 +322,13 @@ class ViewerDisplay(QObject):
             self._instance_wl_dr_cache.move_to_end(uid)
         else:
             if len(self._instance_wl_dr_cache) >= _WL_DR_CACHE_MAX:
-                self._instance_wl_dr_cache.popitem(last=False)
+                evicted, _ = self._instance_wl_dr_cache.popitem(last=False)
+                self._instance_numeric_window.pop(evicted, None)
         self._instance_wl_dr_cache[uid] = self.values
+        if self._numeric_window is None:
+            self._instance_numeric_window.pop(uid, None)
+        else:
+            self._instance_numeric_window[uid] = self._numeric_window
 
     def restore_instance(self, uid: str | None) -> bool:
         """Restore remembered WL/DR for ``uid``; unknown ids leave values alone."""
@@ -261,6 +337,7 @@ class ViewerDisplay(QObject):
         self._instance_wl_dr_cache.move_to_end(uid)
         window, level, dr = self._instance_wl_dr_cache[uid]
         self.set_values(window, level, dr, update_display=False)
+        self._numeric_window = self._instance_numeric_window.get(uid)
         return True
 
     # ── levels, LUT and buffers ──────────────────────────────────────
@@ -272,6 +349,11 @@ class ViewerDisplay(QObject):
             return
         frame = np.asarray(frame)
         if frame.size == 0:
+            return
+
+        dicom_display = self._display_provider()
+        if dicom_display is not None and not self._color_active_provider() and frame.ndim == 2:
+            self._render_dicom_frame(frame, dicom_display)
             return
 
         sliders_key = self.levels_key()
@@ -338,6 +420,25 @@ class ViewerDisplay(QObject):
             self._display_buf_idx = (self._display_buf_idx + 1) % len(self._display_buffers)
         self._invalidate_edge_map()
 
+    def _render_dicom_frame(self, frame: np.ndarray, display: DicomDisplay) -> None:
+        """Render stored values through modality → VOI → presentation."""
+        dr_low, dr_high = dr_percentiles_from_slider(self.dr_slider.value())
+        rendered = render_dicom_frame(
+            frame,
+            display,
+            dr_low_pct=dr_low,
+            dr_high_pct=dr_high,
+            window_scale=self.window_slider.value() / 100.0,
+            level_offset=(self.level_slider.value() - 50) / 50.0,
+            numeric_window=self._numeric_window,
+        )
+        self._image_item.setImage(rendered.pixels, autoLevels=False)
+        self._last_window = (rendered.center, rendered.width)
+        self._cached_display_low = rendered.center - rendered.width / 2.0
+        self._cached_display_high = rendered.center + rendered.width / 2.0
+        self._cached_levels_key = self.levels_key()
+        self._invalidate_edge_map()
+
     def _ensure_display_buffer(self, shape: tuple[int, ...]) -> np.ndarray:
         """Return a pre-allocated WRITABLE uint8 buffer from the double buffer pool."""
         for buf in self._display_buffers:
@@ -382,6 +483,21 @@ class ViewerDisplay(QObject):
         frame = np.asarray(frame)
         if frame.size == 0:
             return None
+        dicom_display = self._display_provider()
+        if dicom_display is not None and frame.ndim == 2:
+            modality = stored_to_modality(frame, dicom_display)
+            mask = padding_mask(frame, dicom_display)
+            valid = modality[~mask] if mask is not None else modality
+            center, width = resolve_window(
+                dicom_display,
+                valid,
+                dr_low_pct=dr_percentiles_from_slider(self.dr_slider.value())[0],
+                dr_high_pct=dr_percentiles_from_slider(self.dr_slider.value())[1],
+                window_scale=self.window_slider.value() / 100.0,
+                level_offset=(self.level_slider.value() - 50) / 50.0,
+                numeric=self._numeric_window,
+            )
+            return center - width / 2.0, center + width / 2.0
         if frame.ndim == 3:
             gray = np.asarray(frame[..., :3].mean(axis=2, dtype=np.float64))
         else:

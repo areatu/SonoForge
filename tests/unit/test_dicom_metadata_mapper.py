@@ -275,3 +275,62 @@ def test_family_name_is_read_without_reordering_a_formatted_full_name():
     assert metadata.patient_surname == "Family"
     assert "Family" not in repr(metadata)
     assert "Given" not in repr(metadata)
+
+
+# ── DICOM display chain (542) ───────────────────────────────────────
+
+
+def test_ct_rescale_and_window_become_a_display_chain() -> None:
+    ds = _minimal_dataset()
+    ds.Modality = "CT"
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.RescaleSlope = "1"
+    ds.RescaleIntercept = "-1024"
+    ds.WindowCenter = ["40", "400"]
+    ds.WindowWidth = ["400", "1500"]
+    ds.WindowCenterWidthExplanation = ["soft", "bone"]
+
+    meta = map_instance_metadata(ds)
+
+    assert meta.display is not None
+    assert meta.display.value_unit == "HU"
+    assert (meta.display.rescale_slope, meta.display.rescale_intercept) == (1.0, -1024.0)
+    assert [(p.center, p.width, p.label) for p in meta.display.window_presets] == [
+        (40.0, 400.0, "soft"),
+        (400.0, 1500.0, "bone"),
+    ]
+    assert meta.display.default_window is meta.display.window_presets[0]
+
+
+def test_mr_never_reports_hu_even_with_rescale() -> None:
+    ds = _minimal_dataset()
+    ds.Modality = "MR"
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.RescaleSlope = "2"
+    ds.RescaleIntercept = "0"
+
+    meta = map_instance_metadata(ds)
+
+    assert meta.display is not None
+    assert meta.display.value_unit == ""
+    assert meta.display.has_modality_transform is True
+
+
+def test_plain_ultrasound_keeps_the_legacy_window_path() -> None:
+    meta = map_instance_metadata(_minimal_dataset())
+    assert meta.display is None
+
+
+def test_padding_and_monochrome1_are_preserved_for_the_renderer() -> None:
+    ds = _minimal_dataset()
+    ds.Modality = "CT"
+    ds.PhotometricInterpretation = "MONOCHROME1"
+    ds.PixelPaddingValue = "-2000"
+    ds.PixelPaddingRangeLimit = "-1990"
+
+    meta = map_instance_metadata(ds)
+
+    assert meta.display is not None
+    assert meta.display.is_monochrome1 is True
+    assert meta.display.pixel_padding_value == -2000.0
+    assert meta.display.pixel_padding_range_limit == -1990.0

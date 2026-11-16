@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from echo_personal_tool.domain.models.calibration import CalibrationContext
+from echo_personal_tool.domain.models.dicom_display import DicomDisplay
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,9 @@ class InstanceMetadata:
     #: Family-name component of DICOM PatientName, for the opt-in start page.
     #: RAM metadata only: never included in measurement exports or diagnostics.
     patient_surname: str = field(default="", repr=False, compare=False)
+    #: DICOM display chain facts (rescale, VOI windows, LUT, MONOCHROME1).
+    #: ``None`` for ultrasound/plain images, which keep the US W/L path.
+    display: DicomDisplay | None = field(default=None, compare=False, repr=False)
 
     def calibration_for_frame(self, frame_index: int | None) -> CalibrationContext | None:
         """Pick a calibration that applies to *frame_index* without geometry.
