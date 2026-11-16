@@ -29,6 +29,14 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 ---
 
+## What's new in 0.4.1
+
+- DICOM display pipeline: modality → VOI → presentation, window/level from headers or numeric values, MONOCHROME1 and Pixel Padding; valid DICOM without a Part 10 preamble opens.
+- Study comparison with an explicitly chosen previous study; patient identity is confirmed by `PatientID` + issuer, not by surname alone.
+- Doppler repeats: accepted/excluded cycles with explicit selection, n, mean/SD/CV and a dedicated dialog.
+- Key images: study bookmarks that survive re-sorting with an honest `available/missing/changed` status.
+- Biplane LA volume from paired A4C/A2C discs; assumed calibration is labeled and gated instead of silently converting units.
+
 ## Highlights in 0.4.0
 
 - Study profiles for echocardiography, vascular, abdominal/kidney and thyroid ultrasound, with profile-specific tools and reports.
@@ -70,7 +78,7 @@ Press `F10` → present. Download `SonoForgePresenter-<version>.exe` (Windows) o
 
 ---
 
-Release preparation and verification: [0.4.0 checklist](docs/release/0.4.0-checklist.md).
+Release preparation and verification: [0.4.1 checklist](docs/release/0.4.1-checklist.md).
 
 ## Installation
 
@@ -331,7 +339,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory by d
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (this checkout: **v0.4.0**; see [Releases](https://github.com/areatu/SonoForge/releases) for published builds).
+> Check the installed version anytime: `sonoforge --version` (this checkout: **v0.4.1**; see [Releases](https://github.com/areatu/SonoForge/releases) for published builds).
 
 ### 1. Open DICOM Data
 

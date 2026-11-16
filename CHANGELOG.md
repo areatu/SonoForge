@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `chore(release)`: подготовка 0.4.1: версии (`__init__.py`, `sonoforge.iss`, `CITATION.cff`), чек-лист выпуска, README/ROADMAP; добавлены сборочный гид macOS Intel/Windows 11, шаблоны эхо-отчёта и приёмочные листы ([полностью](changelog.d/058-chore-release-041.md))
+
 - `fix(comparison)`: #562 — идентичность пациента подтверждается по `PatientID` + issuer, совпадение фамилии само по себе больше не даёт «пациент совпадает» ([полностью](changelog.d/057-fix-comparison-patient-id-562.md))
 
 - `feat(dicom)`: #542 — тракт DICOM display: modality → VOI → presentation, окна из заголовка и числовые W/L, MONOCHROME1 и Pixel Padding ([полностью](changelog.d/056-feat-dicom-display-542.md))
