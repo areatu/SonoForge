@@ -13,9 +13,9 @@ the same names, order and count.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.presentation import dark_theme
@@ -137,7 +137,7 @@ class ViewerTransport(QObject):
 
     # ── A→B loop context menu (2026-11-16 list, item 3) ─────────────────
 
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802 - Qt naming
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt naming
         if obj is self.bar and event.type() == QEvent.Type.Resize:
             self._fit_loop_buttons()
         return super().eventFilter(obj, event)
@@ -172,15 +172,15 @@ class ViewerTransport(QObject):
         for button in loop.buttons():
             button.setVisible(show)
 
-    def _frame_at_slider_x(self, x: int) -> int:
-        """Frame index under a right-click on the timeline slider."""
+    def frame_at_slider_x(self, x: int) -> int:
+        """Frame index under a right-click on the timeline slider (public: tests)."""
         slider = self.timeline_slider
         width = max(1, slider.width() - 2)
         fraction = min(1.0, max(0.0, (x - 1) / width))
         span = slider.maximum() - slider.minimum()
         return slider.minimum() + round(fraction * span)
 
-    def _show_loop_menu(self, pos) -> None:
+    def _show_loop_menu(self, pos: QPoint) -> None:
         """«ПКМ по ползунку»: place the A/B markers on the clicked frame.
 
         The buttons «A»/«B»/«↻» stay on the transport for the playhead, and
@@ -189,14 +189,15 @@ class ViewerTransport(QObject):
         """
         if self._loop is None or not getattr(self._loop, "enabled", True):
             return
-        frame = self._frame_at_slider_x(int(pos.x()))
+        frame = self.frame_at_slider_x(int(pos.x()))
         menu = self.build_loop_menu(frame)
         menu.exec(self.timeline_slider.mapToGlobal(pos))
 
-    def build_loop_menu(self, frame: int):
+    def build_loop_menu(self, frame: int) -> QMenu:
         """The «ПКМ» menu of the timeline; every action is wired to a slot."""
-        from PySide6.QtWidgets import QMenu
-
+        loop = self._loop
+        if loop is None:
+            raise RuntimeError("the timeline loop menu needs loop controls")
         menu = QMenu(self.timeline_slider)
         menu.setObjectName("loopContextMenu")
         act_a = menu.addAction(tr("viewer.loop_menu_set_a", frame=frame + 1))
@@ -204,12 +205,12 @@ class ViewerTransport(QObject):
         menu.addSeparator()
         act_toggle = menu.addAction(tr("viewer.loop_menu_toggle"))
         act_toggle.setCheckable(True)
-        act_toggle.setChecked(self._loop.repeat_button.isChecked())
+        act_toggle.setChecked(loop.repeat_button.isChecked())
         act_clear = menu.addAction(tr("viewer.loop_menu_clear"))
-        act_clear.setEnabled(self._loop.strip.region() is not None)
+        act_clear.setEnabled(loop.strip.region() is not None)
         act_a.triggered.connect(lambda: self._menu_set_bound("a", frame))
         act_b.triggered.connect(lambda: self._menu_set_bound("b", frame))
-        act_toggle.triggered.connect(self._loop.repeat_button.click)
+        act_toggle.triggered.connect(loop.repeat_button.click)
         act_clear.triggered.connect(self._menu_clear_loop)
         return menu
 

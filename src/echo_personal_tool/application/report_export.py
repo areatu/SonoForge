@@ -80,9 +80,7 @@ def export_report_document_pdf(
     2026-11-06 list); the exported PDF is the same sheet the preview shows.
     """
     try:
-        return _pdf_adapter.export_report_document_pdf(
-            document, output_path, font_size=font_size, template=template
-        )
+        return _pdf_adapter.export_report_document_pdf(document, output_path, font_size=font_size, template=template)
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
 

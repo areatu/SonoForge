@@ -114,8 +114,6 @@ def test_timeline_slider_exposes_the_loop_menu(widget):
 
 def test_loop_menu_places_markers_on_the_clicked_frame(widget, qtbot):
     """Right-click on the timeline sets A/B on the clicked frame, not the playhead."""
-    from PySide6.QtCore import QPoint
-
     loop = controls(widget)
     transport = widget.transport
     transport.timeline_slider.setRange(0, 99)
@@ -127,7 +125,7 @@ def test_loop_menu_places_markers_on_the_clicked_frame(widget, qtbot):
 
     width = transport.timeline_slider.width()
     assert width > 2, "the fixture must be laid out"
-    mid_frame = transport._frame_at_slider_x(width // 2)
+    mid_frame = transport.frame_at_slider_x(width // 2)
     assert abs(mid_frame - 50) <= 1
 
     menu = transport.build_loop_menu(mid_frame)

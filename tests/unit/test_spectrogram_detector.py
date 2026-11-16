@@ -165,7 +165,5 @@ def test_strict_detects_spectrum_with_ruler() -> None:
 
 def test_strict_skips_region_bounds_fallback() -> None:
     frame = np.full((884, 1180), 200, dtype=np.uint8)
-    roi = detect_spectrogram_roi(
-        frame, region_bounds=(0.0, 100.0, 1179.0, 473.0), require_time_axis=True
-    )
+    roi = detect_spectrogram_roi(frame, region_bounds=(0.0, 100.0, 1179.0, 473.0), require_time_axis=True)
     assert roi is None

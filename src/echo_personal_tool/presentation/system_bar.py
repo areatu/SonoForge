@@ -188,17 +188,10 @@ class SystemBar(CaptionDragMixin, QWidget):
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
         self._profile_capabilities = profile_capabilities or get_profile_capabilities()
-        self._study_label = QLabel(tr("system_bar.no_study"))
-        #: The study/file name of the loaded tab; ``None`` — the empty state.
-        #: Kept so a language reload re-renders the name instead of erasing it.
+        self._study_label = self._build_study_label()
+        # The loaded study/file name; kept so a language reload re-renders it
+        # instead of erasing it (2026-11-16 list, item 7).
         self._study_context_label: str | None = None
-        # No reserved width: the patient phrase («Иванов · 164 см · 71 кг»)
-        # is followed by the metrics, and a 120 px minimum both left a hole
-        # after a short name and pushed the fields right of it.
-        self._study_label.setMinimumWidth(0)
-        # Expanding so the study/file name absorbs the free space and the
-        # action group keeps its natural size.
-        self._study_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self._status_label = _ElidingStatusLabel()
 
@@ -807,6 +800,21 @@ class SystemBar(CaptionDragMixin, QWidget):
         key = shortcut_label("presenter_toggle")
         tooltip_key = "presenter.tooltip_active" if active else "presenter.tooltip"
         self._btn_presenter.setToolTip(tr(tooltip_key, shortcut=key))
+
+    def _build_study_label(self) -> QLabel:
+        """The file/name slot of the patient line.
+
+        No reserved width: the patient phrase («Иванов · 164 см · 71 кг») is
+        followed by the metrics, and a 120 px minimum both left a hole after a
+        short name and pushed the fields right of it.  Expanding so the name
+        absorbs the free space and the action group keeps its natural size.
+        """
+        from echo_personal_tool.application.localization import tr
+
+        label = QLabel(tr("system_bar.no_study"))
+        label.setMinimumWidth(0)
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        return label
 
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality

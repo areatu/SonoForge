@@ -561,9 +561,7 @@ class DopplerController(QObject):
             # *clear* evidence: the strict detector demands the bright
             # time-scale ruler of a spectrum, so the black letterbox of a
             # B-mode sector frame can never re-trigger the Doppler prompt.
-            visual_spectrum = (
-                frame is not None and detect_spectrogram_roi(frame, require_time_axis=True) is not None
-            )
+            visual_spectrum = frame is not None and detect_spectrogram_roi(frame, require_time_axis=True) is not None
             b_mode_only = not visual_spectrum
         wanted = (
             clip_open

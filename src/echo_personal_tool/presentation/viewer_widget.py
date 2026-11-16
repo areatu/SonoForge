@@ -919,9 +919,7 @@ class ViewerWidget(QWidget):
     loop_in_requested = Signal()
     loop_out_requested = Signal()
     loop_toggle_requested = Signal()
-    loop_bound_changed = Signal(str, int)
-    #: «Сбросить петлю» of the timeline context menu (2026-11-16 list, item 3).
-    loop_clear_requested = Signal()
+    loop_bound_changed, loop_clear_requested = Signal(str, int), Signal()
 
     # A5: contour drawing/storage state lives in ``contour_state``.  These
     # descriptors keep the reviewed private names readable for ViewerContract
