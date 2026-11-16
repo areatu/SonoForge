@@ -144,6 +144,7 @@ from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, P
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
+from echo_personal_tool.presentation.study_comparison import open_previous_study_comparison
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
@@ -1629,6 +1630,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
         menu.addAction(tr("key_images.open")).triggered.connect(lambda: show_key_images(self))
+        menu.addAction(tr("app_menu.compare_previous")).triggered.connect(lambda: open_previous_study_comparison(self))
         menu.addAction(tr("doppler_repeats.open")).triggered.connect(lambda: show_doppler_repeats(self))
         menu.addAction(tr("app_menu.help")).triggered.connect(self._show_help)
         menu.addAction(tr("app_menu.guide")).triggered.connect(self._open_user_guide)
@@ -1700,6 +1702,7 @@ class MainWindow(QMainWindow):
             "open_calculators": self._open_calculators,
             "references": self._show_references,
             "key_images": lambda: show_key_images(self),
+            "compare_previous": lambda: open_previous_study_comparison(self),
             "doppler_repeats": lambda: show_doppler_repeats(self),
             "help": self._show_help,
             "guide": self._open_user_guide,
@@ -1764,11 +1767,8 @@ class MainWindow(QMainWindow):
 
     def _on_multiview_button(self) -> None:
         """«Сравнить»: toggle the Multiview session mode (spec §4.1)."""
-        self._multiview_mode = not self._multiview_mode
-        self._rebuild_layout()
-        self._system_bar.set_multiview_checked(self._multiview_mode)
+        self._set_multiview_mode(not self._multiview_mode)
         if not self._multiview_mode:
-            self._tab_coordinator.finish_comparison_browsing()
             self._show_status(tr("multiview.status.exited"))
 
     # ── Multiview session (N-08: the comparison lives in
@@ -6540,8 +6540,7 @@ class MainWindow(QMainWindow):
             if any(
                 shortcut_id in active_shortcut_ids and event_matches_shortcut(event, shortcut_id)
                 for shortcut_id in self._MULTIVIEW_BLOCKED_SHORTCUTS
-            ):
-                self._multiview_tool_blocked("hotkey")
+            ) and self._multiview_tool_blocked("hotkey"):
                 event.accept()
                 return True
         elif (

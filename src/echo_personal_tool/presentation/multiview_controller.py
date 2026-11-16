@@ -60,6 +60,9 @@ class MultiViewController(QObject):
     replace_requested = Signal(PaneId)
     session_changed = Signal()
     left_pane_released = Signal(int)  # frame index handed back to the controller
+    #: One pane painted a decoded frame: pane id and its byte size.  The
+    #: comparison coordinator charges it against its shared memory budget.
+    frame_decoded = Signal(str, int)
 
     def __init__(self, controller, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -99,6 +102,23 @@ class MultiViewController(QObject):
         self._clock_timer.stop()
         self._indep_timer.stop()
         self._panes.clear()
+
+    def cancel_pending(self) -> None:
+        """Cancel every in-flight pane request without clearing the clips.
+
+        The decoded-frame workers cannot be killed once started, so their
+        answers are invalidated instead: each pane gets a new generation and
+        the pair generation advances.  A late frame is then dropped by
+        :meth:`_on_pane_frame` and never painted into the other comparison.
+        """
+        self.pause()
+        self._inflight.clear()
+        for pane in self.session.panes.values():
+            pane.generation += 1
+            pane.load_error = None
+        self.session.bump_generation()
+        self._window = None
+        self._schedule = None
 
     # ── helpers ─────────────────────────────────────────────────────
 
@@ -837,6 +857,7 @@ class MultiViewController(QObject):
         except RuntimeError:
             return
         viewer.show_frame(pixels)
+        self.frame_decoded.emit(pane_id.value, int(np.asarray(pixels).nbytes))
         if pane.current_frame != frame_index:
             self._request_pane_frame(pane_id)
             return
