@@ -18,11 +18,66 @@ measurable number (HU for a properly rescaled CT, otherwise stored units).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
 
 import numpy as np
 
-from echo_personal_tool.domain.models.dicom_display import DicomDisplay, LookupTable
+
+class WindowPresetLike(Protocol):
+    """Structural view of a header window (center/width only)."""
+
+    @property
+    def center(self) -> float: ...
+
+    @property
+    def width(self) -> float: ...
+
+
+class LookupTableLike(Protocol):
+    """Structural view of a DICOM LUT; keeps imaging independent of domain."""
+
+    @property
+    def first_input(self) -> float: ...
+
+    @property
+    def entries(self) -> tuple[float, ...]: ...
+
+    @property
+    def bits_per_entry(self) -> int: ...
+
+
+class DicomDisplayLike(Protocol):
+    """The header facts this pure kernel needs, without importing domain."""
+
+    @property
+    def rescale_slope(self) -> float: ...
+
+    @property
+    def rescale_intercept(self) -> float: ...
+
+    @property
+    def window_presets(self) -> tuple[WindowPresetLike, ...]: ...
+
+    @property
+    def voi_lut_function(self) -> str: ...
+
+    @property
+    def voi_lut(self) -> LookupTableLike | None: ...
+
+    @property
+    def modality_lut(self) -> LookupTableLike | None: ...
+
+    @property
+    def pixel_padding_value(self) -> float | None: ...
+
+    @property
+    def pixel_padding_range_limit(self) -> float | None: ...
+
+    @property
+    def default_window(self) -> WindowPresetLike | None: ...
+
+    @property
+    def is_monochrome1(self) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -34,7 +89,7 @@ class RenderedDisplay:
     width: float
 
 
-def _lut_values(table: LookupTable, values: np.ndarray) -> np.ndarray:
+def _lut_values(table: LookupTableLike, values: np.ndarray) -> np.ndarray:
     """Nearest-entry lookup with DICOM clipping outside the LUT range."""
     entries = np.asarray(table.entries, dtype=np.float32)
     if entries.size == 0:
@@ -44,7 +99,7 @@ def _lut_values(table: LookupTable, values: np.ndarray) -> np.ndarray:
     return cast(np.ndarray, entries[index])
 
 
-def stored_to_modality(stored: np.ndarray, display: DicomDisplay) -> np.ndarray:
+def stored_to_modality(stored: np.ndarray, display: DicomDisplayLike) -> np.ndarray:
     """Map stored pixel values to modality values (identity when no transform)."""
     values = np.asarray(stored, dtype=np.float32)
     if display.modality_lut is not None:
@@ -52,7 +107,7 @@ def stored_to_modality(stored: np.ndarray, display: DicomDisplay) -> np.ndarray:
     return values * float(display.rescale_slope) + float(display.rescale_intercept)
 
 
-def modality_value(stored_value: float, display: DicomDisplay | None) -> float:
+def modality_value(stored_value: float, display: DicomDisplayLike | None) -> float:
     """One measurable modality value (HU after a proven CT rescale)."""
     if display is None:
         return float(stored_value)
@@ -66,7 +121,7 @@ def modality_value(stored_value: float, display: DicomDisplay | None) -> float:
     return float(table.entries[index])
 
 
-def padding_mask(stored: np.ndarray, display: DicomDisplay | None) -> np.ndarray | None:
+def padding_mask(stored: np.ndarray, display: DicomDisplayLike | None) -> np.ndarray | None:
     """Stored-value mask of the DICOM pixel padding, or ``None`` when absent."""
     if display is None or display.pixel_padding_value is None:
         return None
@@ -94,7 +149,7 @@ def _percentile_range(values: np.ndarray, low_pct: float, high_pct: float) -> tu
 
 
 def resolve_window(
-    display: DicomDisplay,
+    display: DicomDisplayLike,
     modality: np.ndarray,
     *,
     dr_low_pct: float,
@@ -151,7 +206,7 @@ def _apply_window(values: np.ndarray, center: float, width: float, function: str
     return _linear(values, center, width)
 
 
-def _voi_lut_display(values: np.ndarray, table: LookupTable) -> np.ndarray:
+def _voi_lut_display(values: np.ndarray, table: LookupTableLike) -> np.ndarray:
     """VOI LUT entries as presentation values (0–255)."""
     result = _lut_values(table, values)
     full_scale = float((1 << max(int(table.bits_per_entry), 1)) - 1)
@@ -162,7 +217,7 @@ def _voi_lut_display(values: np.ndarray, table: LookupTable) -> np.ndarray:
 
 def render_dicom_frame(
     stored: np.ndarray,
-    display: DicomDisplay,
+    display: DicomDisplayLike,
     *,
     dr_low_pct: float = 0.0,
     dr_high_pct: float = 100.0,
