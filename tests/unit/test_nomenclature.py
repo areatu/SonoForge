@@ -158,7 +158,10 @@ def test_vessel_precision_survives_overlay_clipboard_and_structured_report(unit,
     )
     from echo_personal_tool.domain.services.report_builder import build_report_document
 
-    measurement = LinearMeasurement("Dist1", 12.3456, 1.23456, submillimeter=True)
+    # A *named* caliper: the generic Dist family is deliberately kept out of the
+    # printed report (item 6 of the 2026-11-17 list), so it cannot carry a
+    # precision guarantee into the document.
+    measurement = LinearMeasurement("LVEDD", 12.3456, 1.23456, submillimeter=True)
     snapshot = MeasurementSnapshot(spacing_calibrated=True, linear_measurements=(measurement,))
     plain = format_results_overlay(snapshot, length_display_unit=unit)
     html = " ".join(_plain_html(format_results_overlay_html(snapshot, length_display_unit=unit)).split())
@@ -169,3 +172,21 @@ def test_vessel_precision_survives_overlay_clipboard_and_structured_report(unit,
     assert f"{expected} {unit}" in html
     assert any((row.value, row.unit) == (expected, unit) for row in rows)
     assert measurement.millimeter_length == 1.23456
+
+
+@pytest.mark.parametrize("label", ["Dist1", "Dist2", "Dist12"])
+def test_the_generic_dist_caliper_is_not_printed_in_the_report(label: str) -> None:
+    """Item 6 of the 2026-11-17 list: Dist1…DistN are drawing aids, not findings."""
+    from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+
+    snapshot = MeasurementSnapshot(
+        spacing_calibrated=True,
+        linear_measurements=(LinearMeasurement(label, 100.0, 42.0),),
+    )
+
+    document = build_report_document(snapshot, length_display_unit="mm")
+    rows = [value for group in document.groups for value in group.values]
+
+    assert all(not row.label.startswith(label) for row in rows)

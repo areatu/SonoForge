@@ -28,11 +28,16 @@
 
 ## Unreleased
 
-- `feat(ui)`: 2026-11-17 — произвольная дата в диалоге «Загрузка с сервера»: чип «Дата» и селектор «День · Месяц · Год», клиентский фильтр плюс `study_date` в запросе ([полностью](changelog.d/006-feat-ui-pacs-exact-date.md))
-- `fix(ui)`: 2026-11-17 — разная высота кириллических букв и бахрома ClearType: полный хинтинг заменён на `PreferNoHinting`, подписи поверх кадра переведены на bundled Inter в px ([полностью](changelog.d/005-fix-ui-cyrillic-hinting.md))
+- `feat(ui)`: 2026-11-17 — произвольная дата в диалоге «Загрузка с сервера»: чип «Дата» и селектор «День · Месяц · Год», клиентский фильтр плюс `study_date` в запросе ([полностью](changelog.d/008-feat-ui-pacs-exact-date.md))
+- `fix(ui)`: 2026-11-17 — разная высота кириллических букв и бахрома ClearType: полный хинтинг заменён на `PreferNoHinting`, подписи поверх кадра переведены на bundled Inter в px ([полностью](changelog.d/007-fix-ui-cyrillic-hinting.md))
+- `perf(viewer)`: лаг при первом нажатии Z (лупа) убран прогревом линзы в простое после первого показа ([полностью](changelog.d/006-perf-viewer-loupe-warmup.md))
+- `feat(report)`: UI-батч из 8 пунктов кардиолога: плотные две колонки без белых полос, s′ ПЖ и dP/dt в отчёте, дисплейные имена peak-калиперов, provenance калиперов и dP/dt, Dist1…Dist5 убраны ([полностью](changelog.d/005-feat-report-ui-batch-8-items.md))
+- `feat(doppler)`: dP/dt МР/ТК — направляющие 1 м/с и 3 м/с (ТК 2 м/с), кроссхэйр по направляющей, Δt из двух кликов, результат в overlay и отчёт ([полностью](changelog.d/005-feat-doppler-dpdt-guides.md))
 - `feat(ctmr)`: #557 — header-only classic CT/MR stack index с patient-space порядком ([полностью](changelog.d/005-feat-ctmr-stack-index-557.md))
 
 - `feat(imt)`: #558 — редактируемый research overlay двух границ и документ v7 ([полностью](changelog.d/004-feat-imt-viewer-document-558.md))
 - `feat(imt)`: #558 — исследовательское ядро seeded КИМ, физические нормали и draft/QC workflow; без GUI-интеграции ([полностью](changelog.d/003-feat-imt-research-core-558.md))
 - `refactor(analysis)`: #552 — владелец публикации STE и защита от устаревших success/error ([полностью](changelog.d/002-refactor-analysis-ownership-552.md))
 - `fix(decode)`: #553 — приёмка очередей и отмены: caps входящего prefetch и bounded full-decode futures ([полностью](changelog.d/001-fix-decode-cancellation-553.md))
+
+

@@ -15,6 +15,7 @@ from echo_personal_tool.domain.calculations.chamber_simpson import (
     confirmed_biplane_es_volume_ml,
     es_volume_from_view,
 )
+from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
@@ -42,6 +43,9 @@ from echo_personal_tool.domain.services.indexed_results_formatter import (
 )
 from echo_personal_tool.domain.services.indexed_results_formatter import (
     build_indexed_overlay_rows,
+)
+from echo_personal_tool.domain.services.nomenclature import (
+    catalog_label as _catalog,
 )
 from echo_personal_tool.domain.services.nomenclature import (
     flow_measurement_id,
@@ -302,6 +306,11 @@ def _build_doppler_rows(
     )
     _push(rows, _label("result.s_prime_lat"), "tdi.s_prime_lat", ddop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat")
     _push(rows, _label("result.s_prime_rv"), "rv.s_prime", ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv")
+    # dP/dt is computed from the two dP/dt intervals and reached the report but
+    # not the overlay (item 1 of the 2026-11-17 list): the physician measured
+    # and saw no result on the frame.
+    _push(rows, _catalog("mr.dpdt"), "mr.dpdt", lv_dpdt_mmhg_s(dop.mr_dpdt_ms), "mmHg/s")
+    _push(rows, _catalog("tr.dpdt"), "tr.dpdt", rv_dpdt_mmhg_s(dop.tr_dpdt_ms), "mmHg/s")
 
     for flow in _flow_results_for_display(ddop):
         param_id = "tr_vmax" if flow.site == "TR" else None

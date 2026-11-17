@@ -35,7 +35,7 @@ from echo_personal_tool.domain.models.value_origin import (
     REASON_NOT_RECORDED,
     ClipSource,
 )
-from echo_personal_tool.domain.services.doppler_provenance import doppler_flow_origin
+from echo_personal_tool.domain.services.doppler_provenance import doppler_flow_origin, doppler_value_origin
 from echo_personal_tool.domain.services.nomenclature import flow_label, strain_label
 from echo_personal_tool.domain.services.report_builder import build_report_groups
 from echo_personal_tool.infrastructure.i18n import set_language, tr
@@ -360,3 +360,42 @@ def test_the_strain_export_keeps_the_contour_lineage() -> None:
     }
 
     assert StrainAnalysis.from_result(result).to_dict()["source_contour"] is None
+
+
+# ── dP/dt: the method's fixed gradient is named too (item 5, 2026-11-17) ──
+
+
+@pytest.mark.parametrize(
+    ("label", "measurement_id", "delta_p"), [("MR dP/dt", "mr.dpdt", "32"), ("TR dP/dt", "tr.dpdt", "12")]
+)
+def test_a_dpdt_card_names_the_fixed_gradient_beside_the_measured_interval(
+    label: str, measurement_id: str, delta_p: str
+) -> None:
+    """dP/dt = ΔP / Δt: the Δt is measured, the ΔP is a constant of the method.
+
+    Without the constant on the card the number «32» (or «12») would look like
+    a finding.  The card must carry both, and the measured interval must still
+    be there — the gradient is an addition, not a replacement.
+    """
+    interval = DopplerIntervalMarker(
+        label=label,
+        start_time_ms=300.0,
+        end_time_ms=340.0,
+        measurement_id="i-dpdt",
+        sop_instance_uid=UID,
+        frame_index=7,
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(interval,), traces=())
+    origin = doppler_value_origin(compute(dto), measurement_id)
+
+    assert origin is not None
+    gradient = next(item for item in origin.inputs if item.source == "method")
+    assert gradient.value.startswith(delta_p)
+    assert "mmHg" in gradient.value
+    # Both halves of dP/dt = ΔP / Δt are on the card: the method's fixed
+    # gradient and the interval the physician actually measured.
+    measured = [item for item in origin.inputs if item.source == "measured"]
+    assert len(measured) == 1
+    assert measured[0].value.endswith("ms")
+    assert origin.measurement_id == "i-dpdt"
+    assert {clip.frame_index for clip in origin.clips} == {7}

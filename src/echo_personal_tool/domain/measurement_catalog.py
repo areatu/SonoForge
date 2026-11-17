@@ -575,7 +575,7 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        _ORI,1, ase=_MR2017, verified=True, synonyms=("MVd",)),
     _m("mr.vmax", ("Vmax МР", "Максимальная скорость струи МР"), ("MR peak Vel", "MR peak velocity"), _VEL, 1, mode=CTX_CW, ase=_T6, ase_row='mr.peak_vel', verified=True, synonyms=('МР Vmax', 'MR Vmax')),
     _m("mr.vti", ("VTI МР", "VTI струи МР"), ("MR VTI", "MR VTI"), _VTI, 0, mode=CTX_CW, ase=_T6, ase_row='mr.vti', verified=True, synonyms=("МР VTI",)),
-    _m("mr.dpdt", ("dP/dt ЛЖ", "dP/dt ЛЖ по струе МР (Δt 1→3 м/с)"), ("MR dp/dt", "LV dP/dt from the MR jet (Δt 1→3 m/s)"),
+    _m("mr.dpdt", ("dP/dt ЛЖ", "dP/dt ЛЖ по струе МР (Δt 1→3 м/с)"), ("LV dP/dt", "LV dP/dt from the MR jet (Δt 1→3 m/s)"),
        Quantity.PRESSURE_RATE, 0, ase=_T6, ase_row='mr.dpdt', verified=True, synonyms=('MR dP/dt', 'МР dP/dt', 'МР dP/dt (Δt 1→3 м/с)', 'MR dP/dt (Δt 1→3 m/s)', 'LV dP/dt')),
     _m("mr.pisa_r", ("Радиус PISA МР", "Радиус PISA при митральной регургитации"), ("MR PISA r", "PISA radius, MR"),
        _PIS,1, ase=_T6, ase_row='mr.pisa_r', verified=True, synonyms=('PISA MR', 'PISA MR (радиус)', 'PISA MR (radius)', 'PISA r MR')),

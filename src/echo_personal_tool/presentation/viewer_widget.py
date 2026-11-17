@@ -133,6 +133,7 @@ from echo_personal_tool.presentation.display_formats import format_dpr, format_s
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
+from echo_personal_tool.presentation.magnifier_cursor import magnifier_cursor
 from echo_personal_tool.presentation.viewer.compare_tools import (
     AREA_HINTS,
     DIAMETER_HINTS,
@@ -238,9 +239,6 @@ _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
 #: How many colour clips the viewer remembers as colour (sticky per instance).
 _COLOR_INSTANCE_MEMORY = 64
-#: Hot spot of the magnifier pointer: the centre of the lens, not its corner.
-_ZOOM_CURSOR_HOTSPOT = (9, 9)
-
 # ── Contour point placement / "finish" gesture ───────────────────────
 # Qt flags a double-click by time alone, ignoring distance; a fast second point
 # used to close the contour. The gesture is recognised here with its own spatial
@@ -306,31 +304,6 @@ def _force_png_suffix(path: str) -> str:
     if suffix == ".png":
         return path
     return f"{path}.png"
-
-
-def _magnifier_cursor():
-    """The «лупа» pointer: the bundled search glyph, or a cross as a fallback.
-
-    A magnifier cursor is the whole point of item 4 of the 2026-10-23 acceptance
-    list — the tool has to *announce* itself before the click, not after it.
-    The glyph is rendered by the same SVG loader the chrome uses and tinted with
-    the theme, so it stays visible on light themes too.
-    """
-    from PySide6.QtGui import QCursor
-
-    try:
-        from echo_personal_tool.presentation.window_chrome.title_bar import load_icon
-
-        icon = load_icon("search")
-        if not icon.isNull():
-            pixmap = icon.pixmap(32, 32)
-            if not pixmap.isNull():
-                return QCursor(pixmap, *_ZOOM_CURSOR_HOTSPOT)
-    except Exception:  # pragma: no cover - a broken install still gets a cursor
-        # No payload: the diagnostics ratchet (ER-08/ER-09) forbids logging the
-        # exception object, and the fallback below is the whole recovery.
-        logger.debug("magnifier cursor unavailable, falling back to a cross")
-    return QCursor(Qt.CursorShape.CrossCursor)
 
 
 class ContourViewBox(pg.ViewBox):
@@ -1356,6 +1329,12 @@ class ViewerWidget(QWidget):
     def showEvent(self, event) -> None:
         # Z must reach the loupe even when focus sits on the gallery or the tool panel.
         self._install_loupe_key_relay()
+        # Item 6 of the 2026-11-17 list: the very first Z press froze the app on
+        # Windows 10 for seconds, because that keystroke paid for imports, the
+        # SVG cursor and the first translucent widget of the process.  The
+        # controller now builds them in an idle slice instead; it owns the
+        # one-shot flag, so the widget grows no new state.
+        self._magnifier_controller.schedule_warmup()
         super().showEvent(event)
 
     def hideEvent(self, event) -> None:
@@ -3579,7 +3558,7 @@ class ViewerWidget(QWidget):
         if viewport is None:
             return
         if self.zoom.loupe_active:
-            viewport.setCursor(_magnifier_cursor())
+            viewport.setCursor(magnifier_cursor())
         elif self.mmode.line_active:
             viewport.setCursor(Qt.CursorShape.CrossCursor)
         else:
@@ -3681,6 +3660,13 @@ class ViewerWidget(QWidget):
         if not panel.contains(x, y):
             self._clear_crosshair()
             return
+        # dP/dt: the interval is a duration between two known velocities, so the
+        # crosshair rides the velocity guide instead of the free cursor — the
+        # physician aims the *time* of the click, not its height (2026-11-17
+        # list, item 1).
+        guide_y = self.doppler.overlay.interval_guide.plot_y()
+        if guide_y is not None:
+            y = guide_y
         self._ensure_crosshair_graphics()
         assert self._crosshair_h_item is not None
         assert self._crosshair_v_item is not None
@@ -5421,21 +5407,6 @@ class ViewerWidget(QWidget):
             for node in node_items:
                 node.setAcceptedMouseButtons(buttons)
 
-    def _remove_rendered_contour(self, contour_index: int) -> None:
-        if self._drag_session is not None and self._drag_session[0] == contour_index:
-            self._clear_drag_session()
-        elif self._drag_session is not None and self._drag_session[0] > contour_index:
-            idx, lx, ly, grab, tier = self._drag_session
-            self._drag_session = (idx - 1, lx, ly, grab, tier)
-        line_item = self._contour_items.pop(contour_index)
-        ma_item = self._contour_ma_items.pop(contour_index)
-        for node in self._contour_nodes.pop(contour_index):
-            self._view.removeItem(node)
-        self._view.removeItem(line_item)
-        if ma_item is not None:
-            self._view.removeItem(ma_item)
-        self._reindex_contour_nodes()
-
     def _create_contour_render(
         self,
         contour: Contour,
@@ -5974,16 +5945,6 @@ class ViewerWidget(QWidget):
             color=self._rbf_highlight_color(contour),
         )
 
-    def _update_drag_overlay(
-        self,
-        contour_index: int,
-        contour: Contour,
-        weights: np.ndarray,
-        *,
-        color: str,
-    ) -> None:
-        del contour_index, contour, weights, color  # drag updates use visible items
-
     def _end_drag_overlay(self, contour_index: int) -> None:
         self._drag_overlay_contour_index = None
         del contour_index
@@ -6010,9 +5971,6 @@ class ViewerWidget(QWidget):
         viewport = self._graphics.viewport()
         if viewport is not None:
             viewport.update()
-
-    def _repaint_contour_view(self, contour_index: int | None = None) -> None:
-        self._flush_drag_paint()
 
     def _drag_contour_point(
         self,

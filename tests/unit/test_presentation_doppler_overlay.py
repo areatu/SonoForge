@@ -51,7 +51,7 @@ class TestConstruction:
         assert overlay._interval_markers == []
         assert overlay._traces == []
         assert not overlay.has_trace_onset()
-        assert not overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is None
 
     def test_default_axis_mapping(self, overlay):
         mapping = overlay.axis_mapping()
@@ -138,7 +138,7 @@ class TestHandleClick:
         overlay.set_tool_mode("interval")
         result = overlay.handle_click(100.0, 50.0)
         assert result is True
-        assert overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is not None
 
     def test_interval_second_click_adds_marker(self, overlay):
         overlay.set_tool_mode("interval")
@@ -146,7 +146,7 @@ class TestHandleClick:
         result = overlay.handle_click(200.0, 50.0)
         assert result is True
         assert len(overlay._interval_markers) == 1
-        assert not overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is None
 
     def test_repeated_same_peak_is_stored_as_another_measurement(self, overlay):
         """D-23: several beats of one parameter coexist instead of replacing."""
@@ -236,12 +236,12 @@ class TestSetTraceLabel:
 class TestPrefillIntervalStart:
     def test_sets_start_time(self, overlay):
         overlay.prefill_interval_start(500.0)
-        assert overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is not None
 
     def test_sets_preview(self, overlay):
         overlay.prefill_interval_start(500.0)
         overlay.set_tool_mode("interval")
-        assert overlay._interval_preview_item is not None
+        assert overlay.interval_guide.preview_item() is not None
 
 
 class TestMitralInflowWorkflow:
@@ -1219,7 +1219,7 @@ class TestDopplerHeartRate:
             points.reverse()
 
         assert overlay.handle_click(*points[0])
-        assert overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is not None
         assert not emitted
         assert overlay.handle_click(*points[1])
 
@@ -1229,7 +1229,7 @@ class TestDopplerHeartRate:
         assert abs(marker.end_time_ms - marker.start_time_ms) == pytest.approx(800.0)
         assert compute(dto).heart_rate_bpm == pytest.approx(75.0)
         assert overlay.get_tool_mode() == "none"
-        assert not overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is None
         xs, ys = overlay._interval_items[0].getData()
         assert sorted(xs) == [120.0, 520.0]
         assert list(ys) == [110.0, 110.0]
@@ -1247,7 +1247,7 @@ class TestDopplerHeartRate:
         overlay.handle_click(100.0, 80.0)
 
         assert not emitted
-        assert overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is not None
         assert overlay.get_tool_mode() == "interval"
         overlay.handle_click(500.0, 40.0)
         assert len(emitted) == 1
@@ -1258,7 +1258,7 @@ class TestDopplerHeartRate:
         overlay.set_interval_label("RR")
 
         assert not overlay.handle_click(100.0, 20.0)
-        assert not overlay.has_pending_interval_start()
+        assert overlay.interval_guide.pending_start_ms() is None
         assert not overlay.get_measurement_dto().intervals
 
     def test_restore_delete_and_clear_remove_cycle_caption(self, overlay):
@@ -1291,14 +1291,14 @@ def test_cycle_interval_preview_reattaches_for_repeated_measurement(qtbot):
         overlay.set_tool_mode("interval")
         overlay.set_interval_label("RR")
         overlay.handle_click(100.0, 20.0)
-        overlay.update_interval_preview_position(500.0)
-        assert overlay._interval_preview_item.scene() is plot.scene()
+        overlay.interval_guide.refresh_preview(end_x_px=500.0)
+        assert overlay.interval_guide.preview_item().scene() is plot.scene()
         overlay.handle_click(500.0, 80.0)
-        assert overlay._interval_preview_item.scene() is None
+        assert overlay.interval_guide.preview_item().scene() is None
 
     assert len(overlay.get_measurement_dto().intervals) == 2
     overlay.set_tool_mode("interval")
     overlay.handle_click(100.0, 20.0)
     assert overlay.cancel_active_tool()
-    assert not overlay.has_pending_interval_start()
-    assert overlay._interval_preview_item.scene() is None
+    assert overlay.interval_guide.pending_start_ms() is None
+    assert overlay.interval_guide.preview_item().scene() is None

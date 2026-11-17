@@ -86,7 +86,7 @@ TABLE6_ROWS: tuple[Table6Row, ...] = _rows(
         ("mr.peak_vel", "MR peak velocity", "MR peak Vel", "m/s", 1, "mr"),
         ("mr.vti", "MR velocity time integral", "MR VTI", "cm", 0, "mr"),
         ("mr.peak_pg", "MR peak pressure gradient", "MR peak PG", "mmHg", 0, "mr"),
-        ("mr.dpdt", "MR dp/dt", "MR dp/dt", "mmHg/s", 0, "mr"),
+        ("mr.dpdt", "dP/dt ЛЖ", "LV dP/dt", "mmHg/s", 0, "mr"),
         ("mr.vc", "MR vena contracta", "MR VC", "cm", 1, "mr"),
         ("mr.vca_3d", "3D MR vena contracta area", "3D MR VCA", "cm²", 2, "mr"),
         ("mr.pisa_r", "MR PISA radius", "MR PISA r", "cm", 1, "mr"),
