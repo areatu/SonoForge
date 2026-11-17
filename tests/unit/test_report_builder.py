@@ -289,12 +289,12 @@ class TestBuildReportGroups:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_4c_index_ml_m2=40.0))
         groups = build_report_groups(snapshot, sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
-        assert "LVMI" in lv
+        assert "иММЛЖ" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
         assert "иОЛП · 4-кам." in lavi
         assert not any("Биплан" in label for label in lavi)
         flagged = {value.label for group in groups for value in group.values if value.pathological}
-        assert {"LVMI", "иОЛП · 4-кам."} <= flagged
+        assert {"иММЛЖ", "иОЛП · 4-кам."} <= flagged
 
     def test_unconfirmed_biplane_index_is_not_reported(self) -> None:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lav_bi_index_ml_m2=40.0))

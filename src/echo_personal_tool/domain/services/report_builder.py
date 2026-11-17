@@ -1268,7 +1268,7 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
         )
         indexed_values = (
             ("BSA", "patient.bsa", indexed.bsa_m2, "m²", GROUP_OTHER, None),
-            ("LVMI", "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
+            (_label_catalog("lv.mass_i"), "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
             (_label_catalog("lv.edvi"), "lv.edvi", indexed.simpson_edvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVEDVi"),
             (_label_catalog("lv.esvi"), "lv.esvi", indexed.simpson_esvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVESVi"),
             (
