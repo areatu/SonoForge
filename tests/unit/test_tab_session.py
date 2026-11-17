@@ -368,6 +368,17 @@ def test_retarget_validates_source() -> None:
     assert empty.origin == TAB_ORIGIN_EMPTY
 
 
+def test_source_replacement_clears_conclusion_adjudications() -> None:
+    manager = _manager()
+    tab = manager.open_tab(origin=TAB_ORIGIN_EMPTY)
+    tab.report_conclusion_choices["mv.regurgitation"] = ((0.3, 40.0, 60.0), "moderate")
+    manager.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_FOLDER, root="/one")
+    assert not tab.report_conclusion_choices
+    tab.report_conclusion_choices["mv.regurgitation"] = ((0.3, 40.0, 60.0), "moderate")
+    manager.replace_active(origin=TAB_ORIGIN_FOLDER, root="/two")
+    assert not tab.report_conclusion_choices
+
+
 def test_tab_title_has_no_patient_name_and_is_one_based() -> None:
     from echo_personal_tool.application.tab_session import tab_title
 
@@ -542,14 +553,3 @@ def test_report_patient_fields_are_isolated_and_cleared_for_a_new_source() -> No
     manager.replace_active(origin=TAB_ORIGIN_FOLDER, root="/data/C")
     assert second.report_patient_fields == {}
     assert first.report_patient_fields["name"] == "Patient A"
-
-
-def test_source_replacement_clears_conclusion_adjudications() -> None:
-    manager = _manager()
-    tab = manager.open_tab(origin=TAB_ORIGIN_EMPTY)
-    tab.report_conclusion_choices["mv.regurgitation"] = ((0.3, 40.0, 60.0), "moderate")
-    manager.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_FOLDER, root="/one")
-    assert not tab.report_conclusion_choices
-    tab.report_conclusion_choices["mv.regurgitation"] = ((0.3, 40.0, 60.0), "moderate")
-    manager.replace_active(origin=TAB_ORIGIN_FOLDER, root="/two")
-    assert not tab.report_conclusion_choices
