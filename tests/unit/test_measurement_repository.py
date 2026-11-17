@@ -809,3 +809,26 @@ def test_submillimeter_precision_rejects_non_boolean_json(invalid):
     payload["data"]["linear_measurements"][0]["submillimeter"] = invalid
     with pytest.raises(MeasurementStorageError):
         loads(json.dumps(payload).encode())
+
+
+def test_mmode_partial_and_manual_provenance_survive_save_and_instance_switch():
+    roi = DopplerSpectrogramRoi(1, 2, 100, 80)
+    partial = MmodeCalibrationState(roi, vertical_mm_per_pixel=0.2, depth_from_dicom_tags=True)
+    manual = MmodeCalibrationState(roi, 0.4, 2.0, time_from_dicom_tags=True)
+    store = StudyMeasurementSessionStore()
+    store.set_mmode_calibration(UID, SOP, partial)
+    store.set_mmode_calibration(UID, "1.2.3.5", manual)
+    store.set_instance_mmode_time(UID, SOP, 3.0)
+    store.set_instance_mmode_time(UID, "1.2.3.5", 2.0)
+    sources = {**SOURCES, "1.2.3.5": {"fingerprint": "b" * 64, "frames": 5, "spacing": [0.5, 0.6]}}
+    saved = {**record(store.snapshot(UID)), "sources": sources}
+    loaded = loads(dumps(saved))["data"]
+    restored = StudyMeasurementSessionStore()
+    restored.restore(UID, loaded)
+    assert restored.get_mmode_calibration(UID, SOP) == partial
+    assert restored.get_mmode_calibration(UID, "1.2.3.5") == manual
+    restored.activate_instance(UID, SOP)
+    assert restored.get(UID).mmode_time_per_pixel_ms == 3.0
+    restored.activate_instance(UID, "1.2.3.5")
+    assert restored.get(UID).mmode_time_per_pixel_ms == 2.0
+    assert not restored.get_mmode_calibration(UID, "1.2.3.5").is_dicom_trusted()
