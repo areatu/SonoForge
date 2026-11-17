@@ -163,12 +163,12 @@
         "d",
         "dialog"
       ],
-      "total": 497,
+      "total": 496,
       "files": {
         "tests/unit/test_orthanc_download_batch_characterization.py": 66,
         "tests/unit/test_orthanc_export_layout.py": 6,
         "tests/unit/test_orthanc_study_dialog.py": 33,
-        "tests/unit/test_presentation_orthanc_study_dialog.py": 392
+        "tests/unit/test_presentation_orthanc_study_dialog.py": 391
       }
     }
   ]

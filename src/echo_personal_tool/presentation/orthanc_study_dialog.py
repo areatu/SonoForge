@@ -23,7 +23,6 @@ import logging
 import shutil
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import shiboken6
@@ -99,7 +98,11 @@ from echo_personal_tool.keyboard_shortcuts import (
     shortcut_label,
 )
 from echo_personal_tool.presentation.display_formats import format_patient_height_cm
-from echo_personal_tool.presentation.orthanc_date_picker import OrthancDatePicker
+from echo_personal_tool.presentation.orthanc_date_filter import (
+    OrthancPeriodFilter,
+    build_date_picker_qss,
+    build_period_block,
+)
 from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
 from echo_personal_tool.presentation.orthanc_study_delegate import (
     ROLE_CHECKED,
@@ -119,7 +122,7 @@ from echo_personal_tool.presentation.orthanc_study_delegate import (
     completed_checkbox_rect,
     configure_pacs_tab_order,
 )
-from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
+from echo_personal_tool.presentation.pacs_title_bar import build_pacs_title_bar
 
 _SORT_ROLE = ROLE_SORT_KEY
 _CANCEL_FORCE_CLOSE_MS = 30_000
@@ -139,8 +142,6 @@ _UI_SETTINGS_APP = "loader_dialog"
 _THUMBNAILS_KEY = "show_thumbnails"
 _UNKNOWN_PATIENT_KEY = "orthanc.unknown_patient"
 _NO_DESCRIPTION_KEY = "orthanc.no_description"
-#: ``days`` value of the «date» chip: an exact day, not a lookback window.
-_EXACT_DATE_CHIP = -1
 _TODAY_KEY = "orthanc.date_today"
 _YESTERDAY_KEY = "orthanc.date_yesterday"
 
@@ -209,6 +210,13 @@ def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
     text = tokens["text.1"]
     bg_dark = tokens["surface.0"]
 
+    date_picker_qss = build_date_picker_qss(
+        bg_control=bg_control,
+        border=border,
+        accent=accent,
+        accent_text=accent_text,
+        text_dim=text_dim,
+    )
     return f"""
             QPushButton#periodChip {{
                 background: {bg_control};
@@ -223,26 +231,7 @@ def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
                 border-color: {accent};
                 font-weight: bold;
             }}
-            QWidget#orthancDatePicker QLabel {{
-                color: {text_dim};
-            }}
-            QSpinBox#datePickerDay, QSpinBox#datePickerMonth, QSpinBox#datePickerYear {{
-                background: {bg_control};
-                border: 1px solid {border};
-                border-radius: 10px;
-                padding: 2px 20px 2px 8px;
-                min-height: 18px;
-            }}
-            QSpinBox#datePickerDay:focus, QSpinBox#datePickerMonth:focus, QSpinBox#datePickerYear:focus {{
-                border-color: {accent};
-            }}
-            /* The picker's generic QLabel rule above carries the ancestor id,
-               so it outranks a bare QLabel#id rule: repeat the ancestor. */
-            QWidget#orthancDatePicker QLabel#datePickerPreview {{
-                color: {accent_text};
-                font-weight: bold;
-                padding-left: 4px;
-            }}
+{date_picker_qss}
             QPushButton#primaryButton {{
                 background: {accent};
                 color: {accent_on};
@@ -490,6 +479,21 @@ def _known_series_uids(series_cache: dict[str, list[SeriesInfo]], study_uid: str
     return [entry.series_uid for entry in series_cache.get(study_uid, []) if entry.series_uid]
 
 
+def _make_empty_page(text: str) -> tuple[QWidget, QLabel]:
+    """A centred «nothing here yet» page plus its label (swapped into a stack)."""
+    page = QWidget()
+    page_layout = QVBoxLayout(page)
+    page_layout.setContentsMargins(24, 24, 24, 24)
+    page_layout.addStretch(1)
+    label = QLabel(text)
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setWordWrap(True)
+    label.setObjectName("emptyState")
+    page_layout.addWidget(label)
+    page_layout.addStretch(1)
+    return page, label
+
+
 class OrthancStudyDialog(QDialog):
     """Browse studies with a master–detail layout and download the selection."""
 
@@ -646,39 +650,10 @@ class OrthancStudyDialog(QDialog):
 
         # Title bar (frameless window)
         self._drag_pos = None
-        title_bar = QWidget()
-        title_bar.setFixedHeight(title_bar_height(self))
-        title_bar.setStyleSheet(f"background: {p['surface.0']};")
-        tb_layout = QHBoxLayout(title_bar)
-        tb_layout.setContentsMargins(10, 0, 4, 0)
-        tb_layout.setSpacing(8)
-        title_label = QLabel(tr("dialog.orthanc.title"))
-        title_label.setStyleSheet(f"color: {p['text.1']}; font-weight: bold; border: none;")
-        tb_layout.addWidget(title_label)
-        self._server_pill = QLabel(tr("orthanc.checking_server"))
-        self._server_pill.setStyleSheet(f"color: {p['text.2']}; border: none; padding-left: 6px;")
-        tb_layout.addWidget(self._server_pill)
-        self._transport_pill = QLabel()
-        self._transport_pill.setStyleSheet(
-            f"color: {p['state.warn']}; font-weight: bold; border: none; padding-left: 6px;"
+        title_bar, self._server_pill, self._transport_pill, _title, self._close_btn = build_pacs_title_bar(
+            self, p, on_close=self.reject
         )
-        self._transport_pill.hide()
-        tb_layout.addWidget(self._transport_pill)
         self._update_transport_pill()
-        tb_layout.addStretch(1)
-        from echo_personal_tool.presentation.system_bar import _load_icon
-
-        btn_close = QPushButton()
-        btn_close.setIcon(_load_icon("close"))
-        btn_close.setObjectName("closeButton")
-        btn_close.setToolTip(tr("system_bar.close"))
-        btn_close.setAccessibleName(tr("system_bar.close"))
-        btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
-        btn_close.setStyleSheet("padding: 0px;")
-        btn_close.clicked.connect(self.reject)
-        self._close_btn = btn_close
-        tb_layout.addWidget(btn_close)
-
         # Search / controls row
         self._search_edit = QLineEdit()
         self._search_edit.setPlaceholderText(tr("orthanc.patient_name_placeholder"))
@@ -763,7 +738,7 @@ class OrthancStudyDialog(QDialog):
         left_layout.addLayout(studies_heading)
         self._studies_stack = QStackedWidget()
         self._studies_stack.addWidget(self._studies_list)
-        self._empty_studies, self._empty_studies_label = self._make_empty_page(tr("orthanc.empty_studies"))
+        self._empty_studies, self._empty_studies_label = _make_empty_page(tr("orthanc.empty_studies"))
         self._studies_stack.addWidget(self._empty_studies)
         left_layout.addWidget(self._studies_stack, stretch=1)
 
@@ -818,7 +793,7 @@ class OrthancStudyDialog(QDialog):
         right_layout.addLayout(header_row)
         self._series_stack = QStackedWidget()
         self._series_stack.addWidget(self._series_list)
-        self._empty_series, self._empty_series_label = self._make_empty_page(tr("orthanc.empty_series"))
+        self._empty_series, self._empty_series_label = _make_empty_page(tr("orthanc.empty_series"))
         self._series_stack.addWidget(self._empty_series)
         right_layout.addWidget(self._series_stack, stretch=1)
 
@@ -890,68 +865,27 @@ class OrthancStudyDialog(QDialog):
         return actions_row
 
     def _build_period_row(self) -> QVBoxLayout:
-        """Period chips, the arbitrary-date picker and the bulk actions.
-
-        Two rows: the chips stay on one line with the bulk actions (as before),
-        and the day/month/year selector sits directly underneath, hidden until
-        the «дата» chip is chosen.  A wrapping single row was rejected — the
-        selector is four controls wide and would push «Выделить все» off the
-        first line at the dialog's minimum width.
-        """
-        self._date_filter_group = QButtonGroup(self)
-        self._date_filter_group.setExclusive(True)
-        period_row = QHBoxLayout()
-        period_row.setContentsMargins(10, 8, 10, 0)
-        period_row.setSpacing(6)
-        period_row.addWidget(QLabel(tr("orthanc.period_label")))
-        self._period_buttons: dict[int, QPushButton] = {}
-        for days, label_key in (
-            (0, "orthanc.date_filter_all"),
-            (1, "orthanc.date_filter_1d"),
-            (7, "orthanc.date_filter_7d"),
-            (30, "orthanc.date_filter_30d"),
-            (90, "orthanc.date_filter_90d"),
-            (_EXACT_DATE_CHIP, "orthanc.date_filter_day"),
-        ):
-            button = QPushButton(tr(label_key))
-            button.setCheckable(True)
-            button.setObjectName("periodChip")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setChecked(days == 0)
-            if days == _EXACT_DATE_CHIP:
-                button.setToolTip(tr("orthanc.date_filter_day_tooltip"))
-                self._date_chip = button
-            self._date_filter_group.addButton(button)
-            self._period_buttons[days] = button
-            period_row.addWidget(button)
-        self._date_filter_group.buttonClicked.connect(self._on_date_filter_changed)
-        period_row.addStretch(1)
-        self._select_all_btn = QPushButton(tr("orthanc.select_all"))
-        self._select_all_btn.clicked.connect(self._on_select_all_studies)
-        self._clear_selection_btn = QPushButton(tr("orthanc.clear_selection"))
-        self._clear_selection_btn.clicked.connect(self._on_clear_selection)
-        period_row.addWidget(self._select_all_btn)
-        period_row.addWidget(self._clear_selection_btn)
-
-        self._date_picker = OrthancDatePicker()
-        self._date_picker.setVisible(False)
-        # Typing a component re-filters live; Enter / «Применить» also
-        # re-queries the server so an exact date works for a patient whose
-        # studies are not in the current result set.
-        self._date_picker.date_changed.connect(self._on_exact_date_changed)
-        self._date_picker.activated.connect(self._on_exact_date_activated)
-        picker_row = QHBoxLayout()
-        picker_row.setContentsMargins(10, 6, 10, 0)
-        picker_row.setSpacing(6)
-        picker_row.addWidget(self._date_picker)
-        picker_row.addStretch(1)
-
-        container = QVBoxLayout()
-        container.setContentsMargins(0, 0, 0, 0)
-        container.setSpacing(0)
-        container.addLayout(period_row)
-        container.addLayout(picker_row)
-        return container
+        """Period chips, the arbitrary-date selector and the bulk actions."""
+        block, buttons, picker, group, select_all, clear_selection = build_period_block(
+            self,
+            on_select_all=self._on_select_all_studies,
+            on_clear_selection=self._on_clear_selection,
+        )
+        self._date_filter_group, self._period_buttons, self._date_picker = group, buttons, picker
+        self._select_all_btn, self._clear_selection_btn = select_all, clear_selection
+        # The period decides what stays visible; an exact day also asks the
+        # server again (see presentation/orthanc_date_filter.py).
+        self._period = OrthancPeriodFilter(
+            buttons,
+            picker,
+            group,
+            self,
+            feed=self._on_studies_loaded,
+            reload=self._load_studies_async,
+            client=lambda: self._client,
+        )
+        self._period.changed.connect(self._on_period_changed)
+        return block
 
     def _build_filter_row(self) -> QHBoxLayout:
         """Filter chips/combos for the instance-level enrichment metadata."""
@@ -1000,19 +934,6 @@ class OrthancStudyDialog(QDialog):
         filter_row.addWidget(self._modality_combo)
         filter_row.addStretch(1)
         return filter_row
-
-    def _make_empty_page(self, text: str) -> tuple[QWidget, QLabel]:
-        page = QWidget()
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(24, 24, 24, 24)
-        page_layout.addStretch(1)
-        label = QLabel(text)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        label.setObjectName("emptyState")
-        page_layout.addWidget(label)
-        page_layout.addStretch(1)
-        return page, label
 
     def _apply_local_style(self, p: dict[str, str]) -> None:
         """Dialog-scoped QSS (see :func:`build_loader_dialog_stylesheet`)."""
@@ -1146,8 +1067,7 @@ class OrthancStudyDialog(QDialog):
         # fifty studies and the wanted one is not among them — filtering a set
         # that never contained the answer would report «ничего не найдено» for
         # an examination the PACS does have.
-        exact = self._exact_date()
-        study_date = exact.strftime("%Y%m%d") if exact is not None else None
+        study_date = self._period.exact_date_value()
         self._set_status(tr("orthanc.searching"))
         self._empty_studies_label.setText(tr("orthanc.searching"))
 
@@ -2002,76 +1922,25 @@ class OrthancStudyDialog(QDialog):
         self._patient_label.setVisible(bool(self._current_study_uid))
 
     # ── filters / sorting ───────────────────────────────────────────
-    def _date_filter_days(self) -> int:
-        """Lookback window in days; ``0`` for «Все», ``_EXACT_DATE_CHIP`` for a day."""
-        for days, button in self._period_buttons.items():
-            if button.isChecked():
-                return days
-        return 0
+    def visible_study_dates(self) -> list[str]:
+        """DICOM dates of the visible rows, in list order — what the period let through."""
+        shown: list[str] = []
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item is not None and not item.isHidden():
+                shown.append(str(item.data(0, _SORT_ROLE)))
+        return shown
 
-    def _exact_date(self) -> date | None:
-        """The day chosen in the picker — only when the «дата» chip is active."""
-        if self._date_filter_days() != _EXACT_DATE_CHIP:
-            return None
-        return self._date_picker.date()
+    @property
+    def period(self) -> OrthancPeriodFilter:
+        """The period filter the row drives (chips, exact day, query value)."""
+        return self._period
 
-    def _filter_studies_by_date(self, days: int) -> None:
-        """Hide/show study rows based on the selected date filter.
-
-        Three modes share one pass over the rows: «Все» (nothing hidden), a
-        lookback window (``days`` > 0, everything older than ``now - days`` is
-        hidden) and an exact day (``days == _EXACT_DATE_CHIP``, only that day
-        survives).  The rows are the only source of truth here — the server
-        query takes a single ``study_date``, so the period has always been a
-        client-side filter, and an arbitrary date has to follow the same path.
-        """
-        exact = self._exact_date() if days == _EXACT_DATE_CHIP else None
-        if days <= 0 and exact is None:
-            for index in range(self._studies_list.topLevelItemCount()):
-                self._studies_list.topLevelItem(index).setHidden(False)
-        else:
-            cutoff = datetime.now() - timedelta(days=days) if days > 0 else None
-            for index in range(self._studies_list.topLevelItemCount()):
-                item = self._studies_list.topLevelItem(index)
-                raw_date = item.data(0, _SORT_ROLE) or ""
-                try:
-                    item_date = datetime.strptime(str(raw_date)[:8], "%Y%m%d")
-                except ValueError:
-                    item.setHidden(False)
-                    continue
-                # A study dated in the future is not «within the last N days»
-                # either, but warning about it in the list is worse than
-                # showing it: keep the lenient upper bound the filter had.
-                if cutoff is not None:
-                    item.setHidden(item_date < cutoff)
-                else:
-                    item.setHidden(item_date.date() != exact)
-        self._update_studies_header()
-        self._update_load_button()
-        self._update_selection_summary()
-
-    def _on_date_filter_changed(self, _button) -> None:
-        # The picker is only meaningful for the exact-date chip; hiding it
-        # keeps the toolbar as compact as it was for the preset windows.
-        self._date_picker.setVisible(self._date_filter_days() == _EXACT_DATE_CHIP)
-        if self._date_filter_days() == _EXACT_DATE_CHIP:
-            self._date_picker.setFocus()
-        self._apply_client_filters()
-        self._prefetch_visible_studies()
-
-    def _on_exact_date_changed(self, _value: date) -> None:
-        """Live re-filter while the user spins the components."""
-        if self._date_filter_days() != _EXACT_DATE_CHIP:
-            return
-        self._apply_client_filters()
-        self._prefetch_visible_studies()
-
-    def _on_exact_date_activated(self, _value: date) -> None:
-        """Enter in the picker: also re-query, so the day need not be loaded yet."""
-        if self._date_filter_days() != _EXACT_DATE_CHIP:
-            return
-        self._apply_client_filters()
-        self._load_studies_async()
+    def _apply_period_to_rows(self) -> None:
+        """Hide/show study rows according to the period the collaborator holds."""
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            item.setHidden(not self._period.shows(item.data(0, _SORT_ROLE)))
 
     # --- enrichment (modes / stress / STE / device) --------------------------
 
@@ -2168,11 +2037,16 @@ class OrthancStudyDialog(QDialog):
 
     def _apply_client_filters(self) -> None:
         """Date + enrichment filters: hide rows, update header/selection."""
-        self._filter_studies_by_date(self._date_filter_days())
+        self._apply_period_to_rows()
         self._apply_enrichment_filters()
         self._update_studies_header()
         self._update_load_button()
         self._update_selection_summary()
+
+    def _on_period_changed(self) -> None:
+        """Chip click / picker spin: recompute the visible set and the previews."""
+        self._apply_client_filters()
+        self._prefetch_visible_studies()
 
     def _apply_enrichment_filters(self) -> None:
         modes = {mode for mode, button in self._mode_buttons.items() if button.isChecked()}

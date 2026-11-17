@@ -222,6 +222,8 @@ files = [
     "src/echo_personal_tool/presentation/measurement_action.py",
     "src/echo_personal_tool/presentation/mmode_scan_line.py",
     "src/echo_personal_tool/presentation/multiview_transport.py",
+    "src/echo_personal_tool/presentation/orthanc_date_filter.py",
+    "src/echo_personal_tool/presentation/orthanc_date_picker.py",
     "src/echo_personal_tool/presentation/orthanc_preview_loader.py",
     "src/echo_personal_tool/presentation/password_save_feedback.py",
     "src/echo_personal_tool/presentation/prepared_anatomy_controls.py",

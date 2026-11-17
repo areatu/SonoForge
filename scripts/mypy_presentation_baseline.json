@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 67,
-  "total_errors": 805,
+  "total_errors": 802,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -106,8 +106,8 @@
       "has-type": 15,
       "misc": 1,
       "no-any-return": 3,
-      "no-untyped-def": 10,
-      "union-attr": 26
+      "no-untyped-def": 9,
+      "union-attr": 24
     },
     "src/echo_personal_tool/presentation/prepared_anatomy_draw.py": {
       "arg-type": 1,

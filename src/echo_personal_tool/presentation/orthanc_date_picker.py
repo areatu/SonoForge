@@ -29,6 +29,7 @@ import calendar
 from datetime import date
 
 from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtGui import QKeyEvent, QWheelEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSpinBox, QWidget
 
 from echo_personal_tool.application.localization import tr
@@ -70,6 +71,14 @@ class _PaddedSpinBox(QSpinBox):
     def __init__(self, parent: QWidget | None = None, *, digits: int = 2) -> None:
         super().__init__(parent)
         self._digits = digits
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
+        """Ignore the wheel: the study list under the row keeps the gesture.
+
+        A spin box under the cursor would otherwise change the date while the
+        user scrolls the list, and the filter would re-query on every notch.
+        """
+        event.ignore()
 
     def textFromValue(self, value: int) -> str:  # noqa: N802 - Qt override
         return str(int(value)).zfill(self._digits)
@@ -122,9 +131,7 @@ class OrthancDatePicker(QWidget):
         for spin in (self._day, self._month, self._year):
             spin.setKeyboardTracking(False)
             spin.setAccelerated(True)
-            # The period chips above share the row with the study list; a wheel
-            # event belongs to the list, never to a component under the cursor.
-            spin.wheelEvent = _ignore_wheel  # type: ignore[method-assign]
+            spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             spin.valueChanged.connect(self._on_component_changed)
 
         layout = QHBoxLayout(self)
@@ -175,7 +182,19 @@ class OrthancDatePicker(QWidget):
         self._month.setSuffix(f" · {month_name(self._month.value())}")
 
     # ── state ───────────────────────────────────────────────────────
-    def date(self) -> date:
+    def preview_text(self) -> str:
+        """The «12.03.2024» caption the picker shows next to the components."""
+        return self._preview.text()
+
+    def label_text(self, name: str) -> str:
+        """Caption above one component (``"day"``, ``"month"``, ``"year"``)."""
+        return self._labels[name].text()
+
+    def component(self, name: str) -> QSpinBox:
+        """The spin box for ``"day"``, ``"month"`` or ``"year"`` (locale order is separate)."""
+        return {"day": self._day, "month": self._month, "year": self._year}[name]
+
+    def selected_date(self) -> date:
         """The selected date, clamped to the last day of the chosen month."""
         year = max(self._min_year, min(self._year.value(), self._max_year))
         month = max(1, min(self._month.value(), 12))
@@ -212,15 +231,15 @@ class OrthancDatePicker(QWidget):
             self._month.blockSignals(month_was_blocked)
         self._update_month_suffix()
         self._refresh_preview()
-        self.date_changed.emit(self.date())
+        self.date_changed.emit(self.selected_date())
 
     def _refresh_preview(self) -> None:
-        self._preview.setText(format_picker_date(self.date()))
+        self._preview.setText(format_picker_date(self.selected_date()))
 
     # ── keyboard ────────────────────────────────────────────────────
-    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.activated.emit(self.date())
+            self.activated.emit(self.selected_date())
             event.accept()
             return
         super().keyPressEvent(event)
@@ -230,11 +249,6 @@ class OrthancDatePicker(QWidget):
         if _date_order() == _ORDER_MDY:
             return (self._month, self._day, self._year)
         return (self._day, self._month, self._year)
-
-
-def _ignore_wheel(event) -> None:  # noqa: ANN001 - Qt event
-    """Swallow the wheel so the study list keeps the scroll gesture."""
-    event.ignore()
 
 
 def qdate_to_date(value: QDate) -> date:
