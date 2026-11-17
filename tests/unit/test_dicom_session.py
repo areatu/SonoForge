@@ -534,3 +534,33 @@ def test_decode_all_frames_honours_cancellation_before_start(tmp_path: Path) -> 
         session.decode_all_frames(cancel_check=lambda: True)
     assert session._frames is None
     session.release()
+
+
+def test_cancel_full_decode_does_not_run_the_entire_pending_cine(tmp_path: Path, monkeypatch) -> None:
+    """#553: cancellation bounds expensive calls, not merely publication."""
+    import threading
+
+    from echo_personal_tool.infrastructure.dicom_session import DicomDecodeCancelled
+
+    path = tmp_path / "multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=50, rows=8, cols=8)
+    session = DicomSession()
+    session.open(path)
+    session._is_uncompressed = False  # exercise the parallel compressed path
+    cancelled = threading.Event()
+    calls = []
+
+    def decode(index):
+        calls.append(index)
+        if index > 0:
+            cancelled.set()
+        return np.zeros((8, 8), dtype=np.uint16)
+
+    monkeypatch.setattr(session, "_decode_single_frame", decode)
+    try:
+        with pytest.raises(DicomDecodeCancelled):
+            session.decode_all_frames(cancel_check=cancelled.is_set)
+        assert session._frames is None
+        assert len(calls) <= 5  # first frame + at most four in-flight codec calls
+    finally:
+        session.release()

@@ -56,3 +56,44 @@ def test_dicom_decode_worker_emits_failed_for_missing_file(qapp: QApplication, q
     qtbot.waitUntil(lambda: len(errors) == 1, timeout=5000)
     assert errors[0][0] == 1
     assert errors[0][1]
+
+
+@pytest.mark.parametrize("phase", ["before_run", "first_frame", "full_result"])
+def test_cancelled_decode_never_publishes_final_result(qapp, tmp_path, monkeypatch, phase):
+    from PySide6.QtCore import Qt
+
+    worker = DicomDecodeWorker(tmp_path / "cine.dcm", request_id=42)
+    finished, cancelled, released, opened = [], [], [], []
+
+    class Session:
+        frame_count = 6
+
+        def open(self, path):
+            opened.append(path)
+
+        def decode_first_frame(self):
+            if phase == "first_frame":
+                worker.cancel()
+            return np.zeros((8, 8), dtype=np.uint16)
+
+        def decode_all_frames(self, cancel_check):
+            assert not cancel_check()
+            worker.cancel()  # cancellation just as the full result becomes ready
+            return np.zeros((6, 8, 8), dtype=np.uint16)
+
+        def release_heavy(self):
+            released.append(True)
+
+    monkeypatch.setattr(
+        "echo_personal_tool.application.workers.dicom_decode_worker.get_thread_dicom_session",
+        lambda path: Session(),
+    )
+    worker.signals.finished.connect(lambda *args: finished.append(args), Qt.ConnectionType.DirectConnection)
+    worker.signals.cancelled.connect(cancelled.append, Qt.ConnectionType.DirectConnection)
+    if phase == "before_run":
+        worker.cancel()
+    worker.run()
+    assert finished == []
+    assert cancelled == [42]
+    assert len(opened) == (0 if phase == "before_run" else 1)
+    assert len(released) == len(opened)

@@ -246,7 +246,7 @@ class ComparisonCoordinator:
 
         The study is chosen explicitly by the physician; this method only
         refuses an impossible pair (the same study, no current study) and asks
-        for confirmation when the metadata prove different patients.  Neither
+        for confirmation unless the metadata establish the same patient.  Neither
         study's measurements, calibration or playback state is copied to the
         other pane.
         """
@@ -258,7 +258,7 @@ class ComparisonCoordinator:
         if not identity.can_start:
             self._window._show_status(tr("comparison.status.same_study"))
             return False
-        if identity.needs_patient_confirmation and not self._confirm_different_patient(identity):
+        if identity.needs_patient_confirmation and not self._confirm_patient_identity(identity):
             return False
         if self._previous is not None:
             self.close_previous_comparison(announce=False)
@@ -354,12 +354,15 @@ class ComparisonCoordinator:
             )
         )
 
-    def _confirm_different_patient(self, pair: ComparisonIdentity) -> bool:
+    def _confirm_patient_identity(self, pair: ComparisonIdentity) -> bool:
+        prefix = (
+            "comparison.confirm.unverified" if pair.patient_match is PatientMatch.UNVERIFIED else "comparison.confirm"
+        )
         answer = QMessageBox.question(
             cast("QWidget", self._window),
-            tr("comparison.confirm.title"),
+            tr(f"{prefix}.title"),
             tr(
-                "comparison.confirm.body",
+                f"{prefix}.body",
                 current=pair.current.patient_text,
                 previous=pair.previous.patient_text,
             ),

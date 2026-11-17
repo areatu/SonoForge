@@ -52,7 +52,7 @@ def _clean_text(value: str) -> str:
 
 def _clean_identifier(value: str) -> str:
     """Trim an identifier without changing its case: PatientID is case-sensitive."""
-    return " ".join(str(value or "").split())
+    return str(value or "").strip()
 
 
 def _clean_date(value: str) -> str:
@@ -83,6 +83,9 @@ class StudyIdentity:
     issuer_of_patient_id: str = field(default="", repr=False)
     patient_birth_date: str = field(default="", repr=False)
     patient_sex: str = field(default="", repr=False)
+    # Conflicting instance headers or incomplete ID/issuer pairs must survive
+    # aggregation: emptying the offending field alone can hide the conflict.
+    patient_identity_uncertain: bool = field(default=False, repr=False)
     modality: str = ""
     source: str = ""
     tab_id: str = ""
@@ -142,6 +145,8 @@ class ComparisonIdentity:
         """
         current = self.current
         previous = self.previous
+        if current.patient_identity_uncertain or previous.patient_identity_uncertain:
+            return PatientMatch.UNVERIFIED
         current_id = _clean_identifier(current.patient_id)
         previous_id = _clean_identifier(previous.patient_id)
         current_issuer = _clean_identifier(current.issuer_of_patient_id)
@@ -180,8 +185,8 @@ class ComparisonIdentity:
 
     @property
     def needs_patient_confirmation(self) -> bool:
-        """Only a proven mismatch blocks until the physician confirms."""
-        return self.patient_match is PatientMatch.DIFFERENT
+        """Require explicit consent unless metadata establish the same patient."""
+        return self.patient_match is not PatientMatch.SAME
 
 
 @dataclass

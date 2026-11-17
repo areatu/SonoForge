@@ -22,7 +22,7 @@ import logging
 import struct
 import threading
 from collections.abc import Callable, Iterable
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -999,33 +999,51 @@ class DicomSession:
             self._frames = staging
             return self._frames
 
+        self._decode_remaining_frames(staging, cancel_check)
+        if cancel_check is not None and cancel_check():
+            raise DicomDecodeCancelled("decode cancelled before publication")
+        staging.flags.writeable = False
+        self._frames = staging
+        return self._frames
+
+    def _decode_remaining_frames(self, staging: np.ndarray, cancel_check: Callable[[], bool] | None) -> None:
+        """Keep only one codec call per thread in flight, not the whole cine.
+
+        Cancellation cannot interrupt a native codec already running. Cancelling
+        queued futures *inside* the executor context and stopping replenishment
+        prevents its shutdown(wait=True) from decoding the remaining cine.
+        """
+        indices = iter(range(1, self._frame_count))
+        max_workers = min(self._frame_count - 1, _MAX_DECODE_WORKERS)
         futures: dict[Future[np.ndarray], int] = {}
-        published = False
-        try:
-            max_workers = min(len(remaining), _MAX_DECODE_WORKERS)
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(self._decode_single_frame, i): i for i in remaining}
-                for future in as_completed(futures):
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            try:
+                for _ in range(max_workers):
+                    idx = next(indices)
+                    futures[pool.submit(self._decode_single_frame, idx)] = idx
+                while futures:
                     if cancel_check is not None and cancel_check():
                         raise DicomDecodeCancelled("decode cancelled between frames")
-                    idx = futures[future]
-                    try:
-                        staging[idx] = future.result()
-                    except DicomFrameDecodeError:
-                        raise
-                    except _DECODE_FAILURES as exc:
-                        raise DicomFrameDecodeError(idx, exc) from exc
-            if cancel_check is not None and cancel_check():
-                raise DicomDecodeCancelled("decode cancelled before publication")
-            staging.flags.writeable = False
-            self._frames = staging
-            published = True
-            return self._frames
-        finally:
-            if not published:
+                    completed, _ = wait(futures, return_when=FIRST_COMPLETED)
+                    for future in completed:
+                        idx = futures.pop(future)
+                        if cancel_check is not None and cancel_check():
+                            raise DicomDecodeCancelled("decode cancelled between frames")
+                        try:
+                            staging[idx] = future.result()
+                        except DicomFrameDecodeError:
+                            raise
+                        except _DECODE_FAILURES as exc:
+                            raise DicomFrameDecodeError(idx, exc) from exc
+                    for _ in completed:
+                        if cancel_check is not None and cancel_check():
+                            raise DicomDecodeCancelled("decode cancelled between frames")
+                        next_idx = next(indices, None)
+                        if next_idx is not None:
+                            futures[pool.submit(self._decode_single_frame, next_idx)] = next_idx
+            finally:
                 for future in futures:
                     future.cancel()
-                self._frames = None
 
     def _require_metadata(self) -> pydicom.Dataset:
         """Metadata is loaded by `open()`; decoding without it is a bug (#325)."""

@@ -809,7 +809,9 @@ def test_other_tab_gallery_routes_clip_to_right_pane(host, coordinator, ctrl_mod
 
 
 def _study(uid: str, date: datetime, instance: InstanceMetadata, surname: str = "Ivanov") -> StudyMetadata:
-    instance = instance.__class__(**{**instance.__dict__, "patient_surname": surname})
+    instance = instance.__class__(
+        **{**instance.__dict__, "patient_surname": surname, "patient_id": "MRN-1", "issuer_of_patient_id": "HOSP-A"}
+    )
     return StudyMetadata(
         study_uid=uid,
         study_datetime=date,
@@ -838,6 +840,8 @@ def _previous(host: FakeWindow) -> StudyIdentity:
         study_uid="study.2",
         study_datetime=datetime(2026, 1, 1),
         patient_surname="Ivanov",
+        patient_id="MRN-1",
+        issuer_of_patient_id="HOSP-A",
         modality="US",
         source="/previous",
         tab_id="tab-2",
@@ -981,3 +985,48 @@ def test_stored_manual_results_are_painted_read_only_on_the_previous_pane(host, 
     assert host._viewer2 is not None
     assert host._viewer2.applied_contours == [contour]
     assert host._viewer2.added_measurements == [measurement]
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_unverified_identity_needs_explicit_consent_before_any_pane_load(host, coordinator, monkeypatch, accepted):
+    from dataclasses import replace
+
+    _with_current_study(host)
+    previous = replace(_previous(host), patient_id="", issuer_of_patient_id="")
+    prompts, loads = [], []
+
+    def question(*args):
+        prompts.append(args)
+        return QMessageBox.StandardButton.Yes if accepted else QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(cc.QMessageBox, "question", question)
+    original_load = coordinator.load_into_pane
+
+    def load(*args, **kwargs):
+        loads.append(args)
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(coordinator, "load_into_pane", load)
+    assert coordinator.start_previous(previous, _instance("sop.prev")) is accepted
+    assert len(prompts) == 1
+    assert prompts[0][1] == tr("comparison.confirm.unverified.title")
+    assert prompts[0][-1] == QMessageBox.StandardButton.No
+    assert len(loads) == int(accepted)
+    assert (coordinator.previous_identity() is not None) is accepted
+    assert host._multiview_mode is accepted
+    if accepted:
+        assert "не подтверждена" in coordinator._comparison_status()
+
+
+def test_declining_unverified_replacement_preserves_existing_comparison(host, coordinator, monkeypatch):
+    from dataclasses import replace
+
+    _with_current_study(host)
+    assert coordinator.start_previous(_previous(host), _instance("sop.prev"))
+    existing = coordinator.previous_identity()
+    right = _right(coordinator).instance
+    monkeypatch.setattr(cc.QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+    unverified = replace(_previous(host), study_uid="third", patient_id="")
+    assert not coordinator.start_previous(unverified, _instance("third.sop"))
+    assert coordinator.previous_identity() is existing
+    assert _right(coordinator).instance is right

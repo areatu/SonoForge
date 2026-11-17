@@ -2238,6 +2238,8 @@
   "comparison.open": "Открыть сравнение",
   "comparison.badge.current": "Текущее: {date} · {patient}",
   "comparison.badge.previous": "Прошлое: {date} · {patient}",
+  "comparison.confirm.unverified.title": "Идентичность пациента не подтверждена",
+  "comparison.confirm.unverified.body": "Идентичность пациента не подтверждена: {current} и {previous}. Проверьте пациента и оба исследования перед сравнением. Совпадения фамилии недостаточно; идентификаторы отсутствуют или данные противоречивы. Результаты исследований не объединяются. Открыть сравнение?",
   "comparison.confirm.title": "Данные пациента различаются",
   "comparison.confirm.body": "Данные пациента различаются: {current} и {previous}. Сравнивать разные исследования можно, но результаты не складываются и не усредняются. Продолжить?",
   "comparison.status.started": "Сравнение: {date} · {patient}",

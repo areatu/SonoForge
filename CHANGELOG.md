@@ -28,4 +28,4 @@
 
 ## Unreleased
 
-Выпущено в v0.4.1 — 2026-11-16: записи перенесены в [`changelog/2026-11.md`](changelog/2026-11.md). Изменений после подготовки v0.4.1 пока нет.
+- `fix(decode)`: #553 — приёмка очередей и отмены: caps входящего prefetch и bounded full-decode futures ([полностью](changelog.d/001-fix-decode-cancellation-553.md))

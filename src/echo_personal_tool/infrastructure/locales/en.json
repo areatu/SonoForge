@@ -2238,6 +2238,8 @@
   "comparison.open": "Open comparison",
   "comparison.badge.current": "Current: {date} · {patient}",
   "comparison.badge.previous": "Previous: {date} · {patient}",
+  "comparison.confirm.unverified.title": "Patient identity is unverified",
+  "comparison.confirm.unverified.body": "Patient identity is unverified: {current} and {previous}. Verify the patient and both studies before comparing. A matching surname is not enough; identifiers are missing or the data are inconsistent. Results from the studies are not combined. Open comparison?",
   "comparison.confirm.title": "Patient identity differs",
   "comparison.confirm.body": "Patient identity differs: {current} and {previous}. Comparing different studies is allowed, but their results are never combined or averaged. Continue?",
   "comparison.status.started": "Comparison: {date} · {patient}",
