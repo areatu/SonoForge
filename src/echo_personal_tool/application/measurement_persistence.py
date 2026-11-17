@@ -22,6 +22,7 @@ from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementData, contour_key
 from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
+from echo_personal_tool.domain.models import Contour, LinearMeasurement, VesselMeasurement
 from echo_personal_tool.domain.models.calibration import (
     CalibrationConfidence,
     CalibrationContext,
@@ -136,11 +137,32 @@ def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
     return replace(data, **values)  # type: ignore[arg-type]  # dynamic dataclass field names
 
 
+def _acquisition_slot(item: Contour | LinearMeasurement | VesselMeasurement) -> tuple[object, ...]:
+    if item.measurement_id:
+        return (item.sop_instance_uid, item.measurement_id)
+    if isinstance(item, Contour):
+        return contour_key(item)
+    return (item.sop_instance_uid, item.frame_index, item.label)
+
+
 def combine(full: StudyMeasurementData, incoming: StudyMeasurementData, active: set[str]) -> StudyMeasurementData:
     missing = scoped(full, {uid for uid in _source_uids(full) if uid not in active})
     values = {}
     for field in ("contours", "linear_measurements", "vessel_measurements"):
-        values[field] = getattr(missing, field) + getattr(incoming, field)
+        unavailable = getattr(missing, field)
+        merged = getattr(incoming, field)
+        if unavailable:
+            # Prepending missing clips makes an older visible measurement look
+            # newest on the next full reload. Interleave survivors in their
+            # recorded slots, with new acquisitions after them in input order.
+            rank = {_acquisition_slot(item): i for i, item in enumerate(getattr(full, field))}
+            merged = tuple(
+                sorted(
+                    (*unavailable, *merged),
+                    key=lambda item: rank.get(_acquisition_slot(item), len(getattr(full, field))),
+                )
+            )
+        values[field] = merged
     values["imt_measurements"] = missing.imt_measurements + incoming.imt_measurements
     for field in incoming.__dataclass_fields__:
         if "by_instance" in field or field == "simpson_area_by_frame":

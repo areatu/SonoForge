@@ -238,14 +238,13 @@ def merge_linear_measurements(
     """
     if not incoming:
         return existing
-    by_key: dict[tuple[str, int, str], LinearMeasurement] = {}
-    for measurement in existing:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
-    for measurement in incoming:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
+    by_key = {_linear_key(m): m for m in existing}
+    by_key.update((_linear_key(m), m) for m in incoming)
     return tuple(by_key.values())
+
+
+def _linear_key(item: LinearMeasurement) -> tuple[str, int | None, str]:
+    return item.label, item.frame_index, item.sop_instance_uid
 
 
 def replace_linear_measurements_for_instance(
@@ -260,16 +259,12 @@ def replace_linear_measurements_for_instance(
     disappear from the study too (otherwise they come back after a clip switch
     and stay in the report). Other clips are untouched.
     """
-    kept = tuple(m for m in existing if m.sop_instance_uid != instance_uid)
-    if not incoming:
-        return kept
-    by_key: dict[tuple[str, int, str], LinearMeasurement] = {
-        (m.label, m.frame_index if m.frame_index is not None else -1, m.sop_instance_uid): m for m in kept
-    }
-    for measurement in incoming:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
-    return tuple(by_key.values())
+    # Updating or revisiting a clip must not make *all* its old calipers
+    # newer than those of other clips. Remove only the deleted slots, then
+    # replace survivors in place and append genuinely new acquisitions.
+    present = {_linear_key(m) for m in incoming}
+    kept = tuple(m for m in existing if m.sop_instance_uid != instance_uid or _linear_key(m) in present)
+    return merge_linear_measurements(kept, incoming)
 
 
 def linear_measurements_for_instance(

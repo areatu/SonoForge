@@ -986,3 +986,22 @@ def test_partial_restore_keeps_unavailable_measurements_through_a_save(tmp_path,
     assert restored[SOP_UNAVAILABLE].label == "AO"
     assert restored[SOP_UNAVAILABLE].pixel_length == 30, "the unavailable source keeps its measurement on disk"
     assert p.close()
+
+
+def test_revisit_and_partial_reload_preserve_acquisition_order(tmp_path, monkeypatch, qapp):
+    both = {**SOURCES, **SOURCES_UNAVAILABLE}
+    p, store = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    a = LinearMeasurement("LA", 20, 10, 0, sop_instance_uid=SOP)
+    b = replace(a, millimeter_length=13, sop_instance_uid=SOP_UNAVAILABLE)
+    for item in (a, b, a):  # revisiting A is not a new acquisition
+        store.set_linear_measurements_for_instance(UID, item.sop_instance_uid, (item,))
+    assert store.get(UID).linear_measurements == (a, b)
+    assert p.flush() and p.close()
+    partial, store = _open_with_sources(tmp_path, monkeypatch, qapp, SOURCES)
+    edited = replace(a, millimeter_length=11)
+    extra = replace(a, label="New")
+    store.set_linear_measurements_for_instance(UID, SOP, (edited, extra))
+    assert partial.flush() and partial.close()
+    full, restored = _open_with_sources(tmp_path, monkeypatch, qapp, both)
+    assert restored.get(UID).linear_measurements == (edited, b, extra)
+    assert full.close()
