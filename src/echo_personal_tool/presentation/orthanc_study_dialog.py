@@ -23,7 +23,7 @@ import logging
 import shutil
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import shiboken6
@@ -99,6 +99,7 @@ from echo_personal_tool.keyboard_shortcuts import (
     shortcut_label,
 )
 from echo_personal_tool.presentation.display_formats import format_patient_height_cm
+from echo_personal_tool.presentation.orthanc_date_picker import OrthancDatePicker
 from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
 from echo_personal_tool.presentation.orthanc_study_delegate import (
     ROLE_CHECKED,
@@ -138,6 +139,8 @@ _UI_SETTINGS_APP = "loader_dialog"
 _THUMBNAILS_KEY = "show_thumbnails"
 _UNKNOWN_PATIENT_KEY = "orthanc.unknown_patient"
 _NO_DESCRIPTION_KEY = "orthanc.no_description"
+#: ``days`` value of the «date» chip: an exact day, not a lookback window.
+_EXACT_DATE_CHIP = -1
 _TODAY_KEY = "orthanc.date_today"
 _YESTERDAY_KEY = "orthanc.date_yesterday"
 
@@ -219,6 +222,26 @@ def build_loader_dialog_stylesheet(p: dict[str, str] | None = None) -> str:
                 color: {accent_on};
                 border-color: {accent};
                 font-weight: bold;
+            }}
+            QWidget#orthancDatePicker QLabel {{
+                color: {text_dim};
+            }}
+            QSpinBox#datePickerDay, QSpinBox#datePickerMonth, QSpinBox#datePickerYear {{
+                background: {bg_control};
+                border: 1px solid {border};
+                border-radius: 10px;
+                padding: 2px 20px 2px 8px;
+                min-height: 18px;
+            }}
+            QSpinBox#datePickerDay:focus, QSpinBox#datePickerMonth:focus, QSpinBox#datePickerYear:focus {{
+                border-color: {accent};
+            }}
+            /* The picker's generic QLabel rule above carries the ancestor id,
+               so it outranks a bare QLabel#id rule: repeat the ancestor. */
+            QWidget#orthancDatePicker QLabel#datePickerPreview {{
+                color: {accent_text};
+                font-weight: bold;
+                padding-left: 4px;
             }}
             QPushButton#primaryButton {{
                 background: {accent};
@@ -866,8 +889,15 @@ class OrthancStudyDialog(QDialog):
         configure_pacs_tab_order(self)
         return actions_row
 
-    def _build_period_row(self) -> QHBoxLayout:
-        """Period chips plus the selection bulk actions."""
+    def _build_period_row(self) -> QVBoxLayout:
+        """Period chips, the arbitrary-date picker and the bulk actions.
+
+        Two rows: the chips stay on one line with the bulk actions (as before),
+        and the day/month/year selector sits directly underneath, hidden until
+        the «дата» chip is chosen.  A wrapping single row was rejected — the
+        selector is four controls wide and would push «Выделить все» off the
+        first line at the dialog's minimum width.
+        """
         self._date_filter_group = QButtonGroup(self)
         self._date_filter_group.setExclusive(True)
         period_row = QHBoxLayout()
@@ -881,12 +911,16 @@ class OrthancStudyDialog(QDialog):
             (7, "orthanc.date_filter_7d"),
             (30, "orthanc.date_filter_30d"),
             (90, "orthanc.date_filter_90d"),
+            (_EXACT_DATE_CHIP, "orthanc.date_filter_day"),
         ):
             button = QPushButton(tr(label_key))
             button.setCheckable(True)
             button.setObjectName("periodChip")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setChecked(days == 0)
+            if days == _EXACT_DATE_CHIP:
+                button.setToolTip(tr("orthanc.date_filter_day_tooltip"))
+                self._date_chip = button
             self._date_filter_group.addButton(button)
             self._period_buttons[days] = button
             period_row.addWidget(button)
@@ -898,7 +932,26 @@ class OrthancStudyDialog(QDialog):
         self._clear_selection_btn.clicked.connect(self._on_clear_selection)
         period_row.addWidget(self._select_all_btn)
         period_row.addWidget(self._clear_selection_btn)
-        return period_row
+
+        self._date_picker = OrthancDatePicker()
+        self._date_picker.setVisible(False)
+        # Typing a component re-filters live; Enter / «Применить» also
+        # re-queries the server so an exact date works for a patient whose
+        # studies are not in the current result set.
+        self._date_picker.date_changed.connect(self._on_exact_date_changed)
+        self._date_picker.activated.connect(self._on_exact_date_activated)
+        picker_row = QHBoxLayout()
+        picker_row.setContentsMargins(10, 6, 10, 0)
+        picker_row.setSpacing(6)
+        picker_row.addWidget(self._date_picker)
+        picker_row.addStretch(1)
+
+        container = QVBoxLayout()
+        container.setContentsMargins(0, 0, 0, 0)
+        container.setSpacing(0)
+        container.addLayout(period_row)
+        container.addLayout(picker_row)
+        return container
 
     def _build_filter_row(self) -> QHBoxLayout:
         """Filter chips/combos for the instance-level enrichment metadata."""
@@ -1088,13 +1141,20 @@ class OrthancStudyDialog(QDialog):
             return
         text = self._search_edit.text().strip()
         patient_name = text or None
+        # An exact day is sent to the server as well: the period is a client
+        # filter over the rows that are already here, but a patient can have
+        # fifty studies and the wanted one is not among them — filtering a set
+        # that never contained the answer would report «ничего не найдено» for
+        # an examination the PACS does have.
+        exact = self._exact_date()
+        study_date = exact.strftime("%Y%m%d") if exact is not None else None
         self._set_status(tr("orthanc.searching"))
         self._empty_studies_label.setText(tr("orthanc.searching"))
 
         def _query() -> list:
             if self._query_service is not None:
-                return self._query_service.query_studies(patient_name=patient_name)
-            return self._client.query_studies(patient_name=patient_name)
+                return self._query_service.query_studies(patient_name=patient_name, study_date=study_date)
+            return self._client.query_studies(patient_name=patient_name, study_date=study_date)
 
         self._study_query_generation += 1
         generation = self._study_query_generation
@@ -1298,6 +1358,10 @@ class OrthancStudyDialog(QDialog):
         self._history_patient = ""
         self._render_patient_history("", [])
         self._build_study_rows(self._studies)
+        # Re-apply the period: rows are rebuilt on every query, and an exact
+        # day (or a lookback window) must not silently show studies the user
+        # just filtered out.
+        self._apply_client_filters()
         self._start_enrichment()
         self._apply_preselected_study()
         if error and not studies:
@@ -1939,18 +2003,34 @@ class OrthancStudyDialog(QDialog):
 
     # ── filters / sorting ───────────────────────────────────────────
     def _date_filter_days(self) -> int:
+        """Lookback window in days; ``0`` for «Все», ``_EXACT_DATE_CHIP`` for a day."""
         for days, button in self._period_buttons.items():
             if button.isChecked():
                 return days
         return 0
 
+    def _exact_date(self) -> date | None:
+        """The day chosen in the picker — only when the «дата» chip is active."""
+        if self._date_filter_days() != _EXACT_DATE_CHIP:
+            return None
+        return self._date_picker.date()
+
     def _filter_studies_by_date(self, days: int) -> None:
-        """Hide/show study rows based on the selected date filter."""
-        if days <= 0:
+        """Hide/show study rows based on the selected date filter.
+
+        Three modes share one pass over the rows: «Все» (nothing hidden), a
+        lookback window (``days`` > 0, everything older than ``now - days`` is
+        hidden) and an exact day (``days == _EXACT_DATE_CHIP``, only that day
+        survives).  The rows are the only source of truth here — the server
+        query takes a single ``study_date``, so the period has always been a
+        client-side filter, and an arbitrary date has to follow the same path.
+        """
+        exact = self._exact_date() if days == _EXACT_DATE_CHIP else None
+        if days <= 0 and exact is None:
             for index in range(self._studies_list.topLevelItemCount()):
                 self._studies_list.topLevelItem(index).setHidden(False)
         else:
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now() - timedelta(days=days) if days > 0 else None
             for index in range(self._studies_list.topLevelItemCount()):
                 item = self._studies_list.topLevelItem(index)
                 raw_date = item.data(0, _SORT_ROLE) or ""
@@ -1959,14 +2039,39 @@ class OrthancStudyDialog(QDialog):
                 except ValueError:
                     item.setHidden(False)
                     continue
-                item.setHidden(item_date < cutoff)
+                # A study dated in the future is not «within the last N days»
+                # either, but warning about it in the list is worse than
+                # showing it: keep the lenient upper bound the filter had.
+                if cutoff is not None:
+                    item.setHidden(item_date < cutoff)
+                else:
+                    item.setHidden(item_date.date() != exact)
         self._update_studies_header()
         self._update_load_button()
         self._update_selection_summary()
 
     def _on_date_filter_changed(self, _button) -> None:
+        # The picker is only meaningful for the exact-date chip; hiding it
+        # keeps the toolbar as compact as it was for the preset windows.
+        self._date_picker.setVisible(self._date_filter_days() == _EXACT_DATE_CHIP)
+        if self._date_filter_days() == _EXACT_DATE_CHIP:
+            self._date_picker.setFocus()
         self._apply_client_filters()
         self._prefetch_visible_studies()
+
+    def _on_exact_date_changed(self, _value: date) -> None:
+        """Live re-filter while the user spins the components."""
+        if self._date_filter_days() != _EXACT_DATE_CHIP:
+            return
+        self._apply_client_filters()
+        self._prefetch_visible_studies()
+
+    def _on_exact_date_activated(self, _value: date) -> None:
+        """Enter in the picker: also re-query, so the day need not be loaded yet."""
+        if self._date_filter_days() != _EXACT_DATE_CHIP:
+            return
+        self._apply_client_filters()
+        self._load_studies_async()
 
     # --- enrichment (modes / stress / STE / device) --------------------------
 
