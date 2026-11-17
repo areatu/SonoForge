@@ -8,7 +8,6 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorMap
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.domain.models.speckle import (
@@ -16,6 +15,7 @@ from echo_personal_tool.domain.models.speckle import (
     TrackingKernel,
 )
 from echo_personal_tool.presentation import dark_theme
+from echo_personal_tool.resources.bundled_fonts import overlay_label_font, overlay_legend_font
 from echo_personal_tool.ui.segment_label_anchors import segment_label_anchors
 from echo_personal_tool.ui.segment_labels import short_segment_label
 
@@ -68,9 +68,9 @@ class SpeckleOverlay(QWidget):
         self._verification_unverified_scatter.setZValue(13)
         self._plot.addItem(self._verification_unverified_scatter)
         self._verification_legend = pg.TextItem(anchor=(0, 1), color=tokens["overlay.speckle.legend"])
-        legend_font = QFont()
-        legend_font.setPointSize(9)
-        self._verification_legend.setFont(legend_font)
+        # Cyrillic caption over the image: bundled family, pixel size (see
+        # overlay_label_font) — a bare QFont() is the *system* face in points.
+        self._verification_legend.setFont(overlay_legend_font())
         self._verification_legend.setZValue(15)
         self._plot.addItem(self._verification_legend)
         self._verification_legend.hide()
@@ -324,9 +324,9 @@ class SpeckleOverlay(QWidget):
                 border=pg.mkPen(6, 10, 16, 170),
                 fill=pg.mkBrush(6, 10, 16, 120),
             )
-            font = QFont("sans-serif", 8)
-            font.setBold(True)
-            item.setFont(font)
+            # Bundled UI family in pixels, not the system "sans-serif" in pt:
+            # the caption is Cyrillic («БазПерг») and must match the panel text.
+            item.setFont(overlay_label_font())
             item.setPos(x, y)
             item.setZValue(21)
             self._plot.addItem(item)

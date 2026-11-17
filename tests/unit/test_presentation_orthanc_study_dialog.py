@@ -174,7 +174,7 @@ class TestCollectCheckedSeries:
         for uid in ("old", "new"):
             dialog._on_series_loaded((uid, _series(uid, 2), None))
             dialog._set_study_selected(uid, True)
-        dialog._filter_studies_by_date(30)
+        dialog.period.select_days(30)  # the period hides the 2020 study
         assert dialog._collect_all_checked_series() == [("new", ["s1", "s2"])]
 
     def test_study_selected_before_series_known_is_kept(self, dialog):

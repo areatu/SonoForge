@@ -488,6 +488,7 @@ def configure_pacs_tab_order(dlg: Any) -> None:
         dlg._sort_combo,
         dlg._thumbs_check,
         *dlg._period_buttons.values(),
+        *dlg._date_picker.focus_chain(),
         dlg._select_all_btn,
         dlg._clear_selection_btn,
         *dlg._mode_buttons.values(),

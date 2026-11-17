@@ -5,7 +5,6 @@
     "infrastructure/measurement_codec.py::validate_data": 216,
     "infrastructure/vendor_calibration_bridge.py::try_parse_samsung_tick_calibration": 430,
     "presentation/main_window.py::MainWindow.__init__": 345,
-    "presentation/orthanc_study_dialog.py::OrthancStudyDialog._build_ui": 224,
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 328,
     "presentation/viewer_widget.py::ViewerWidget.__init__": 299,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 223,
