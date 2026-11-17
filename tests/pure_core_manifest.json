@@ -4,6 +4,7 @@
     "tests/unit/test_analysis_jobs.py",
     "tests/unit/test_imt.py",
     "tests/unit/test_frame_cache.py",
+    "tests/unit/test_ctmr_stacks.py",
     "tests/unit/test_frame_cache_memory_budget.py",
     "tests/unit/test_pixel_spacing_resolver.py",
     "tests/unit/test_planimeter.py",
