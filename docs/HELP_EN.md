@@ -997,6 +997,14 @@ The report is built from the current `MeasurementSnapshot`: Doppler, Simpson/LVE
 
 When the completeness checklist is not closed, the PDF starts with “The protocol is incomplete: … missing, … stale.” The same warning travels in CSV/JSON with the other document states, so an incomplete export never looks complete. Explicit not-applicable/not-obtained decisions print as rows with their reason; stale values are never substituted by such a row.
 
+### 17.2.1 Draft conclusion
+
+In **Report**, select **Fill conclusion**. This is a qualitative draft for physician review, not a diagnosis. Missing or discordant data are not normal. Aortic segments use approximate absolute adult reference limits; the phrase that the root and ascending aorta are not dilated requires all three measurements (sinus, sinotubular junction and ascending aorta) within range. A confirmed biplane LAVi with current BSA is preferred for the left atrium; in its absence an enlarged AP diameter is described separately, not as a volume assessment.
+
+For discordant quantitative MR, AR or mitral stenosis, the dialog shows the underlying measures and choices. Intermediate MR and TR vena contracta ≥7 mm also require physician adjudication: a single criterion does not determine the final grade. Choose only after integrated assessment or leave for review (cancelling also leaves review). A choice is marked as physician-selected, belongs to the tab, and is invalidated when the evidence changes. Incomplete data, calculator warnings and combined quantitative MR/AR cannot be resolved with this choice. TR velocity alone does not grade regurgitation.
+
+Refilling replaces only the unchanged generated block; manual edits are preserved. After changing measurements, press the button again and review the whole text before printing: the draft does not update automatically. Missing results need separate assessment; the text does not rule out disease.
+
 ### 17.3 Sending an annotated DICOM payload
 
 `Send to server…` collects local DICOM objects and offers STOW-RS or DIMSE C-STORE when available. For matching SOP Instance UIDs, saved current calipers and contours can be serialized into a **new payload** with DICOM `Graphic Annotation Sequence` data.

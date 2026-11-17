@@ -716,3 +716,84 @@ class TestDraftNoticeSuppression:
         assert load_user_preferences().hide_report_draft_notice is True
         save_user_preferences(UserPreferences(hide_report_draft_notice=False))
         assert load_user_preferences().hide_report_draft_notice is False
+
+
+class TestFormalConclusionAdditions:
+    def test_aorta_requires_all_three_normal_segments_and_reuses_library_phrase(self) -> None:
+        incomplete = _snap(linear_measurements=(_linear("Ao Sinus", 35), _linear("Prox Ao", 35)))
+        assert all(item.id != "ao.size" for item in build_conclusion(incomplete).findings)
+        complete = replace(
+            incomplete, linear_measurements=incomplete.linear_measurements + (_linear("Ao Junction", 30),)
+        )
+        draft = build_conclusion(complete)
+        assert _one(draft, "ao.size").text_key == "builtin.aorta.no_dilation"
+        assert "Корень и восходящий отдел аорты не расширены." in render_conclusion(draft, "ru")
+        assert "The aortic root and ascending aorta are not dilated." in render_conclusion(draft, "en")
+        assert build_conclusion(replace(complete, spacing_calibrated=False)).findings == ()
+
+    @pytest.mark.parametrize(
+        ("label", "value", "segment"),
+        [
+            ("Ao Sinus", 42.1, "sinus"),
+            ("Ao Junction", 38.1, "stj"),
+            ("Prox Ao", 40.1, "ascending"),
+        ],
+    )
+    def test_dilation_is_local_to_measured_segment(self, label: str, value: float, segment: str) -> None:
+        draft = build_conclusion(_snap(linear_measurements=(_linear(label, value),)))
+        assert _one(draft, f"ao.{segment}").text_key.endswith(f"aorta.{segment}.dilated")
+        assert all(item.id != "ao.size" for item in draft.findings)
+
+    def test_la_diameter_fallback_is_not_claimed_to_be_volume_dilation(self) -> None:
+        draft = build_conclusion(_snap(linear_measurements=(_linear("LA", 42),)))
+        assert _one(draft, "la.size").text_key.endswith("la_size.ap_enlarged")
+        assert "объёма ЛП" in render_conclusion(draft, "ru")
+        assert build_conclusion(_snap(linear_measurements=(_linear("LA", 41),))).findings == ()
+
+    def test_tr_velocity_is_not_regurgitation_severity(self) -> None:
+        draft = build_conclusion(_snap(linear_measurements=(_linear("TR VC", 8),)))
+        assert _one(draft, "tv.regurgitation").text_key.endswith("tr.review")
+        assert _one(draft, "tv.regurgitation").candidates == ("report.conclusion.finding.tr.severe",)
+        lower = build_conclusion(_snap(linear_measurements=(_linear("TR VC", 6.9),)))
+        assert not _one(lower, "tv.regurgitation").candidates
+
+    def test_choices_are_explicit_bound_to_values_and_merge_preserves_edits(self) -> None:
+        snapshot = _regurg_snapshot("mr", 0.45, 40, 60)
+        finding = _one(build_conclusion(snapshot), "mv.regurgitation")
+        assert finding.text_key.endswith("mr.review")
+        assert {key.rsplit(".", 1)[-1] for key in finding.candidates} == {"moderate", "severe"}
+        choice = next(key for key in finding.candidates if key.endswith("moderate"))
+        choices = {finding.id: (finding.candidate_evidence, choice)}
+        selected = autofill_conclusion(snapshot, language="ru", choices=choices)
+        assert "Выбор врача:" in selected.text and "умеренная" in selected.text
+        stale = autofill_conclusion(_regurg_snapshot("mr", 0.46, 40, 60), language="ru", choices=choices)
+        assert "Выбор врача:" not in stale.text and "пересмотра" in stale.text
+        edited = autofill_conclusion(
+            snapshot,
+            language="en",
+            existing=selected.text + " edited",
+            previous_generated=selected.generated_block,
+            choices=choices,
+        )
+        assert selected.text + " edited" in edited.text
+        assert "Physician selection:" in edited.text
+
+    def test_incomplete_warned_or_combined_regurgitation_cannot_be_adjudicated(self) -> None:
+        missing = _regurg_snapshot("mr", 0.45, 40, None)
+        assert not _one(build_conclusion(missing), "mv.regurgitation").candidates
+        assert not _one(build_conclusion(_regurg_snapshot("mr", 0.30, 45, 40)), "mv.regurgitation").text_key.endswith(
+            "moderate"
+        )
+        # Intermediate MR is an explicit option, not an automatic grade.
+        assert _one(build_conclusion(_regurg_snapshot("mr", 0.30, 45, 40)), "mv.regurgitation").candidates
+        ar = _regurg_snapshot("ar", 0.35, 40, 60)
+        mr = _regurg_snapshot("mr", 0.45, 40, 60)
+        combined = replace(
+            ar, calculations=CalculationsSnapshot(results=ar.calculations.results + mr.calculations.results)
+        )
+        assert not _one(build_conclusion(combined), "regurgitation.combined").candidates
+
+    def test_ms_discordance_offers_only_observed_bands(self) -> None:
+        item = _one(build_conclusion(_ms_snapshot(1.2, 4)), "mv.stenosis")
+        assert {key.rsplit(".", 1)[-1] for key in item.candidates} == {"mild", "severe"}
+        assert not _one(build_conclusion(_ms_snapshot(1.2, None)), "mv.stenosis").candidates

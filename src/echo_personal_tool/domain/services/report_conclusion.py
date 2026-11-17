@@ -15,11 +15,14 @@ from typing import Final
 
 from echo_personal_tool.domain.calculations.body_surface import resolve_bsa_basis
 from echo_personal_tool.domain.calculations.chamber_simpson import confirmed_biplane_es_volume_ml
+from echo_personal_tool.domain.calculations.regurgitation_grade import parameter_grade
 from echo_personal_tool.domain.calculators.models import SOURCE_MANUAL, CalculationsSnapshot, CalculatorResult
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+from echo_personal_tool.domain.services.ase_reference_norms import AO_JUNCTION_MM, AO_PROX_MM, AO_SINUS_MM
 from echo_personal_tool.domain.services.bsa_freshness import evaluate_bsa_freshness
 from echo_personal_tool.domain.services.doppler_repeats import mean_of_last
 from echo_personal_tool.domain.services.report_builder import is_female, is_male
+from echo_personal_tool.domain.services.report_phrases import PHRASES
 from echo_personal_tool.domain.services.strain_metrics import (
     AVC_SOURCE_AREA,
     AVC_SOURCE_ECG,
@@ -29,7 +32,7 @@ from echo_personal_tool.domain.services.strain_metrics import (
 )
 from echo_personal_tool.domain.translation import tr_for_language
 
-RULESET_VERSION: Final[str] = "adult-tte-conservative-1"
+RULESET_VERSION: Final[str] = "adult-tte-conservative-2"
 
 #: The «this text is a draft» line of a generated conclusion.  It is the one
 #: notice the physician may ask to hide (item 6 of the 2026-11-06 list), so it
@@ -63,6 +66,10 @@ class ConclusionFinding:
     priority: int
     evidence: tuple[str, ...]
     sources: tuple[str, ...]
+    # Explicit physician choices only, never an automatic grade. Values bind
+    # the choice to the current evidence, so an old choice cannot go stale.
+    candidates: tuple[str, ...] = ()
+    candidate_evidence: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -106,9 +113,10 @@ def build_conclusion(
         findings.append(strain_finding)
     if strain_notice is not None:
         notices.append(strain_notice)
+    findings.extend(_aorta_findings(snapshot))
     findings.extend(_atrial_findings(snapshot, bsa_fresh=bsa_fresh))
     findings.extend(_right_ventricle_findings(snapshot))
-    findings.extend(_valve_findings(snapshot))
+    findings.extend(_with_valve_candidates(snapshot, item) for item in _valve_findings(snapshot))
     ph = _ph_finding(snapshot)
     if ph is not None:
         findings.append(ph)
@@ -125,9 +133,34 @@ def render_conclusion(draft: ConclusionDraft, language: str) -> str:
 
     if not draft.findings:
         return ""
-    lines = [f"• {tr_for_language(item.text_key, language)}" for item in draft.findings]
+    lines = [f"• {_finding_text(item.text_key, language)}" for item in draft.findings]
     lines.extend(f"• {tr_for_language(key, language)}" for key in draft.notices)
     return "\n".join(lines)
+
+
+def _finding_text(key: str, language: str) -> str:
+    if key.startswith("chosen:"):
+        text = _finding_text(key.removeprefix("chosen:"), language)
+        return tr_for_language("report.conclusion.physician_choice", language, finding=text)
+    if key == "builtin.aorta.no_dilation":
+        phrase = next(item for item in PHRASES if item.id == key)
+        return phrase.text(language).rstrip(".") + "."
+    return tr_for_language(key, language)
+
+
+def apply_conclusion_choices(
+    draft: ConclusionDraft, choices: dict[str, tuple[tuple[float, ...], str]]
+) -> ConclusionDraft:
+    """Apply only explicit choices matching the current candidate evidence."""
+    findings = []
+    for item in draft.findings:
+        choice = choices.get(item.id)
+        if choice and choice[0] == item.candidate_evidence and choice[1] in item.candidates:
+            item = replace(item, text_key=choice[1], candidates=())
+            # Keep the selection identifiable as an adjudication, not an automatic diagnosis.
+            item = replace(item, text_key="chosen:" + item.text_key)
+        findings.append(item)
+    return replace(draft, findings=tuple(findings))
 
 
 def merge_conclusion(existing: str, generated: str, previous_generated: str = "") -> ConclusionMerge:
@@ -368,12 +401,50 @@ def _strain_finding(strain: StrainReport | None) -> tuple[ConclusionFinding | No
     return finding, "report.conclusion.notice.strain_method"
 
 
+def _aorta_findings(snapshot: MeasurementSnapshot) -> list[ConclusionFinding]:
+    # The existing absolute ranges are approximate; do not claim the entire
+    # aorta is normal from a single segment or from missing calibration.
+    segments = (
+        ("sinus", _linear_mean(snapshot, "Ao Sinus"), AO_SINUS_MM),
+        ("stj", _linear_mean(snapshot, "Ao Junction"), AO_JUNCTION_MM),
+        ("ascending", _linear_mean(snapshot, "Prox Ao"), AO_PROX_MM),
+    )
+    findings = []
+    for segment, value, norm in segments:
+        if value is not None and norm.high is not None and value > norm.high:
+            findings.append(
+                _finding(
+                    f"ao.{segment}",
+                    f"aorta.{segment}.dilated",
+                    _MILD,
+                    (f"ao_{segment}",),
+                    ("ASE reference ranges, approximate adult absolute dimensions",),
+                )
+            )
+    if not findings and all(
+        value is not None
+        and norm.low is not None
+        and value >= norm.low
+        and norm.high is not None
+        and value <= norm.high
+        for _, value, norm in segments
+    ):
+        findings.append(
+            ConclusionFinding(
+                "ao.size",
+                "builtin.aorta.no_dilation",
+                _NORMAL,
+                ("ao_sinus", "ao_stj", "ao_ascending"),
+                ("ASE reference ranges, approximate adult absolute dimensions",),
+            )
+        )
+    return findings
+
+
 def _atrial_findings(snapshot: MeasurementSnapshot, *, bsa_fresh: bool) -> list[ConclusionFinding]:
     findings: list[ConclusionFinding] = []
-    if not bsa_fresh or snapshot.indexed is None:
-        return findings
     la = snapshot.la_simpson
-    if la is not None and confirmed_biplane_es_volume_ml(la) is not None:
+    if bsa_fresh and snapshot.indexed is not None and la is not None and confirmed_biplane_es_volume_ml(la) is not None:
         lavi = _finite(snapshot.indexed.lav_bi_index_ml_m2)
         if lavi is not None:
             if lavi <= 34.0:
@@ -387,8 +458,14 @@ def _atrial_findings(snapshot: MeasurementSnapshot, *, bsa_fresh: bool) -> list[
             findings.append(
                 _finding("la.size", f"la_size.{category}", priority, ("lavi_biplane",), (SOURCE_CHAMBERS_2015,))
             )
+    if not any(item.id == "la.size" for item in findings):
+        diameter = _linear_mean(snapshot, "LA")
+        if diameter is not None and diameter > 41.0:
+            findings.append(
+                _finding("la.size", "la_size.ap_enlarged", _MILD, ("la_ap",), ("EACVI/NORRE 2014 normal values",))
+            )
     ra = snapshot.ra_simpson
-    if ra is not None and ra.a4c is not None:
+    if bsa_fresh and snapshot.indexed is not None and ra is not None and ra.a4c is not None:
         esv = _finite(ra.a4c.esv_ml)
         bsa = _finite(snapshot.indexed.bsa_m2)
         if esv is not None and bsa is not None:
@@ -516,10 +593,57 @@ def _valve_findings(snapshot: MeasurementSnapshot) -> list[ConclusionFinding]:
             findings.append(ar)
         if mr is not None:
             findings.append(mr)
+    tr_vc = _linear_mean(snapshot, "TR VC")
+    if tr_vc is not None:
+        finding = _finding("tv.regurgitation", "tr.review", _REVIEW, ("tr_vc",), (SOURCE_REGURGITATION_2017,))
+        # VC ≥7 mm is a severe criterion, not by itself an integrated grade.
+        if tr_vc >= 7.0:
+            finding = replace(finding, candidates=("report.conclusion.finding.tr.severe",), candidate_evidence=(tr_vc,))
+        findings.append(finding)
     ms = _ms_finding(snapshot)
     if ms is not None:
         findings.append(ms)
     return findings
+
+
+def _with_valve_candidates(snapshot: MeasurementSnapshot, item: ConclusionFinding) -> ConclusionFinding:
+    """Expose discordant bands for adjudication; never resolve them automatically."""
+    if not item.text_key.endswith(".review"):
+        return item
+    prefix = {"av.regurgitation": "ar", "mv.regurgitation": "mr", "mv.stenosis": "ms"}.get(item.id)
+    if prefix is None:
+        return item
+    result = _result(snapshot, "mitral_valve_area" if prefix == "ms" else f"pisa_{prefix}")
+    if result is not None and result.warnings:
+        return item
+    values: tuple[float | None, ...]
+    if prefix == "ms":
+        values = (_output(result, "mva_pht"), _output(result, "mva_pisa"), _mean_gradient(snapshot, "MV"))
+        areas = [v for v in values[:2] if v is not None]
+        if not areas or values[2] is None:
+            return item
+        bands = {_ms_area_category(v) for v in areas} | {_ms_gradient_category(values[2])}
+    else:
+        names = (f"eroa_{prefix}", f"rvol_{prefix}", f"rf_{prefix}")
+        values = tuple(_output(result, name) for name in names)
+        if any(v is None for v in values):
+            return item
+        grades = {parameter_grade(name, value) for name, value in zip(names, values, strict=True)}
+        bands = {{1: "mild", 2: "moderate", 3: "severe"}[grade] for grade in grades if grade in (1, 2, 3)}
+        # MR intermediate grades are deliberately not automatic because the
+        # mechanism is unknown, but may be explicitly adjudicated.
+        if prefix == "mr" and bands == {"moderate"}:
+            pass
+        elif len(bands) < 2:
+            return item
+    if prefix == "ms" and len(bands) < 2:
+        return item
+    ordered = tuple(
+        f"report.conclusion.finding.{prefix}.{band}" for band in ("mild", "moderate", "severe") if band in bands
+    )
+    # Include missing slots so changed source data always invalidates a choice.
+    signature = tuple(-1.0 if value is None else value for value in values)
+    return replace(item, candidates=ordered, candidate_evidence=signature)
 
 
 def _as_finding(snapshot: MeasurementSnapshot) -> ConclusionFinding | None:

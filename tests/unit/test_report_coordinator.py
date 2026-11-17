@@ -488,3 +488,69 @@ class TestFormatAndFinish:
         template = coordinator.page.preview.template
         assert template is not None
         assert template.normalized_columns == COLUMNS_TWO
+
+
+def test_conclusion_adjudication_is_per_tab_and_revalidated(coordinator, controller, window, monkeypatch) -> None:
+    from echo_personal_tool.domain.calculators.models import CalculationsSnapshot, CalculatorResult, OutputValue
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.presentation.report_mode.conclusion_decision import ConclusionDecisionDialog
+
+    def snapshot(eroa: float) -> MeasurementSnapshot:
+        outputs = tuple(
+            OutputValue(id=name, label=name, value=value, unit="", decimals=2, formula="")
+            for name, value in (("eroa_mr", eroa), ("rvol_mr", 40), ("rf_mr", 60))
+        )
+        return MeasurementSnapshot(
+            calculations=CalculationsSnapshot(results=(CalculatorResult(calculator_id="pisa_mr", outputs=outputs),))
+        )
+
+    controller.compute_study_snapshot.return_value = snapshot(0.45)
+    current_values = []
+
+    def ask(parent, finding, *, current=None):
+        current_values.append(current)
+        return next(key for key in finding.candidates if key.endswith("moderate"))
+
+    monkeypatch.setattr(ConclusionDecisionDialog, "ask", ask)
+    first_tab = window.tab
+    first = coordinator.provide_conclusion()
+    assert "mv.regurgitation" in first_tab.report_conclusion_choices
+    assert first.changed
+    coordinator.provide_conclusion()
+    assert current_values[-1] is not None
+    window.tab = _tab()
+    coordinator.provide_conclusion()
+    assert current_values[-1] is None
+    window.tab = first_tab
+    controller.compute_study_snapshot.return_value = snapshot(0.46)
+    coordinator.provide_conclusion()
+    assert current_values[-1] is None
+    monkeypatch.setattr(ConclusionDecisionDialog, "ask", lambda *args, **kwargs: None)
+    canceled = coordinator.provide_conclusion()
+    assert not window.tab.report_conclusion_choices
+    assert "Physician selection:" not in canceled.text
+
+
+def test_conclusion_choice_dialog_defaults_to_review(qtbot) -> None:
+    from PySide6.QtWidgets import QComboBox
+
+    from echo_personal_tool.domain.services.report_conclusion import ConclusionFinding
+    from echo_personal_tool.presentation.report_mode.conclusion_decision import ConclusionDecisionDialog
+
+    finding = ConclusionFinding(
+        "mv.regurgitation",
+        "report.conclusion.finding.mr.review",
+        0,
+        (),
+        (),
+        ("report.conclusion.finding.mr.moderate", "report.conclusion.finding.mr.severe"),
+        (0.4, 40, 60),
+    )
+    dialog = ConclusionDecisionDialog(finding)
+    qtbot.addWidget(dialog)
+    combo = dialog.findChild(QComboBox, "conclusionDecisionChoice")
+    assert combo.currentData() == ""
+    assert combo.count() == 3
+    dialog2 = ConclusionDecisionDialog(finding, current=finding.candidates[1])
+    qtbot.addWidget(dialog2)
+    assert dialog2.findChild(QComboBox, "conclusionDecisionChoice").currentData() == finding.candidates[1]
