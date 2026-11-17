@@ -27,6 +27,7 @@ from echo_personal_tool.presentation.label_picker import (
     option_for_tool_id,
     search_label_options,
 )
+from echo_personal_tool.presentation.viewer.point_label_menu import offer_at_image_point
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 _FRAME = 200
@@ -599,10 +600,7 @@ class TestRightClickPointNaming:
         return w
 
     def _right_press(self, w: ViewerWidget, x: float, y: float) -> bool:
-        # Round-trip through the widget mapping so the hit radius is exact
-        # whatever the view transform and the window position are.
-        widget_point = w._map_image_point_to_viewer((x, y))
-        return w._offer_label_picker_for_point(QPointF(w.mapToGlobal(widget_point)))
+        return offer_at_image_point(w, (x, y))
 
     def test_right_click_on_free_caliper_point_reopens_the_menu(self, qtbot) -> None:
         w = self._make_viewer(qtbot)
@@ -639,7 +637,7 @@ class TestRightClickPointNaming:
         assert w.start_generic_area_contour() is True
         for x, y in ((10.0, 10.0), (40.0, 10.0), (40.0, 40.0)):
             w.handle_contour_click((x, y))
-        assert w._finish_closed_contour() is True
+        assert w.finish_contour() is True
         w.dismiss_label_picker()
 
         assert self._right_press(w, 40.0, 40.0) is True
