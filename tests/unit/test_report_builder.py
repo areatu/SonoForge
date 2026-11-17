@@ -629,9 +629,7 @@ class TestRapFromIvcPair:
 
     def test_incomplete_pair_adds_no_rap_rows(self) -> None:
         snapshot = _snapshot(
-            linear_measurements=(
-                LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),
-            ),
+            linear_measurements=(LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),),
         )
         groups = build_report_groups(snapshot, sex="M")
         units = {value.unit for group in groups for value in group.values}

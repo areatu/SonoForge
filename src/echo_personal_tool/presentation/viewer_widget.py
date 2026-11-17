@@ -7449,7 +7449,11 @@ class ViewerWidget(QWidget):
                 area = closed_polygon_area_cm2(contour, spacing)
                 if area is not None:
                     value_text = f"{_fmt('planimeter.area', area, 'cm²')} {tr('unit.cm2')}"
-        anchor_point = anchor_point if anchor_point is not None else (points[-1] if points else (self.width() / 2.0, self.height() / 2.0))
+        anchor_point = (
+            anchor_point
+            if anchor_point is not None
+            else (points[-1] if points else (self.width() / 2.0, self.height() / 2.0))
+        )
         from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
 
         self.label_picker_owner.offer(
@@ -7503,7 +7507,9 @@ class ViewerWidget(QWidget):
             return True
         return False
 
-    def _label_picker_point_hit(self, global_pos) -> tuple[str, object, tuple[float, float]] | None:
+    def _label_picker_point_hit(
+        self, global_pos: QPointF
+    ) -> tuple[tuple[tuple[str, int], LinearMeasurement] | Contour, tuple[float, float]] | None:
         """What committed point sits under the cursor: caliper end or contour node.
 
         Item 1 of the 2026-11-17 list: a right-click on one of the points of a
@@ -7516,12 +7522,16 @@ class ViewerWidget(QWidget):
             return None
         local = self.mapFromGlobal(global_pos.toPoint())
         frame = self._current_frame_index()
-        best: tuple[float, str, object, tuple[float, float]] | None = None
+        best: tuple[float, tuple[tuple[str, int], LinearMeasurement] | Contour, tuple[float, float]] | None = None
 
-        def _consider(dist: float, kind: str, payload: object, point: tuple[float, float]) -> None:
+        def _consider(
+            dist: float,
+            payload: tuple[tuple[str, int], LinearMeasurement] | Contour,
+            point: tuple[float, float],
+        ) -> None:
             nonlocal best
             if dist <= _LABEL_POINT_HIT_RADIUS_PX and (best is None or dist < best[0]):
-                best = (dist, kind, payload, point)
+                best = (dist, payload, point)
 
         for key, measurement in self._stored_linear_measurements.items():
             if not is_renamable_caliper_label(measurement.label):
@@ -7533,19 +7543,19 @@ class ViewerWidget(QWidget):
                     continue
                 view_point = self._map_image_point_to_viewer(point)
                 dist = float((view_point.x() - local.x()) ** 2 + (view_point.y() - local.y()) ** 2) ** 0.5
-                _consider(dist, "caliper", (key, measurement), point)
+                _consider(dist, (key, measurement), point)
         for contour in self.contour_state.visible:
             if contour.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
                 continue
             for point in contour.points:
                 view_point = self._map_image_point_to_viewer(point)
                 dist = float((view_point.x() - local.x()) ** 2 + (view_point.y() - local.y()) ** 2) ** 0.5
-                _consider(dist, "contour", contour, point)
+                _consider(dist, contour, point)
         if best is None:
             return None
-        return best[1], best[2], best[3]
+        return best[1], best[2]
 
-    def _offer_label_picker_for_point(self, global_pos) -> bool:
+    def _offer_label_picker_for_point(self, global_pos: QPointF) -> bool:
         """Open the naming menu over a committed general-tools point (item 1).
 
         Right-click replaces the auto-popup the tools no longer raise: the
@@ -7564,12 +7574,12 @@ class ViewerWidget(QWidget):
         hit = self._label_picker_point_hit(global_pos)
         if hit is None:
             return False
-        kind, payload, point = hit
-        if kind == "caliper":
+        payload, point = hit
+        if isinstance(payload, Contour):
+            self._open_label_picker_for_contour(payload, anchor_point=point, allow_free_text=True)
+        else:
             key, measurement = payload
             self._offer_caliper_label_picker(key, measurement, anchor_point=point, allow_free_text=True)
-            return True
-        self._open_label_picker_for_contour(payload, anchor_point=point, allow_free_text=True)
         return True
 
     def _offer_caliper_label_picker(
@@ -7603,9 +7613,7 @@ class ViewerWidget(QWidget):
     ) -> None:
         if not self._should_show_label_picker():
             return
-        self._offer_caliper_label_picker(
-            key, measurement, anchor_point=anchor_point, allow_free_text=allow_free_text
-        )
+        self._offer_caliper_label_picker(key, measurement, anchor_point=anchor_point, allow_free_text=allow_free_text)
 
     def _on_doppler_trace_committed(self, trace: object) -> None:
         raw_label = getattr(trace, "label", "") or ""
