@@ -1291,11 +1291,12 @@ class DopplerController(QObject):
         Empty for every other interval — those clicks are free and keep the
         historical prompt.
         """
-        guide = self.overlay.velocity_guide.velocity_cm_s()
+        interval_guide = self.overlay.interval_guide
+        guide = interval_guide.velocity_cm_s()
         if guide is None:
             return ""
         velocity = _fmt("doppler.vmax", guide, "cm/s")
-        pending = self.overlay.interval_guide.pending_start_ms() is not None
+        pending = interval_guide.pending_start_ms() is not None
         key = "doppler.dpdt_click_end" if pending else "doppler.dpdt_click_start"
         return tr(key, velocity=velocity)
 

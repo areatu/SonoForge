@@ -5407,7 +5407,6 @@ class ViewerWidget(QWidget):
             for node in node_items:
                 node.setAcceptedMouseButtons(buttons)
 
-
     def _create_contour_render(
         self,
         contour: Contour,
@@ -5946,7 +5945,6 @@ class ViewerWidget(QWidget):
             color=self._rbf_highlight_color(contour),
         )
 
-
     def _end_drag_overlay(self, contour_index: int) -> None:
         self._drag_overlay_contour_index = None
         del contour_index
@@ -5973,7 +5971,6 @@ class ViewerWidget(QWidget):
         viewport = self._graphics.viewport()
         if viewport is not None:
             viewport.update()
-
 
     def _drag_contour_point(
         self,

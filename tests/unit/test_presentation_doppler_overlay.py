@@ -138,7 +138,7 @@ class TestHandleClick:
         overlay.set_tool_mode("interval")
         result = overlay.handle_click(100.0, 50.0)
         assert result is True
-        assert (overlay.interval_guide.pending_start_ms() is not None)
+        assert overlay.interval_guide.pending_start_ms() is not None
 
     def test_interval_second_click_adds_marker(self, overlay):
         overlay.set_tool_mode("interval")
@@ -236,7 +236,7 @@ class TestSetTraceLabel:
 class TestPrefillIntervalStart:
     def test_sets_start_time(self, overlay):
         overlay.prefill_interval_start(500.0)
-        assert (overlay.interval_guide.pending_start_ms() is not None)
+        assert overlay.interval_guide.pending_start_ms() is not None
 
     def test_sets_preview(self, overlay):
         overlay.prefill_interval_start(500.0)
@@ -1219,7 +1219,7 @@ class TestDopplerHeartRate:
             points.reverse()
 
         assert overlay.handle_click(*points[0])
-        assert (overlay.interval_guide.pending_start_ms() is not None)
+        assert overlay.interval_guide.pending_start_ms() is not None
         assert not emitted
         assert overlay.handle_click(*points[1])
 
@@ -1247,7 +1247,7 @@ class TestDopplerHeartRate:
         overlay.handle_click(100.0, 80.0)
 
         assert not emitted
-        assert (overlay.interval_guide.pending_start_ms() is not None)
+        assert overlay.interval_guide.pending_start_ms() is not None
         assert overlay.get_tool_mode() == "interval"
         overlay.handle_click(500.0, 40.0)
         assert len(emitted) == 1

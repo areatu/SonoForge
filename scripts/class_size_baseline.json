@@ -9,8 +9,8 @@
       "methods": 166
     },
     "presentation/doppler_overlay.py::DopplerOverlayTools": {
-      "lines": 1635,
-      "methods": 122
+      "lines": 1626,
+      "methods": 121
     },
     "presentation/main_window.py::MainWindow": {
       "lines": 6435,
@@ -25,7 +25,7 @@
       "methods": 117
     },
     "presentation/viewer_widget.py::ViewerWidget": {
-      "lines": 7214,
+      "lines": 7211,
       "methods": 398
     }
   },
@@ -34,7 +34,7 @@
     "presentation/main_window.py": 6681,
     "presentation/orthanc_study_dialog.py": 3039,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 8074
+    "presentation/viewer_widget.py": 8071
   },
   "fields": {
     "application/app_controller.py::AppController": 88,

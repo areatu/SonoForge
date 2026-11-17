@@ -254,20 +254,22 @@ def doppler_value_origin(doppler: DopplerResults, measurement_id: str) -> ValueO
         return _origin_from_markers(markers, _peak_inputs(markers, measurement_id))
     if measurement_id in _INTERVAL_FIELDS:
         markers = _intervals(doppler, _INTERVAL_FIELDS[measurement_id])
-        inputs = _interval_inputs(markers)
+        interval_inputs = _interval_inputs(markers)
         delta_p = _DPDT_DELTA_P_MMHG.get(measurement_id)
         if delta_p is not None:
             # dP/dt = ΔP / Δt: the gradient is a fixed constant of the method
             # (Bargiggia 1989 / Rudski 2010), the Δt is the measurement.  The
             # card names both so nobody has to guess where «32» comes from.
-            inputs = (
+            # The gradient goes first: it is the premise, not the finding.
+            interval_inputs = (
                 OriginInput(
                     id=tr("domain.origin.dpdt_delta_p"),
                     value=f"{format_measurement('doppler.pg_peak', delta_p, 'mmHg')} mmHg",
                     source="method",
                 ),
-            ) + inputs
-        return _origin_from_markers(markers, inputs)
+                *interval_inputs,
+            )
+        return _origin_from_markers(markers, interval_inputs)
     if measurement_id in _COMPOSITE_FIELDS:
         markers = _field_markers(doppler, measurement_id)
         if not markers:

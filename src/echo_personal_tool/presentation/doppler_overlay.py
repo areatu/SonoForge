@@ -1507,7 +1507,6 @@ class DopplerOverlayTools(QWidget):
             self._plot.addItem(item)
             self._peak_label_items.append(item)
 
-
     @property
     def interval_guide(self) -> DopplerIntervalGuide:
         """Preview bar and dP/dt click guide of the interval tool.
@@ -1518,14 +1517,6 @@ class DopplerOverlayTools(QWidget):
         class grows no accessor per consumer.
         """
         return self._interval_guide
-
-    def interval_guide_velocity_cm_s(self) -> float | None:
-        """Velocity the next interval click is bound to (dP/dt only)."""
-        return guide_target_velocity(
-            self._current_interval_label(),
-            second_click=self._active_interval_start is not None,
-            active=self._tool_mode == "interval",
-        )
 
     def _add_interval_item(self, marker: DopplerIntervalMarker) -> None:
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)

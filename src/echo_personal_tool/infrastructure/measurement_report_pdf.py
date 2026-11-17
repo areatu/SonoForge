@@ -223,7 +223,7 @@ def _two_columns_content_width() -> float:
     balanced-column band adds the padding itself; the number here is the
     frame's inner width.
     """
-    return A4[0] - 36 * mm - 2 * _FRAME_PADDING
+    return cast(float, A4[0] - 36 * mm - 2 * _FRAME_PADDING)
 
 
 #: ``reportlab`` pad-каждого frame'а (``BaseDocTemplate`` default ``leftPadding``).
