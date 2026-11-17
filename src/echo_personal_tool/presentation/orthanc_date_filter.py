@@ -103,8 +103,16 @@ def build_period_block(
     the right), the selector sits underneath, hidden until «Дата» is chosen -
     four extra controls would push «Выбрать все» off the first line at the
     dialog's minimum width.
+
+    Build order matters: Qt adds siblings to the focus chain in creation order,
+    and ``configure_pacs_tab_order`` only re-links widgets that are already
+    adjacent there.  The chips (and then the selector) are therefore created
+    before the bulk actions, exactly as the pre-collaborator row did; otherwise
+    Tab jumps from the thumbnails checkbox into the selector.
     """
     group, buttons, _date_chip = create_period_chips(parent)
+    picker = OrthancDatePicker(parent)
+    picker.setVisible(False)
     chips_row = QHBoxLayout()
     chips_row.setContentsMargins(10, 8, 10, 0)
     chips_row.setSpacing(6)
@@ -118,11 +126,6 @@ def build_period_block(
     clear_selection_btn.clicked.connect(on_clear_selection)
     for bulk in (select_all_btn, clear_selection_btn):
         chips_row.addWidget(bulk)
-    # Built last on purpose: siblings join the focus chain in creation order, so
-    # the selector lands right after the bulk actions (configure_pacs_tab_order
-    # then links it to the chips) instead of between them and the row.
-    picker = OrthancDatePicker(parent)
-    picker.setVisible(False)
     block = QVBoxLayout()
     block.setContentsMargins(0, 0, 0, 0)
     block.setSpacing(0)
