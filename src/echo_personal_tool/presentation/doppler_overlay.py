@@ -61,12 +61,16 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
-from echo_personal_tool.domain.services.nomenclature import flow_measurement_id
+from echo_personal_tool.domain.services.nomenclature import flow_measurement_id, marker_label
 from echo_personal_tool.keyboard_shortcuts import shortcut_label
 from echo_personal_tool.presentation import dark_theme
 from echo_personal_tool.presentation.doppler_calibration_hint import (
     DopplerManualCalibrationHint,
     place_hint_in_rect,
+)
+from echo_personal_tool.presentation.viewer.doppler_interval_guide import (
+    DopplerIntervalGuide,
+    guide_target_velocity,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,7 +107,9 @@ def peak_marker_caption(marker: DopplerPeakMarker) -> str:
     magnitude = abs(marker.velocity_cm_s)
     measurement_id = _peak_measurement_id(marker.label)
     vel_text, unit = format_velocity_measurement(measurement_id, magnitude, marker.mode)
-    text = f"{marker.label} {vel_text} {unit}"
+    # The marker keeps its storage label (``s_prime_rv``) in the document; the
+    # caption reads the clinical name (2026-11-17 list, item 4).
+    text = f"{marker_label(marker.label)} {vel_text} {unit}"
     if flow_site_from_peak_label(marker.label) is not None:
         pg = pressure_gradient_mmhg(magnitude)
         if pg is not None:
@@ -247,7 +253,19 @@ class DopplerOverlayTools(QWidget):
         self._peak_label_items: list[pg.TextItem] = []
 
         self._interval_items: list[pg.PlotDataItem | pg.TextItem] = []
-        self._interval_preview_item: pg.PlotDataItem | None = None
+        #: Preview bar of the pending interval *and* the fixed velocity the next
+        #: dP/dt click is bound to (100 cm/s, then 300 / 200 cm/s).  Both read
+        #: the interval state through callables, so no state moves out here.
+        self._interval_guide = DopplerIntervalGuide(
+            plot,
+            mapping=lambda: self._axis_mapping,
+            target=lambda: guide_target_velocity(
+                self._current_interval_label(),
+                second_click=self._active_interval_start is not None,
+                active=self._tool_mode == "interval",
+            ),
+            pending_start=lambda: self._active_interval_start,
+        )
 
         self._trace_item = pg.PlotDataItem(
             pen=pg.mkPen(tokens["overlay.doppler.trace"], width=2),
@@ -477,6 +495,7 @@ class DopplerOverlayTools(QWidget):
         if mode_name != self._tool_mode:
             self._clear_partial_state()
         self._tool_mode = mode_name
+        self._interval_guide.refresh()
         if mode_name == "trace":
             self._emit_trace_prompt()
         elif mode_name == "autovti_region":
@@ -572,10 +591,11 @@ class DopplerOverlayTools(QWidget):
     def set_interval_label(self, label: str, *, single_shot: bool = True) -> None:
         self._interval_label_index = self._resolve_label_index(canonical_interval_label(label), _INTERVAL_LABELS)
         self._single_shot_interval = single_shot
+        self._interval_guide.refresh()
 
     def prefill_interval_start(self, time_ms: float) -> None:
         self._active_interval_start = float(time_ms)
-        self._refresh_interval_preview()
+        self._interval_guide.refresh_preview()
 
     def start_mitral_inflow_workflow(self) -> None:
         self._workflow = _MITRAL_INFLOW_WORKFLOW
@@ -778,7 +798,7 @@ class DopplerOverlayTools(QWidget):
         for item in self._interval_items:
             self._plot.removeItem(item)
         self._interval_items.clear()
-        self._clear_interval_preview()
+        self._interval_guide.clear_preview()
 
         for item in self._trace_items:
             self._plot.removeItem(item)
@@ -873,7 +893,7 @@ class DopplerOverlayTools(QWidget):
         for index, marker in enumerate(self._interval_markers):
             x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
             x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
-            y_bar = self._baseline_y_for_interval()
+            y_bar = self._interval_guide.baseline_y()
             if min(x_start, x_end) - tol_px <= x_px <= max(x_start, x_end) + tol_px:
                 distance = abs(y_px - y_bar)
                 if distance <= tol_px and (best is None or distance < best[0]):
@@ -1382,14 +1402,9 @@ class DopplerOverlayTools(QWidget):
         self._trace_last_plot_xy = None
         self._peak_drag_index = None
         self._trace_item.setData([], [])
-        self._clear_interval_preview()
+        self._interval_guide.clear_preview()
+        self._interval_guide.refresh()
         self._clear_autovti_region()
-
-    def _clear_interval_preview(self) -> None:
-        if self._interval_preview_item is not None:
-            self._interval_preview_item.setData([], [])
-            if self._interval_preview_item.scene() is not None:
-                self._plot.removeItem(self._interval_preview_item)
 
     def _resolve_label_index(self, label: str, labels: tuple[str, ...]) -> int:
         normalized = label.strip()
@@ -1492,63 +1507,21 @@ class DopplerOverlayTools(QWidget):
             self._plot.addItem(item)
             self._peak_label_items.append(item)
 
-    def _baseline_y_for_interval(self) -> float:
-        baseline = self._axis_mapping.baseline_plot_y()
-        if baseline is not None:
-            return baseline
-        return self._axis_mapping.plot_height * 0.5
+    @property
+    def interval_guide(self) -> DopplerIntervalGuide:
+        """Preview bar and dP/dt click guide of the interval tool.
 
-    def _ensure_interval_preview_item(self) -> pg.PlotDataItem:
-        if self._interval_preview_item is None:
-            interval = dark_theme.get_theme_tokens()["overlay.doppler.interval"]
-            self._interval_preview_item = pg.PlotDataItem(
-                pen=pg.mkPen(interval, width=3, style=Qt.PenStyle.DashLine),
-                symbol="t",
-                symbolSize=10,
-                symbolBrush=pg.mkBrush(interval),
-            )
-            self._interval_preview_item.setZValue(19)
-            self._plot.addItem(self._interval_preview_item)
-        elif self._interval_preview_item.scene() is None:
-            # Finishing/cancelling removes the preview; reattach it for repeats.
-            self._plot.addItem(self._interval_preview_item)
-        return self._interval_preview_item
-
-    def _refresh_interval_preview(self, *, end_x_px: float | None = None) -> None:
-        if self._active_interval_start is None:
-            self._clear_interval_preview()
-            return
-        x_start = self._axis_mapping.x_from_time_ms(self._active_interval_start)
-        y_base = self._baseline_y_for_interval()
-        preview = self._ensure_interval_preview_item()
-        if end_x_px is None:
-            tick_half = 6.0
-            preview.setData(
-                [x_start, x_start],
-                [y_base - tick_half, y_base + tick_half],
-            )
-            return
-        x_end = float(end_x_px)
-        tick_half = 6.0
-        xs: list[float] = [x_start, x_end]
-        ys: list[float] = [y_base, y_base]
-        for x_tick in (x_start, x_end):
-            xs.extend([x_tick, x_tick])
-            ys.extend([y_base - tick_half, y_base + tick_half])
-        preview.setData(xs, ys)
-
-    def update_interval_preview_position(self, x_px: float) -> None:
-        if self._tool_mode != "interval" or self._active_interval_start is None:
-            return
-        self._refresh_interval_preview(end_x_px=x_px)
-
-    def has_pending_interval_start(self) -> bool:
-        return self._active_interval_start is not None
+        Exposed as the collaborator itself so callers read what they need —
+        :meth:`DopplerIntervalGuide.velocity_cm_s` for the click prompt,
+        :meth:`DopplerIntervalGuide.plot_y` for the crosshair — and the overlay
+        class grows no accessor per consumer.
+        """
+        return self._interval_guide
 
     def _add_interval_item(self, marker: DopplerIntervalMarker) -> None:
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
         x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
-        y_base = self._baseline_y_for_interval()
+        y_base = self._interval_guide.baseline_y()
         interval_pen = _interval_pen(marker)
         interval_item = pg.PlotDataItem(
             [x_start, x_end],
@@ -1647,8 +1620,9 @@ class DopplerOverlayTools(QWidget):
         )
         self._redraw_intervals()
         self._active_interval_start = None
-        self._clear_interval_preview()
+        self._interval_guide.clear_preview()
         self._advance_interval_label()
+        self._interval_guide.refresh()
         self._emit_markers_changed()
         if self._workflow is not None:
             self._complete_workflow_step()
@@ -1863,7 +1837,8 @@ class DopplerOverlayTools(QWidget):
                         return True
             if self._active_interval_start is None:
                 self._active_interval_start = float(time_ms)
-                self._refresh_interval_preview()
+                self._interval_guide.refresh_preview()
+                self._interval_guide.refresh()
                 return True
             self._add_interval_marker(time_ms)
             return True

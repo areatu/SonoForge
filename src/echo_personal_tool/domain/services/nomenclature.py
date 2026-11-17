@@ -14,6 +14,7 @@ the catalog in a later TP-1 slice.
 
 from __future__ import annotations
 
+import re
 from types import MappingProxyType
 
 from echo_personal_tool.domain.measurement_catalog import LINEAR_UNIT_CM, LINEAR_UNIT_MM, MEASUREMENTS
@@ -196,6 +197,59 @@ def overlay_label(key: str) -> str:
     if measurement_id is not None:
         return catalog_label(measurement_id)
     return tr(key)
+
+
+#: Spectral-Doppler marker labels → catalog ids.  The markers keep short
+#: storage labels (``s_prime_rv``, ``e_sept``… — they are part of saved data),
+#: but a marker printed on the frame must read as a clinical name, not as the
+#: storage key (2026-11-17 list, item 4).  The tissue entries mirror
+#: ``TISSUE_PEAK_LABELS``; the flow entries are resolved by site below.
+_MARKER_TO_CATALOG = MappingProxyType(
+    {
+        # E/A are the mitral inflow peaks; the catalog adds the valve to the
+        # name («MV E»), which is more than the marker needs on the frame, so
+        # these two keep their short clinical reading on both locales.
+        "e": "",
+        "a": "",
+        "e_sept": "tdi.e_sept",
+        "e_lat": "tdi.e_lat",
+        "a_sept": "mv.a",
+        "a_lat": "mv.a",
+        "s_sept": "tdi.s_prime_sept",
+        "s_lat": "tdi.s_prime_lat",
+        # The RV systolic peak has no separate septal entry: it is the peak
+        # the catalog names ``rv.s_prime``.  The septal/lateral keys the old
+        # metrics lookups accepted are the mitral-annulus ones below.
+        "s_prime_rv": "rv.s_prime",
+        # Legacy spellings of the same markers.
+        "e_prime_sept": "tdi.e_sept",
+        "e_prime_lat": "tdi.e_lat",
+        "s_prime_sept": "tdi.s_prime_sept",
+        "s_prime_lat": "tdi.s_prime_lat",
+        "rv_s_prime": "rv.s_prime",
+    }
+)
+
+
+def marker_label(label: str, language: str | None = None) -> str:
+    """Clinical name of a Doppler marker label, for the caption on the frame.
+
+    The marker keeps its storage label (``s_prime_rv``) in the document — old
+    studies and the calculation read that spelling — while the caption reads
+    «s′ ПЖ».  Flow peaks (``TR Vmax``…) already carry their clinical name and
+    fall through unchanged; an unknown label is printed as stored rather than
+    guessed.
+    """
+    text = (label or "").strip()
+    if not text:
+        return text
+    key = "_".join(re.findall(r"[a-z0-9]+", text.casefold().replace("′", "'")))
+    if key not in _MARKER_TO_CATALOG:
+        return text
+    measurement_id = _MARKER_TO_CATALOG[key]
+    if not measurement_id:
+        return text
+    return catalog_label(measurement_id, language)
 
 
 def view_label(kind: str, view: str) -> str:

@@ -24,7 +24,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import BalancedColumns, Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
 from echo_personal_tool.domain.services.report_template import (
@@ -214,6 +214,25 @@ def _group_flowables(
     return flowables
 
 
+def _two_columns_content_width() -> float:
+    """Width the two-column layout may use: the page minus its margins.
+
+    ``SimpleDocTemplate`` builds its frame with a 6 pt padding on both sides,
+    so a column table that is laid out for the bare content width is ~12 pt
+    wider than the frame and the right column runs off the sheet.  The
+    balanced-column band adds the padding itself; the number here is the
+    frame's inner width.
+    """
+    return cast(float, A4[0] - 36 * mm - 2 * _FRAME_PADDING)
+
+
+#: ``reportlab`` pad-каждого frame'а (``BaseDocTemplate`` default ``leftPadding``).
+_FRAME_PADDING = 6.0
+
+#: Space between the two columns of the two-column template.
+_COLUMN_GAP = 4 * mm
+
+
 def _two_column_groups(
     document: ReportDocument,
     styles: dict[str, ParagraphStyle],
@@ -221,21 +240,26 @@ def _two_column_groups(
     *,
     anchors: dict[ValueId, list[PageRect]] | None,
     show_notes: bool,
-) -> Table:
-    """Groups laid out in two columns of equal width (item 12 of the list).
+) -> Flowable:
+    """Groups laid out in two height-balanced columns (item 12 of the list).
 
-    Each cell of the outer table is one column of flowables, so a group is
-    never split between the columns; the outer table itself may break between
-    the rows it builds (pairs of columns), which is what keeps a long protocol
-    on the page.
+    The owner's complaint was about the gaps: the historical implementation
+    put group 0 next to group 1, group 2 next to group 3 and so on, so a short
+    group left a white band under itself while its column partner ran on — and
+    a long protocol kept that band on every page.  Here the groups are one
+    continuous stream that ``BalancedColumns`` fills column by column, breaking
+    to the next column (and the next band) only when the current one is full;
+    the first band is balanced so both columns end at roughly the same height.
+
+    ``BalancedColumns`` re-wraps and deep-copies its flowables, so the value
+    anchors must survive that: :class:`_AnchorSink` is shared, not copied.
     """
-    width = A4[0] - 36 * mm
-    # Each outer cell is one half of the content width minus its right padding
-    # — the group tables must be built for the cell, not for the page.
-    cell_width = width * 0.5 - 4 * mm
-    cells: list = []
+    width = _two_columns_content_width()
+    # The group tables are built for one column, not for the page.
+    table_width = (width - _COLUMN_GAP) * 0.5
+    flowables: list = []
     for group_index, group in enumerate(document.groups):
-        cells.append(
+        flowables.extend(
             _group_flowables(
                 group,
                 styles,
@@ -243,28 +267,42 @@ def _two_column_groups(
                 anchors=anchors,
                 group_index=group_index,
                 show_notes=show_notes,
-                table_width=cell_width,
+                table_width=table_width,
             )
         )
-    rows: list[list] = []
-    for index in range(0, len(cells), 2):
-        pair = cells[index : index + 2]
-        while len(pair) < 2:
-            pair.append([])
-        rows.append(pair)
-    table = Table(rows, colWidths=[width * 0.5, width * 0.5], hAlign="LEFT")
-    table.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
+    return BalancedColumns(
+        flowables,
+        nCols=2,
+        # A group is kept whole where it fits: the band only starts on the
+        # page when this much room is left for it.
+        needed=width * 0.25,
+        leftPadding=0,
+        innerPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        bottomPadding=0,
+        name="report-groups",
+        # No overrun of the last column: reportlab's default lets the tail
+        # column be up to 10 % taller than its frame, and a band that reaches
+        # into the bottom margin is exactly what the owner reported as an
+        # empty-looking area.
+        endSlack=0,
     )
-    return table
+
+
+class _AnchorSink(dict):
+    """Value-cell rectangles, keyed by :data:`ValueId`.
+
+    ``BalancedColumns`` deep-copies the flowables it balances, and a copy of the
+    sink would swallow the anchors of a copied cell: the caller would lose the
+    rectangles of every group after the copy and the «where did this value come
+    from» hover of the two-column sheet would be half empty.  Copying the sink
+    returns the sink itself — one collector for the whole render.
+    """
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> _AnchorSink:
+        memo[id(self)] = self
+        return self
 
 
 class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no type stubs, so its base class is Any
@@ -324,7 +362,7 @@ def render_report(
         font_name = _register_cyrillic_font(pdfmetrics, TTFont)
         size = max(8, min(16, int(font_size)))
         styles = _report_styles(font_name, size)
-        anchors: dict[ValueId, list[PageRect]] = {}
+        anchors = _AnchorSink()
         story = _report_story(document, styles, size, anchors, template)
         buffer = BytesIO()
         pdf = SimpleDocTemplate(
@@ -337,7 +375,7 @@ def render_report(
             title=tr("report.title"),
         )
         pdf.build(story)
-        return RenderedReport(pdf=buffer.getvalue(), anchors=anchors)
+        return RenderedReport(pdf=buffer.getvalue(), anchors=dict(anchors))
     except Exception:  # noqa: BLE001 - reportlab and in-memory buffer boundary
         raise PdfExportError("pdf_export_failed") from None
 

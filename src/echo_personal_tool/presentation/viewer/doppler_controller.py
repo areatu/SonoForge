@@ -59,7 +59,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.models.frame_panels import FramePanelLayout, UltrasoundPanel
-from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.linear_measurement import GENERIC_DIST_LABEL_PREFIX, LinearMeasurement
 from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
     try_auto_doppler_velocity_calibration,
 )
@@ -84,7 +84,6 @@ logger = logging.getLogger(__name__)
 
 DOPPLER_CAL_BASELINE_KEY = "viewer.doppler.cal_baseline"
 DOPPLER_CAL_VELOCITY_KEY = "viewer.doppler.cal_velocity"
-_GENERIC_DIST_LABEL_PREFIX = "Dist"
 
 DopplerCalStep = Literal["baseline"]
 DopplerToolMode = Literal["none", "peak", "interval", "trace", "autovti_region"]
@@ -1116,7 +1115,14 @@ class DopplerController(QObject):
             self.overlay.set_trace_label(trace_label)
         if mode != "none":
             prompt = self.overlay.workflow_prompt()
-            if prompt:
+            guided = self.interval_guide_prompt() if mode == "interval" else ""
+            if guided:
+                # dP/dt is a two-step measurement with a fixed click height: the
+                # prompt says which velocity the click belongs to (item 1 of the
+                # 2026-11-17 list) instead of the generic «1st click» line.
+                self._port.show_message(guided, False)
+                self._port.set_hint(guided)
+            elif prompt:
                 self._port.show_message(prompt, False)
             elif mode == "interval" and interval_label == HEART_RATE_INTERVAL_LABEL:
                 self._port.show_message(tr("status.doppler_heart_rate_tool"), False)
@@ -1275,8 +1281,24 @@ class DopplerController(QObject):
     # -- mouse, cursor & caliper-zone hooks ----------------------------------
 
     def update_interval_preview(self, x: float) -> None:
-        if self.overlay.get_tool_mode() == "interval" and self.overlay.has_pending_interval_start():
-            self.overlay.update_interval_preview_position(x)
+        guide = self.overlay.interval_guide
+        if self.overlay.get_tool_mode() == "interval" and guide.pending_start_ms() is not None:
+            guide.refresh_preview(end_x_px=x)
+
+    def interval_guide_prompt(self) -> str:
+        """Prompt of the dP/dt interval tool: which velocity is next.
+
+        Empty for every other interval — those clicks are free and keep the
+        historical prompt.
+        """
+        interval_guide = self.overlay.interval_guide
+        guide = interval_guide.velocity_cm_s()
+        if guide is None:
+            return ""
+        velocity = _fmt("doppler.vmax", guide, "cm/s")
+        pending = interval_guide.pending_start_ms() is not None
+        key = "doppler.dpdt_click_end" if pending else "doppler.dpdt_click_start"
+        return tr(key, velocity=velocity)
 
     def handle_mouse_click(self, ev: Any) -> bool:
         if self._cal_step is not None or self._port.calibration_active():
@@ -1419,7 +1441,7 @@ class DopplerController(QObject):
         label: str,
     ) -> LinearMeasurement | None:
         """Time/velocity caliper when both points lie inside the Doppler ROI."""
-        if not label.startswith(_GENERIC_DIST_LABEL_PREFIX):
+        if not label.startswith(GENERIC_DIST_LABEL_PREFIX):
             return None
         time_ms: float | None = None
         velocity_cm_s: float | None = None
