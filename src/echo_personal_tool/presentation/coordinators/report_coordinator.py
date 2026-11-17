@@ -43,14 +43,17 @@ from echo_personal_tool.domain.services.report_builder import (
     ReportDocument,
     build_report_document,
     with_extra_values,
+    without_values,
 )
 from echo_personal_tool.domain.services.report_profiles import (
     DEFAULT_PROFILE_ID,
     normalize_profile_id,
 )
 from echo_personal_tool.domain.services.report_sections import checklist_notices, not_evaluated_values
-from echo_personal_tool.presentation.report_mode import ReportModePage
+from echo_personal_tool.domain.services.report_value_layout import DEFAULT_REPORT_VALUE_EXCLUDED, merge_report_order
+from echo_personal_tool.presentation.report_mode import ReportModePage, SheetVersion
 from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
+from echo_personal_tool.presentation.report_mode.values_dialog import ReportValuesDialog
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QStackedWidget, QWidget
@@ -142,6 +145,7 @@ class ReportCoordinator(QObject):
         # One page per window, built on first entry; which tab is in «Отчёт»
         # lives in the TabSession, so every tab keeps its own mode.
         self._page: ReportModePage | None = None
+        self._shown_tab_id = ""
         #: Frame of the «откуда значение» card to jump to once its clip loads.
         self._pending_frame: int | None = None
 
@@ -271,8 +275,22 @@ class ReportCoordinator(QObject):
         sex, the length unit), so the sheet of the mode and the exported
         document cannot drift apart.
         """
+        tab = self._active_tab()
+        if tab is not None and tab.report_finished and isinstance(tab.report_frozen_sheet, SheetVersion):
+            return tab.report_frozen_sheet.document
+        document = self._unfiltered_document()
+        if self._page is not None and not self._finished(tab):
+            self._page.set_hidden_values(self.hidden_value_labels(document))
+        return without_values(document, self.hidden_value_keys() | self._saved_exclusions())
+
+    def _report_snapshot(self) -> MeasurementSnapshot | None:
+        return self._controller.compute_study_snapshot(
+            report_choices=getattr(self._active_tab(), "report_value_choices", {})
+        )
+
+    def _unfiltered_document(self) -> ReportDocument:
         preferences = self._port.preferences()
-        snapshot = self._controller.compute_study_snapshot()
+        snapshot = self._report_snapshot()
         patient = self.patient_info(snapshot)
         tab = self._active_tab()
         conclusion = getattr(tab, "report_conclusion", "") if tab is not None else ""
@@ -287,7 +305,7 @@ class ReportCoordinator(QObject):
             length_display_unit=preferences.length_display_unit,
             profile_id=self.profile_id(),
             include_inputs=bool(getattr(preferences, "report_show_inputs", False)),
-            hidden_keys=self.hidden_value_keys(),
+            value_order=getattr(preferences, "report_value_order", ()),
             study_profile_id=study_profile_id(preferences),
             draft=not self._finished(tab),
         )
@@ -347,6 +365,7 @@ class ReportCoordinator(QObject):
             page.sections.not_evaluated_changed.connect(self.refresh_marks)
             page.preview.profile_changed.connect(self.choose_profile)
             page.preview.inputs_visibility_changed.connect(self.set_inputs_visible)
+            page.preview.edit_values_requested.connect(self.edit_values)
             page.value_visibility_changed.connect(self.set_value_hidden)
             page.value_rename_requested.connect(self.rename_value)
             page.set_clip_label_provider(self.clip_label)
@@ -369,17 +388,30 @@ class ReportCoordinator(QObject):
         tab coordinator asks on every surface change (tab switch, load, abort),
         which is exactly when the mirror could go stale.
         """
-        report = self.mode_active()
-        self._port.mirror_report_mode(report)
-        if not report:
-            return None
-        page = self.ensure_page()
         tab = self._active_tab()
-        # The draft is per tab: restore it before the surface is shown.
-        page.patient_editor.set_patient(self.patient_info(self._controller.compute_study_snapshot()))
-        page.set_conclusion(getattr(tab, "report_conclusion", "") if tab is not None else "")
+        report = tab is not None and tab.report_mode
+        self._port.mirror_report_mode(report)
+        if not report or tab is None:
+            self._shown_tab_id = ""
+            return None
+        if self._shown_tab_id != tab.tab_id:
+            self._show_tab_sheet(tab)
+        return self._page
+
+    def _show_tab_sheet(self, tab: TabSession) -> None:
+        # The page is reused. Before exposing it (including its export
+        # buttons), render this tab's choices or restore its exact frozen sheet.
+        page = self.ensure_page()
+        self._shown_tab_id = tab.tab_id
+        page.preview.set_profile(self.profile_id())
+        self.refresh_inputs_toggle()
+        self.refresh_template()
         self.sync_finished(tab)
-        return page
+        page.set_conclusion(tab.report_conclusion)
+        if not tab.report_finished:
+            page.refresh_now()
+        if page.document is not None:
+            page.patient_editor.set_patient(page.document.patient)
 
     def set_mode(self, enabled: bool) -> None:
         """Put the active tab into «Отчёт» (True) or back to «Изображения»."""
@@ -388,21 +420,7 @@ class ReportCoordinator(QObject):
             return
         tab.report_mode = bool(enabled)
         if enabled:
-            # The first paint of QPdfView is asynchronous (spike §4.3); the
-            # render itself is synchronous and well inside the 500 ms budget.
-            # The draft is set first: the provider reads it from the tab.
-            page = self.ensure_page()
-            page.patient_editor.set_patient(self.patient_info(self._controller.compute_study_snapshot()))
-            page.set_conclusion(tab.report_conclusion)
-            # The format is part of the sheet: show the tab's choice (or the
-            # auto-selection of the study) before the first render of the mode.
-            page.preview.set_profile(self.profile_id())
-            self.refresh_inputs_toggle()
-            self.refresh_hidden_values()
-            self.refresh_template()
-            self.sync_finished(tab)
-            if not tab.report_finished:
-                page.refresh_now()
+            self._show_tab_sheet(tab)
         self._port.show_active_surface()
         if not enabled:
             # Back on the images the keys belong to the viewer again, not to
@@ -469,7 +487,7 @@ class ReportCoordinator(QObject):
                 changed=False,
                 finding_count=0,
             )
-        snapshot = self._controller.compute_study_snapshot()
+        snapshot = self._report_snapshot()
         patient = self.patient_info(snapshot)
         return autofill_conclusion(
             snapshot,
@@ -573,7 +591,6 @@ class ReportCoordinator(QObject):
         if self._page is not None:
             self._page.phrases.set_profile(tab.report_profile)
             self._page.preview.request_refresh()
-        self.refresh_hidden_values()
 
     def set_inputs_visible(self, visible: bool) -> None:
         """The header switched the «Входные данные» footnote (item 8).
@@ -587,7 +604,6 @@ class ReportCoordinator(QObject):
         if self._page is not None:
             self._page.preview.request_refresh()
         self.refresh_inputs_toggle()
-        self.refresh_hidden_values()
 
     def refresh_inputs_toggle(self) -> None:
         """Mirror the saved preference into the switch of the sheet header."""
@@ -620,28 +636,60 @@ class ReportCoordinator(QObject):
         hidden = getattr(tab, "report_hidden_values", None) if tab is not None else None
         return set(hidden) if hidden else set()
 
-    def hidden_value_labels(self) -> tuple[tuple[str, str], ...]:
-        """``(key, label)`` of the hidden rows, in document order, for «Скрытые»."""
-        hidden = self.hidden_value_keys()
+    def _saved_exclusions(self) -> set[str]:
+        return set(getattr(self._port.preferences(), "report_value_excluded", DEFAULT_REPORT_VALUE_EXCLUDED))
+
+    def hidden_value_labels(self, document: ReportDocument | None = None) -> tuple[tuple[str, str], ...]:
+        """Use the unfiltered sheet: even the last hidden row of a group is restorable."""
+        local = self.hidden_value_keys()
+        hidden = local | self._saved_exclusions()
         if not hidden:
             return ()
-        document = self.current_document()
-        entries: list[tuple[str, str]] = []
-        for group in document.groups:
-            for value in group.values:
-                if value.key in hidden:
-                    entries.append((value.key, f"{group.title}: {value.label}"))
-        # A key whose row disappeared with a format change still has to be
-        # restorable, or the switch would silently keep the row hidden.
-        known = {key for key, _label in entries}
-        entries.extend((key, key) for key in sorted(hidden - known))
+        document = document if document is not None else self._unfiltered_document()
+        entries = [(v.key, f"{g.title}: {v.label}") for g in document.groups for v in g.values if v.key in hidden]
+        # Local quick-hides remain restorable across formats. Do not list
+        # global preferences for parameters absent from this study.
+        entries.extend((key, key) for key in sorted(local - {key for key, _ in entries}))
         return tuple(entries)
 
-    def refresh_hidden_values(self) -> None:
-        """Mirror the hidden rows of the tab into «Скрытые» of the left column."""
-        page = self._page
-        if page is not None:
-            page.set_hidden_values(self.hidden_value_labels())
+    def edit_values(self, focus_key: str = "") -> None:
+        tab = self._active_tab()
+        if tab is None or self._finished(tab):
+            return
+        dialog = ReportValuesDialog(
+            self._unfiltered_document().groups,
+            self._saved_exclusions() | self.hidden_value_keys(),
+            focus_key=focus_key,
+            clip_label=self.clip_label,
+            parent=self._port.dialog_parent(),
+        )
+        try:
+            if (
+                dialog.exec() != ReportValuesDialog.DialogCode.Accepted
+                or self._active_tab() is not tab
+                or self._finished(tab)
+            ):
+                return
+            edits = dialog.edits()
+        finally:
+            dialog.deleteLater()
+        prefs = self._port.preferences()
+        excluded = (self._saved_exclusions() - edits.included) | edits.excluded
+        order = prefs.report_value_order
+        for rows in edits.reordered_groups:
+            order = merge_report_order(order, rows)
+        if excluded != self._saved_exclusions() or order != prefs.report_value_order:
+            self._port.store_preferences(
+                replace(cast(Any, prefs), report_value_excluded=tuple(sorted(excluded)), report_value_order=order)
+            )
+        tab.report_hidden_values.difference_update(edits.included | edits.excluded)
+        for key, candidate in edits.choices.items():
+            if candidate:
+                tab.report_value_choices[key] = candidate
+            else:
+                tab.report_value_choices.pop(key, None)
+        if self._page is not None:
+            self._page.preview.refresh_now()
 
     def set_value_hidden(self, key: str, hidden: bool) -> None:
         """Hide or restore a single row of the sheet (item 9 of the 2026-11-06 list).
@@ -659,10 +707,14 @@ class ReportCoordinator(QObject):
             hidden_keys.add(key)
         else:
             hidden_keys.discard(key)
+            saved = self._saved_exclusions()
+            if key in saved:
+                self._port.store_preferences(
+                    replace(cast(Any, self._port.preferences()), report_value_excluded=tuple(sorted(saved - {key})))
+                )
         page = self._page
         if page is not None:
-            page.preview.request_refresh()
-            self.refresh_hidden_values()
+            page.preview.refresh_now()
 
     def rename_value(self, measurement_id: str, label: str) -> None:
         """Rename a planimetry row from the sheet (item 10 of the 2026-11-06 list).
@@ -892,6 +944,3 @@ class ReportCoordinator(QObject):
         # The format buttons of the header follow the frozen state of the sheet
         # (item 7): a finished version keeps its format until «Новый черновик».
         page.preview.set_profile_locked(finished)
-        # Switching tabs also switches the «Скрытые» list of the left column
-        # (item 9): the set lives in the tab, like the format.
-        self.refresh_hidden_values()

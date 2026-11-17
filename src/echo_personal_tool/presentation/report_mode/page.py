@@ -222,6 +222,8 @@ class ReportModePage(QWidget):
         self.patient_editor.setEnabled(not self._finished)
         self._preview.set_frozen(self._finished)
         self._sections.set_frozen(self._finished)
+        if self._finished:
+            self._sections.set_hidden_values(())  # no restore controls from a different tab on a frozen sheet
         self._phrases.set_read_only(self._finished)
         self._export.set_finished(self._finished)
 
