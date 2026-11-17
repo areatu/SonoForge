@@ -24,6 +24,7 @@ The viewer facade only translates Qt events into Controller calls:
 
 from __future__ import annotations
 
+import importlib
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -214,9 +215,15 @@ class MagnifierController(QObject):
         try:
             if not self._enabled:
                 return
-            from echo_personal_tool.presentation.magnifier_cursor import magnifier_cursor
-
-            magnifier_cursor()
+            # ``importlib`` on purpose: a static import of this module makes a
+            # strict type-check walk into ``window_chrome`` (the cursor glyph
+            # loader), which this project does not type-check — main kept the
+            # same import inside the untyped viewer widget, and moving it into
+            # a typed module turned 15 pre-existing errors into gate failures.
+            cursor_module = importlib.import_module(
+                "echo_personal_tool.presentation.magnifier_cursor",
+            )
+            cursor_module.magnifier_cursor()
             self._ensure_lens()
         except (RuntimeError, TypeError, ValueError, ImportError) as exc:
             # The warm-up is an optimisation: a failure only means the first
