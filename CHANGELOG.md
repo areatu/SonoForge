@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(ctmr)`: #557 — header-only classic CT/MR stack index с patient-space порядком ([полностью](changelog.d/005-feat-ctmr-stack-index-557.md))
+
 - `feat(imt)`: #558 — редактируемый research overlay двух границ и документ v7 ([полностью](changelog.d/004-feat-imt-viewer-document-558.md))
 
 - `feat(imt)`: #558 — исследовательское ядро seeded КИМ, физические нормали и draft/QC workflow; без GUI-интеграции ([полностью](changelog.d/003-feat-imt-research-core-558.md))
