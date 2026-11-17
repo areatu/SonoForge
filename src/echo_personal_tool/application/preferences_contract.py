@@ -211,6 +211,8 @@ class ReportPreferences(Protocol):
     hide_report_draft_notice: bool
     report_show_inputs: bool
     report_template_json: str
+    report_value_excluded: tuple[str, ...]
+    report_value_order: tuple[str, ...]
     report_institution: str
     report_equipment: str
     report_physician: str
