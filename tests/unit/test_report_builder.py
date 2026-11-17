@@ -332,6 +332,17 @@ class TestBuildReportGroups:
         assert _values(mm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
         assert _values(cm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "6.2"
 
+    def test_custom_caliper_name_travels_to_the_report(self) -> None:
+        """An invented point-menu name keeps its value in the sheet (item 1)."""
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="сепарация перикарда", pixel_length=41.0, millimeter_length=24.0),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        row = next(value for group in groups for value in group.values if value.label == "сепарация перикарда")
+        assert row.value == "24"
+
     @pytest.mark.parametrize("label", ["%D", "%S", "%D стеноз", "%S стеноз"])
     def test_percent_calipers_are_reported_in_percent(self, label: str) -> None:
         """A stenosis degree is a percentage, not a length."""

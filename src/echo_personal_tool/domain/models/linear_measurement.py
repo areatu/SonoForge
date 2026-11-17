@@ -105,6 +105,35 @@ AREA_LABELS = frozenset({"S1", "S2", "AR Jet S1", "LVOT S"})
 #: not print it (2026-11-17 list, item 7).
 GENERIC_DIST_LABEL_PREFIX = "Dist"
 
+#: Anatomical labels the measurement tools assign outside the two registries
+#: («TAPSE», «Ao Sinus», …).  They are fixed parameter names: the point-menu
+#: never offers to rename them (2026-11-17 list, item 1).
+ANATOMICAL_CALIPER_LABELS = frozenset(
+    {
+        "AV",
+        "Annulus",
+        "Ao Junction",
+        "Ao Sinus",
+        "IVS",
+        "LA",
+        "LVIDd",
+        "LVESD",
+        "M-mode",
+        "MVd",
+        "PISA AR",
+        "PISA MR",
+        "PISA MS",
+        "Prox Ao",
+        "RA",
+        "RV basal",
+        "RV mid",
+        "RVOT",
+        "RVOTd",
+        "TAPSE",
+        "Time",
+    }
+)
+
 
 def is_unnamed_caliper_label(label: str) -> bool:
     """True for the generic distance caliper — a drawing, not a parameter.
