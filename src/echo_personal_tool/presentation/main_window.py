@@ -5405,6 +5405,8 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_TAPSE: self._on_rv_tapse,
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
+            MeasurementAction.IVC_MMODE_EXPIR: self._on_ivc_mmode_expir,
+            MeasurementAction.IVC_MMODE_INSP: self._on_ivc_mmode_insp,
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
@@ -6410,6 +6412,22 @@ class MainWindow(QMainWindow):
             return
         if self._viewer.start_linear_caliper_for("TAPSE"):
             self._show_hint(tr("status.rv_tapse_tool"))
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_ivc_mmode_expir(self) -> None:
+        if not self._ensure_mmode_ready_for_tapse():  # same M-mode readiness path as TAPSE
+            return
+        if self._viewer.start_linear_caliper_for("IVC-EXP"):
+            self._show_status(tr("status.linear_caliper_tool", label=tr("menu.ivc_exp")))
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_ivc_mmode_insp(self) -> None:
+        if not self._ensure_mmode_ready_for_tapse():  # same M-mode readiness path as TAPSE
+            return
+        if self._viewer.start_linear_caliper_for("IVC-INSP"):
+            self._show_status(tr("status.linear_caliper_tool", label=tr("menu.ivc_insp")))
         else:
             self._show_status("Load a frame first")
 

@@ -23,13 +23,18 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
+from echo_personal_tool.domain.calculations.right_atrial_pressure import rap_from_ivc_pair
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
     measurement_for_caliper,
 )
 from echo_personal_tool.domain.measurement_units import area_for_display, volume_for_display
-from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS, is_unnamed_caliper_label
+from echo_personal_tool.domain.models.linear_measurement import (
+    PERCENT_LABELS,
+    LinearMeasurement,
+    is_unnamed_caliper_label,
+)
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
@@ -155,6 +160,10 @@ _LABEL_TO_PARAM_ID = {
     "mv": "ms_area",
     "mv area": "ms_area",
     "pht": "ms_pht",
+    # IVC diameter («НПВ» / "IVC"): the reference norm is ≤21 mm. Both keys —
+    # rows look up norms by their localized display label.
+    "нпв": "ivc_diameter",
+    "ivc": "ivc_diameter",
     # Organ measurements (item 2) — the same catalog labels in both display languages.
     "квр печени": "liver_size",
     "liver kvr": "liver_size",
@@ -589,6 +598,11 @@ def group_for_label(label: str) -> str:
         "lavi",
     }:
         return GROUP_LEFT_ATRIUM
+    # «НПВ» / "IVC" (and the M-mode pair «НПВ выдох» / «НПВ вдох») belong to
+    # the right atrium; organ labels never reach here (blocks above) and none
+    # of them contains "ivc" as a substring ("LIV-IVS" → "liv-ivs").
+    if any(keyword in text for keyword in ("нпв", "ivc")):
+        return GROUP_RIGHT_ATRIUM
     if tokens & {"ra", "rav"} or "пп" in tokens or "правое предсерд" in text or "right atr" in text:
         return GROUP_RIGHT_ATRIUM
     if any(
@@ -987,6 +1001,24 @@ def _append_left_ventricle_report_values(
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
 
 
+def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:
+    """Newest M-mode IVC diameters (expiration, inspiration) in mm.
+
+    The tuple order is insertion order, so the last matching entry wins; the
+    Doppler-zone calipers and uncalibrated lengths are not IVC diameters.
+    """
+    exp = insp = None
+    for item in measurements:
+        if item.doppler or item.millimeter_length is None:
+            continue
+        key = item.label.strip().casefold()
+        if key == "ivc-exp":
+            exp = item.millimeter_length
+        elif key == "ivc-insp":
+            insp = item.millimeter_length
+    return exp, insp
+
+
 def _append_chamber_report_values(
     values: list[ReportValue],
     snapshot: MeasurementSnapshot,
@@ -1065,6 +1097,40 @@ def _append_chamber_report_values(
         )
         if item:
             values.append(item)
+
+    # Derived RAP (ДПП) from the M-mode IVC pair (IVC-EXP / IVC-INSP): both
+    # calipers must be present; the guideline estimate is 3 | 8 | 15 mmHg.
+    exp_mm, insp_mm = _ivc_pair_mm(snapshot.linear_measurements)
+    if exp_mm is not None and insp_mm is not None:
+        collapse, rap = rap_from_ivc_pair(exp_mm, insp_mm)
+        if rap is not None:
+            item = _value(
+                _label("result.rap_by_ivc"),
+                "ra.rap",
+                float(rap),
+                "mmHg",
+                sex=sex,
+                group=GROUP_RIGHT_ATRIUM,
+                norm_label="RAP",
+                # Derived from two calipers, no single clip origin to cite.
+                origin=None,
+            )
+            if item:
+                values.append(item)
+        if collapse is not None:
+            item = _value(
+                _label("result.ivc_collapse"),
+                # No ``ivc.collapse`` catalog entry exists and format_measurement
+                # raises on unknown ids; the row borrows a 0-decimal percent
+                # spec for formatting only (ReportValue keeps no measurement id).
+                "vessel.stenosis_d",
+                float(collapse),
+                "%",
+                sex=sex,
+                group=GROUP_RIGHT_ATRIUM,
+            )
+            if item:
+                values.append(item)
 
     if snapshot.rv_fac_percent is not None:
         item = _value(

@@ -984,7 +984,7 @@ class ViewerWidget(QWidget):
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._last_view_cursor_xy: tuple[float, float] | None = None
-        self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode"}
+        self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode", "IVC-EXP", "IVC-INSP"}
         self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
