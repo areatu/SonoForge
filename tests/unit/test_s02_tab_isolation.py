@@ -60,6 +60,14 @@ class _FakeWorker:
         self.setAutoDelete = lambda _value: None
 
 
+class _FakeAnalysisWorker:
+    """Distinct type: an analysis worker is not a FrameLoaderWorker."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.signals = _FakeWorker().signals
+        self.setAutoDelete = lambda _value: None
+
+
 class _RecordingThreadPool:
     def __init__(self) -> None:
         self.started: list = []
@@ -72,7 +80,9 @@ class _RecordingThreadPool:
 def controller(qapp, monkeypatch) -> AppController:  # qapp: the controller needs a live QApplication
     for name in ("DicomDecodeWorker", "VideoDecodeWorker", "FrameLoaderWorker", "ThumbnailLoaderWorker", "ScanWorker"):
         monkeypatch.setattr(f"{_MODULE}.{name}", _FakeWorker)
-    monkeypatch.setattr("echo_personal_tool.application.workers.speckle_worker.SpeckleTrackingWorker", _FakeWorker)
+    monkeypatch.setattr(
+        "echo_personal_tool.application.workers.speckle_worker.SpeckleTrackingWorker", _FakeAnalysisWorker
+    )
     pool = _RecordingThreadPool()
     controller = AppController(thread_pool=pool)
     controller.test_thread_pool = pool
@@ -318,3 +328,122 @@ def test_persistence_on_ignores_a_snapshot_parked_before_it_was_enabled(controll
         assert _manual_bsa(controller) is None
     finally:
         controller.measurement_persistence.enabled = False
+
+
+def _strain_payload(gls=-18.5):
+    from echo_personal_tool.domain.models.speckle import StrainResult
+
+    return StrainResult(longitudinal=np.zeros(2), radial=np.zeros(2), gls=gls)
+
+
+@pytest.mark.parametrize(
+    "change", ["calibration", "calibration_undo", "contour", "reload", "tab_roundtrip", "reset", "timebase", "close"]
+)
+def test_pending_ste_cannot_publish_after_context_changes(controller, tmp_path, change):
+    from dataclasses import replace
+
+    studies = _studies("a", tmp_path)
+    _switch_to(controller, studies, TabClinicalMemory())
+    contour = _contour()
+    controller.on_contours_changed([contour])
+    delivered = []
+    controller.speckle_result_ready.connect(delivered.append)
+    controller.run_speckle_tracking(contour)
+    worker = controller.test_thread_pool.started[-1]
+
+    if change.startswith("calibration"):
+        assert controller.on_manual_calibration((0.3, 0.3))
+        if change == "calibration_undo":
+            controller.clear_manual_calibration()
+    elif change == "contour":
+        controller.on_contours_changed([replace(contour, revision=1)])
+    elif change == "reload":
+        controller.load_instance(studies[0].series[0].instances[0])
+    elif change == "tab_roundtrip":
+        _switch_to(controller, _studies("b", tmp_path), TabClinicalMemory())
+        _switch_to(controller, studies, TabClinicalMemory())
+    elif change == "reset":
+        controller.reset_measurements_and_calibration()
+    elif change == "close":
+        controller.load_pre_scanned_studies([])
+    else:
+        controller.state_manager.set_frame_time(40.0)
+
+    statuses = []
+    controller.status_message.connect(statuses.append)
+    worker.signals.error.emit("old error")
+    worker.signals.finished.emit(_strain_payload())
+    assert not delivered
+    assert not statuses, "neither stale error nor success may change the new UI"
+    assert controller.strain_study("a.study") is None
+
+
+def test_ste_new_request_supersedes_old_success_and_error(controller, tmp_path):
+    _switch_to(controller, _studies("a", tmp_path), TabClinicalMemory())
+    controller.run_speckle_tracking(_contour())
+    first = controller.test_thread_pool.started[-1]
+    controller.run_speckle_tracking(_contour())
+    second = controller.test_thread_pool.started[-1]
+    delivered = []
+    controller.speckle_result_ready.connect(delivered.append)
+    first.signals.finished.emit(_strain_payload(-10))
+    first.signals.error.emit("obsolete")
+    assert not delivered
+    second.signals.finished.emit(_strain_payload(-20))
+    second.signals.finished.emit(_strain_payload(-30))
+    assert len(delivered) == 1
+    assert controller.strain_study("a.study").view_gls("A4C") == pytest.approx(-20)
+
+
+def test_ste_remains_publishable_during_frame_navigation(controller, tmp_path):
+    _switch_to(controller, _studies("a", tmp_path), TabClinicalMemory())
+    controller.run_speckle_tracking(_contour())
+    worker = controller.test_thread_pool.started[-1]
+    controller.state_manager.set_frame(2)
+    worker.signals.finished.emit(_strain_payload())
+    assert controller.strain_study("a.study") is not None
+
+
+def test_queued_ste_result_is_rechecked_when_gui_consumes_it(controller, tmp_path, monkeypatch, qtbot):
+    from PySide6.QtCore import QObject, Qt, Signal
+
+    class Signals(QObject):
+        finished = Signal(object)
+        error = Signal(str)
+
+    class Worker:
+        def __init__(self, **kwargs):
+            self.signals = Signals()
+
+        def setAutoDelete(self, enabled):  # noqa: N802 - Qt API
+            pass
+
+    monkeypatch.setattr("echo_personal_tool.application.workers.speckle_worker.SpeckleTrackingWorker", Worker)
+    _switch_to(controller, _studies("a", tmp_path), TabClinicalMemory())
+    delivered = []
+    controller.speckle_result_ready.connect(delivered.append)
+    controller.run_speckle_tracking(_contour())
+    worker = controller.test_thread_pool.started[-1]
+    consumed = []
+    worker.signals.finished.connect(lambda _: consumed.append(True), Qt.ConnectionType.QueuedConnection)
+    worker.signals.finished.emit(_strain_payload())
+    assert not consumed  # terminal callback is still queued
+    assert controller.on_manual_calibration((0.3, 0.3))
+    qtbot.waitUntil(lambda: bool(consumed))
+    assert not delivered
+    assert controller.strain_study("a.study") is None
+
+
+def test_current_ste_error_is_reported_once_without_publishing_a_result(controller, tmp_path):
+    from echo_personal_tool.application.localization import tr
+
+    _switch_to(controller, _studies("a", tmp_path), TabClinicalMemory())
+    controller.run_speckle_tracking(_contour())
+    worker = controller.test_thread_pool.started[-1]
+    statuses = []
+    controller.status_message.connect(statuses.append)
+    worker.signals.error.emit("private backend details")
+    worker.signals.error.emit("duplicate")
+    worker.signals.finished.emit(_strain_payload())
+    assert statuses == [tr("app.speckle_error")]
+    assert controller.strain_study("a.study") is None

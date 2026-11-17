@@ -18,12 +18,14 @@ import numpy as np
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application.analysis_jobs import AnalysisBasis, analysis_basis, tracking_failure
 from echo_personal_tool.application.calculator_inputs import (
     HeartRateCandidate,
     resolve_study_inputs,
 )
 from echo_personal_tool.application.composition import (
     AppServices,
+    analysis_jobs_of,
     bind_controller_services,
     in_memory_app_services,
     services_of,
@@ -512,6 +514,7 @@ class AppController(QObject):
         )
 
     def _begin_study_switch(self) -> None:
+        analysis_jobs_of(self).invalidate()
         self._cache_retained_studies = tuple(self._studies)
         self._study_load_generation += 1
         self._study_switching = True
@@ -650,6 +653,7 @@ class AppController(QObject):
         if instance.path is None:
             self.frame_load_failed.emit("Instance has no file path")
             return
+        analysis_jobs_of(self).invalidate()  # even a reload of the same SOP revokes old jobs
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
         prefetch_was_active = self._prefetch_load_id != 0
@@ -1748,6 +1752,7 @@ class AppController(QObject):
         if self._study_switching:
             return
         study_uid = self._resolve_study_uid()
+        analysis_jobs_of(self).invalidate()
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self.measurement_persistence.barrier(study_uid)
         self._measurement_session.reset_measurements(study_uid)
@@ -1823,6 +1828,9 @@ class AppController(QObject):
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
+        analysis_jobs_of(self).observe_state(
+            state, self._current_instance, self._resolve_study_uid, self._study_load_generation
+        )
         if self._advancing_frame:
             # Playback advanced the frame itself and owns the timer schedule; only make sure
             # the decoded frame request is up to date.
@@ -4444,24 +4452,24 @@ class AppController(QObject):
         # consumed; otherwise a fast worker may silently lose the GLS result.
         worker.setAutoDelete(False)
         self._retain_worker(worker)
-        generation = self._study_load_generation
-        instance_uid = instance.sop_instance_uid if instance else None
-        source_uid = contour.sop_instance_uid or instance_uid or ""
+
+        def current_basis() -> AnalysisBasis:
+            return analysis_basis(
+                self._state_manager.snapshot,
+                self._current_instance,
+                document_id=self._resolve_study_uid(),
+                generation=self._study_load_generation,
+            )
+
+        source_uid = contour.sop_instance_uid or (instance.sop_instance_uid if instance else "")
         source = ContourLineage(contour.measurement_id, contour.revision, source_uid, contour.frame_index)
-        worker.signals.finished.connect(
-            lambda result, lineage=source: (
-                self._on_speckle_tracking_finished(result, lineage)
-                if (
-                    generation == self._study_load_generation
-                    and not self._study_switching
-                    and self._current_instance is not None
-                    and self._current_instance.sop_instance_uid == instance_uid
-                )
-                else None
-            ),
+        analysis_jobs_of(self).connect(
+            worker.signals,
+            current_basis,
+            partial(self._on_speckle_tracking_finished, source=source),
+            partial(tracking_failure, self.status_message.emit),
             Qt.ConnectionType.QueuedConnection,
         )
-        worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.error.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
@@ -4495,8 +4503,3 @@ class AppController(QObject):
     def strain_study(self, study_uid: str | None = None) -> StrainStudy | None:
         """Analysed views of a study (the window and the report share this)."""
         return self._strain_studies.get(study_uid or self._resolve_study_uid())
-
-    def _on_speckle_tracking_error(self, _code: str) -> None:
-        # the worker emits a stable code only; the UI renders a
-        # fixed localized line instead of displaying exception text.
-        self.status_message.emit(tr("app.speckle_error"))
