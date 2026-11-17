@@ -1496,6 +1496,7 @@ class AppController(QObject):
         )
 
     def on_mmode_time_calibration(self, time_per_pixel_ms: object) -> None:
+        """Handle M-mode time calibration updates (P1.2 #547)."""
         if not isinstance(time_per_pixel_ms, (int, float)):
             raise TypeError("Expected numeric time_per_pixel_ms")
         study_uid = self._resolve_study_uid()
@@ -1504,9 +1505,11 @@ class AppController(QObject):
             self._measurement_session.set_instance_mmode_time(
                 study_uid, instance.sop_instance_uid, float(time_per_pixel_ms)
             )
+            self._frame_cache.notify_time_calibration(instance.sop_instance_uid, float(time_per_pixel_ms))
         self.status_message.emit(tr("status.mmode_time", time=float(time_per_pixel_ms)))
 
     def on_mmode_calibration_changed(self, calibration: object) -> None:
+        """Handle M-mode calibration state changes (P1.2 #547)."""
         from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 
         if not isinstance(calibration, MmodeCalibrationState):
@@ -1519,18 +1522,14 @@ class AppController(QObject):
             self._current_instance.sop_instance_uid,
             calibration,
         )
+        self._frame_cache.notify_calibration_change(self._current_instance.sop_instance_uid, calibration)
 
-    def get_mmode_calibration_for_instance(
-        self,
-        instance_uid: str,
-    ) -> MmodeCalibrationState | None:
+    def get_mmode_calibration_for_instance(self, instance_uid: str) -> MmodeCalibrationState | None:
+        """Retrieve M-mode calibration state for a specific instance (P1.2 #547)."""
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_mmode_calibration(study_uid, instance_uid)
 
-    def get_doppler_calibration_for_instance(
-        self,
-        instance_uid: str,
-    ) -> DopplerCalibrationState | None:
+    def get_doppler_calibration_for_instance(self, instance_uid: str) -> DopplerCalibrationState | None:
         study_uid = self._resolve_study_uid()
         return self._measurement_session.get_doppler_calibration(study_uid, instance_uid)
 
@@ -2790,14 +2789,9 @@ class AppController(QObject):
         return max(1, target)
 
     def _tune_playback_cache(self, want_frames: int) -> None:
-        """Size the frame cache's budget and window for `want_frames` of the loaded cine.
+        """Size the frame cache budget and window for the loaded cine's prefetch target.
 
-        Both limits used to be flat: a 64 MB budget and a 12-frame window, chosen before
-        720p existed in the product. At 2.76 MB per frame that is 0.36 s of buffer no
-        matter how much RAM is free, so the seconds-based prefetch target could never be
-        reached. The budget grows to what the target needs (`FrameCache.budget_for_frames`)
-        and never past the share of available RAM taken at startup; the window grows with
-        it so eviction does not discard what prefetch just decoded.
+        Never exceed the RAM share taken at startup; widen eviction with the budget.
         """
         cache = self._frame_cache
         if want_frames <= 0:
@@ -2819,6 +2813,9 @@ class AppController(QObject):
             budget = cache.memory_budget
         if cache.evict_window < want_frames:
             cache.set_evict_window(min(want_frames, max(1, budget // frame_bytes)))
+        services = services_of(self)
+        cap = services.unified_budget.full_cine_bytes if services is not None else self._cache_ram_cap_bytes
+        cache.set_full_cine_reservation_bytes(min(cap, self._cache_ram_cap_bytes))
 
     def _min_prefetch_batch(self) -> int:
         """Smallest prefetch run worth a thread-pool round-trip.

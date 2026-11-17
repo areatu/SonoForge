@@ -117,12 +117,44 @@ class AppPaths:
 
 
 @dataclass(frozen=True)
-class FrameCacheBudget:
-    """Computed playback tuning and byte budgets for :class:`FrameCache`."""
+class UnifiedMemoryBudget:
+    """Global concurrent memory accounting for cache, decode, render, and tracking."""
 
     playback_config: PlaybackConfig
     ram_cap_bytes: int
     max_cache_bytes: int
+    full_cine_bytes: int
+    comparison_bytes: int
+    decode_gate_bytes: int
+    clinical_bytes: int = 0
+
+    @property
+    def tracking_render_overhead(self) -> int:
+        used = (
+            self.max_cache_bytes
+            + self.full_cine_bytes
+            + self.comparison_bytes
+            + self.decode_gate_bytes
+            + self.clinical_bytes
+        )
+        return max(0, self.ram_cap_bytes - used)
+
+
+@dataclass(frozen=True)
+class FrameCacheBudget:
+    """Legacy compatibility: delegates to UnifiedMemoryBudget."""
+
+    playback_config: PlaybackConfig
+    ram_cap_bytes: int
+    max_cache_bytes: int
+
+    @classmethod
+    def from_unified(cls, unified: UnifiedMemoryBudget) -> FrameCacheBudget:
+        return cls(
+            playback_config=unified.playback_config,
+            ram_cap_bytes=unified.ram_cap_bytes,
+            max_cache_bytes=unified.max_cache_bytes,
+        )
 
 
 @dataclass(frozen=True)
@@ -241,10 +273,15 @@ class AppServices:
     calculator_inputs: CalculatorInputStore
     persistence: MeasurementPersistence
     key_images: KeyImageService
-    cache_budget: FrameCacheBudget
+    unified_budget: UnifiedMemoryBudget
     frame_cache: FrameCache
     segmenter: IOnnxSegmenter
     io: AppIoFacades
+
+    @property
+    def cache_budget(self) -> FrameCacheBudget:
+        """Legacy compatibility property for tests (P1.1 #545)."""
+        return FrameCacheBudget.from_unified(self.unified_budget)
 
 
 _CONTROLLER_SERVICES: WeakKeyDictionary[object, AppServices] = WeakKeyDictionary()
@@ -302,12 +339,44 @@ def compute_frame_cache_budget(
             ram_cap_bytes = int(available * 0.08)
         except Exception:  # noqa: BLE001 - fallback when /proc or OS memory query is unavailable
             ram_cap_bytes = FALLBACK_RAM_CAP_BYTES
+
     configured_mb = int(getattr(preferences, "playback_max_cache_mb", DEFAULT_PLAYBACK_CACHE_MB))
     max_cache_bytes = min(configured_mb * 1024 * 1024, ram_cap_bytes)
     return FrameCacheBudget(
         playback_config=resolved_config,
         ram_cap_bytes=ram_cap_bytes,
         max_cache_bytes=max_cache_bytes,
+    )
+
+
+def compute_unified_memory_budget(
+    preferences: object,
+    *,
+    available_ram_bytes: int | None = None,
+    playback_config: PlaybackConfig | None = None,
+) -> UnifiedMemoryBudget:
+    """Register the concurrent memory consumers against one RAM share (P1.1 #545).
+
+    The frame-cache ceiling keeps its legacy value so playback sizing does not
+    change; the other consumers get explicit reservations from the same share
+    instead of owning isolated hard-coded caps.
+    """
+    cache = compute_frame_cache_budget(
+        preferences,
+        available_ram_bytes=available_ram_bytes,
+        playback_config=playback_config,
+    )
+    ram_cap_bytes = cache.ram_cap_bytes
+    full_cine_bytes = int(ram_cap_bytes * 0.4)
+    comparison_bytes = int(ram_cap_bytes * 0.05)
+    decode_gate_bytes = int(ram_cap_bytes * 0.05)
+    return UnifiedMemoryBudget(
+        playback_config=cache.playback_config,
+        ram_cap_bytes=ram_cap_bytes,
+        max_cache_bytes=cache.max_cache_bytes,
+        full_cine_bytes=full_cine_bytes,
+        comparison_bytes=comparison_bytes,
+        decode_gate_bytes=decode_gate_bytes,
     )
 
 
@@ -391,7 +460,7 @@ def build_app_services(
 
     clamp_preferences_for_capabilities(resolved_prefs, capabilities)
 
-    cache_budget = compute_frame_cache_budget(
+    cache_budget = compute_unified_memory_budget(
         resolved_prefs,
         available_ram_bytes=available_ram_bytes,
         playback_config=playback_config,
@@ -441,7 +510,7 @@ def build_app_services(
         calculator_inputs=calculator_inputs,
         persistence=persistence,
         key_images=key_images,
-        cache_budget=cache_budget,
+        unified_budget=cache_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
         io=io_facades,
@@ -465,11 +534,15 @@ def in_memory_app_services(
 
     configured_mb = int(getattr(resolved_prefs, "playback_max_cache_mb", DEFAULT_PLAYBACK_CACHE_MB))
     max_cache_bytes = min(configured_mb * 1024 * 1024, FALLBACK_RAM_CAP_BYTES)
-    cache_budget = FrameCacheBudget(
+    unified_budget = UnifiedMemoryBudget(
         playback_config=DEFAULT_HERMETIC_PLAYBACK_CONFIG,
         ram_cap_bytes=FALLBACK_RAM_CAP_BYTES,
         max_cache_bytes=max_cache_bytes,
+        full_cine_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.4),
+        comparison_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.05),
+        decode_gate_bytes=int(FALLBACK_RAM_CAP_BYTES * 0.05),
     )
+    cache_budget = FrameCacheBudget.from_unified(unified_budget)
     state_manager = StateManager()
     measurement_store = StudyMeasurementSessionStore()
     calculator_inputs = CalculatorInputStore()
@@ -481,7 +554,7 @@ def in_memory_app_services(
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
         max_cache_bytes=cache_budget.max_cache_bytes,
-        max_full_cine_bytes=cache_budget.ram_cap_bytes,
+        max_full_cine_bytes=unified_budget.ram_cap_bytes,
     )
     key_images = KeyImageService(resolved_paths.measurements_dir / "key-images")
     resolved_segmenter: IOnnxSegmenter = segmenter if segmenter is not None else DisabledOnnxSegmenter()
@@ -502,7 +575,7 @@ def in_memory_app_services(
         calculator_inputs=calculator_inputs,
         persistence=persistence,
         key_images=key_images,
-        cache_budget=cache_budget,
+        unified_budget=unified_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
         io=io_facades,
