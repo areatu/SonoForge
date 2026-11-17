@@ -131,7 +131,9 @@ def test_document_roundtrip_keeps_exclusion_and_omits_default_flag() -> None:
     assert '"accepted":false' in wire
     assert loads(wire)["data"].doppler_by_instance[0][1].peaks[1].accepted is False
     schema = json.loads(
-        files("echo_personal_tool.resources").joinpath("measurement-storage-v6.schema.json").read_text(encoding="utf-8")
+        files("echo_personal_tool.resources")
+        .joinpath(f"measurement-storage-v{VERSION}.schema.json")
+        .read_text(encoding="utf-8")
     )
     jsonschema.validate(json.loads(wire), schema)
 
