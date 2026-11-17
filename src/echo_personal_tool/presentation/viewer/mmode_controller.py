@@ -27,7 +27,7 @@ crosshair bounds, the TAPSE click guard, the vertical caliper scale.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from PySide6.QtCore import QObject, Qt, Signal
@@ -329,7 +329,13 @@ class MModeController(QObject):
         pending_depth = self._pending_depth_mm_per_pixel
 
         current = self._calibration_state
-        auto_time = current.horizontal_ms_per_pixel if current is not None and current.time_from_dicom_tags else None
+        # A DICOM time scale belongs to its panel, not an arbitrary newly drawn ROI.
+        reuse_time = (
+            current is not None
+            and current.has_time_from_dicom()
+            and (pending_roi is None or pending_roi == current.roi)
+        )
+        auto_time = current.horizontal_ms_per_pixel if current is not None and reuse_time else None
         time_per_pixel_ms: float | None
         if auto_time is not None and auto_time > 0.0:
             time_per_pixel_ms = float(auto_time)
@@ -352,20 +358,29 @@ class MModeController(QObject):
             return
 
         if pending_roi is not None and pending_depth is not None:
-            previous = self._calibration_state
             state = MmodeCalibrationState(
                 roi=pending_roi,
                 vertical_mm_per_pixel=pending_depth,
                 horizontal_ms_per_pixel=time_per_pixel_ms,
-                from_dicom_tags=previous.from_dicom_tags if previous is not None else False,
-                depth_from_dicom_tags=previous.depth_from_dicom_tags if previous is not None else False,
-                time_from_dicom_tags=previous.time_from_dicom_tags if previous is not None else False,
+                from_dicom_tags=False,
+                depth_from_dicom_tags=False,
+                time_from_dicom_tags=reuse_time,
             )
             self._pending_roi = None
             self._pending_depth_mm_per_pixel = None
             self.apply_calibration_state(state)
-        elif not self._port.syncing():
-            self.time_calibration_completed.emit(float(time_per_pixel_ms))
+        else:
+            if current is not None and not reuse_time:
+                self.apply_calibration_state(
+                    replace(
+                        current,
+                        horizontal_ms_per_pixel=time_per_pixel_ms,
+                        time_from_dicom_tags=False,
+                        from_dicom_tags=False,
+                    )
+                )
+            if not self._port.syncing():
+                self.time_calibration_completed.emit(float(time_per_pixel_ms))
 
     def _start_depth_only(self) -> None:
         """Depth step on the existing (DICOM) ROI, without redrawing it."""

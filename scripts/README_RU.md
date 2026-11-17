@@ -26,6 +26,7 @@
 |------|----------|
 | `setup.bat` | Установка лёгкой Windows ZIP-сборки |
 | `uninstall.bat` | Удаление лёгкой Windows ZIP-сборки |
+| `memory_queue_probe.py` | Opt-in временной ряд памяти и очередей для приёмки ([инструкция](../docs/bench/memory-queue-probe-ru.md)) |
 | `run_constructor.py` | Быстрый запуск диалога Reference Constructor без всего приложения |
 | `run_tests.sh` | Обёртка для запуска тестов (кириллические пути, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Desktop entry для Linux |

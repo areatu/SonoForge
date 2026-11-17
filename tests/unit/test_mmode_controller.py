@@ -459,3 +459,83 @@ class TestScanLine:
         assert fake.controller.line_active is False
         assert fake.controller.line_item is None
         assert fake.controller.line_click_step is None
+
+
+def test_manual_depth_preserves_only_reused_dicom_time_provenance() -> None:
+    fake = FakeMModeViewer(frame=_frame())
+    fake.controller.apply_calibration_state(_complete_state())
+    fake.controller.start_depth_step(ROI)
+    fake.answers.append((4.0, True))
+    fake.controller.prompt_depth_calibration(40.0)
+    fake.controller.prompt_time_span(100.0)
+    state = fake.controller.calibration_state
+    assert state is not None
+    assert state.vertical_mm_per_pixel == pytest.approx(1.0)
+    assert not state.depth_from_dicom_tags
+    assert state.time_from_dicom_tags
+    assert not state.is_dicom_trusted()
+
+
+def test_manual_new_roi_does_not_reuse_old_roi_dicom_time() -> None:
+    fake = FakeMModeViewer(frame=_frame())
+    fake.controller.apply_calibration_state(_complete_state())
+    other_roi = DopplerSpectrogramRoi(x0=20.0, y0=40.0, width=80.0, height=50.0)
+    fake.controller.start_depth_step(other_roi)
+    fake.answers.extend([(2.0, True), (600.0, True)])
+    fake.controller.prompt_depth_calibration(40.0)
+    fake.controller.prompt_time_span(100.0)
+    state = fake.controller.calibration_state
+    assert state is not None
+    assert state.roi == other_roi
+    assert state.horizontal_ms_per_pixel == pytest.approx(6.0)
+    assert not state.time_from_dicom_tags
+    assert not state.depth_from_dicom_tags
+
+
+def test_manual_time_completes_partial_state_and_emits_it_for_persistence() -> None:
+    fake = FakeMModeViewer(frame=_frame())
+    fake.controller.apply_calibration_state(MmodeCalibrationState(ROI, 0.5, depth_from_dicom_tags=True))
+    seen = _signals(fake)
+    fake.answers.append((500.0, True))
+    fake.controller.prompt_time_span(100.0)
+    state = fake.controller.calibration_state
+    assert state is not None and state.is_complete()
+    assert state.horizontal_ms_per_pixel == pytest.approx(5.0)
+    assert state.depth_from_dicom_tags and not state.time_from_dicom_tags
+    assert seen["calibration"] == [state]
+    assert seen["time"] == [5.0]
+
+
+def test_manual_time_update_can_be_saved_and_restored_for_its_instance() -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+    from echo_personal_tool.infrastructure.measurement_codec import dumps, loads
+    from tests.unit.test_measurement_repository import SOP, UID, record
+
+    store = StudyMeasurementSessionStore()
+    fake = FakeMModeViewer(frame=_frame())
+    fake.controller.calibration_changed.connect(lambda state: store.set_mmode_calibration(UID, SOP, state))
+    fake.controller.time_calibration_completed.connect(lambda value: store.set_instance_mmode_time(UID, SOP, value))
+    fake.controller.apply_calibration_state(MmodeCalibrationState(ROI, 0.5, depth_from_dicom_tags=True))
+    fake.answers.append((500.0, True))
+    fake.controller.prompt_time_span(100.0)
+    saved = loads(dumps(record(store.snapshot(UID))))["data"]
+    restored = StudyMeasurementSessionStore()
+    restored.restore(UID, saved)
+    restored.activate_instance(UID, SOP)
+    state = restored.get_mmode_calibration(UID, SOP)
+    assert state == fake.controller.calibration_state
+    assert state is not None and state.has_depth_from_dicom() and not state.has_time_from_dicom()
+    assert state.horizontal_ms_per_pixel == 5.0
+    assert restored.get(UID).mmode_time_per_pixel_ms == 5.0
+
+
+def test_cancelled_manual_time_does_not_replace_partial_state() -> None:
+    fake = FakeMModeViewer(frame=_frame())
+    partial = MmodeCalibrationState(ROI, 0.5, depth_from_dicom_tags=True)
+    fake.controller.apply_calibration_state(partial)
+    seen = _signals(fake)
+    fake.answers.append((500.0, False))
+    fake.controller.prompt_time_span(100.0)
+    assert fake.controller.calibration_state == partial
+    assert seen["calibration"] == []
+    assert seen["time"] == []

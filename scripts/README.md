@@ -26,6 +26,7 @@ for the lightweight Windows ZIP build. Run from the repository root.
 |------|-------------|
 | `setup.bat` | Install the lightweight ZIP build on Windows |
 | `uninstall.bat` | Uninstall the lightweight ZIP build on Windows |
+| `memory_queue_probe.py` | Opt-in memory and decode-queue timeline ([Russian guide](../docs/bench/memory-queue-probe-ru.md)) |
 | `run_constructor.py` | Launch the Reference Constructor dialog quickly, without the whole application |
 | `run_tests.sh` | Test runner wrapper (Cyrillic paths, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Linux desktop entry |
