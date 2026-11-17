@@ -3397,5 +3397,21 @@
   "calibration.detail.assumption": "Assumption: {assumption}",
   "properties.calibration.assumption": "Assumption:",
   "properties.calibration.scales": "Scales in this clip:",
-  "properties.calibration.scales_more": "… and {count} more"
+  "properties.calibration.scales_more": "… and {count} more",
+  "imt.open": "IMT: research overlay",
+  "imt.warning": "Research only. Longitudinal B-mode CCA far wall without plaque. Explicit physical/QC policy required. Not for diagnosis/PDF.",
+  "imt.side": "Side",
+  "imt.roi": "ROI (pixels)",
+  "imt.guides": "Boundary guides (Y)",
+  "imt.policy": "Policy (mm/QC)",
+  "imt.unreviewed": "Unconfirmed / review required",
+  "imt.confirmed": "Operator confirmed",
+  "imt.propose": "Propose two boundaries",
+  "imt.load": "Load saved record",
+  "imt.revalidate": "Revalidate on current frame",
+  "imt.confirm": "Confirm",
+  "imt.save": "Save to study document",
+  "imt.refused": "Refused",
+  "persistence.import_category.imt": "IMT (research)",
+  "imt.summary": "{decision}\nMean {mean} / maximum {maximum} / SD {sd} mm\nCoverage {coverage}, length {length} mm, revision {revision}"
 }

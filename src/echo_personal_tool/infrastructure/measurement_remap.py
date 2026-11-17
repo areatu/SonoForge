@@ -66,6 +66,9 @@ def prepare_import(record: dict[str, Any], study: StudyMetadata, sources: dict[s
         mapping[old_uid] = matches[0]
 
     data = record["data"]
+    if data.imt_measurements:
+        # Retain original provenance; cross-identity IMT rebasing needs image review.
+        raise MeasurementStorageError("source")
     values = {
         field: tuple(replace(item, sop_instance_uid=mapping[item.sop_instance_uid]) for item in getattr(data, field))
         for field in ("contours", "linear_measurements", "vessel_measurements")
