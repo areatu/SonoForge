@@ -22,13 +22,14 @@ if TYPE_CHECKING:
     from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
+from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
     measurement_for_caliper,
 )
 from echo_personal_tool.domain.measurement_units import area_for_display, volume_for_display
-from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
+from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS, is_unnamed_caliper_label
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
@@ -1124,6 +1125,27 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
             ("E/e' sept", "tdi.e_e_sept", doppler.e_over_e_prime_sept, "", GROUP_MITRAL_VALVE),
             ("E/e' lat", "tdi.e_e_lat", doppler.e_over_e_prime_lat, "", GROUP_MITRAL_VALVE),
             ("e'/a'", "tdi.e_a_prime", doppler.e_prime_over_a_prime, "", GROUP_MITRAL_VALVE),
+            # s' of the tricuspid annulus, the septal/lateral s' of the mitral
+            # annulus and both dP/dt rates are measurements of their own: they
+            # reached the viewer overlay (and, for dP/dt, the calculator) but
+            # never the report (2026-11-17 list, items 1, 3 and 5).
+            (_label_catalog("rv.s_prime"), "rv.s_prime", doppler.s_prime_rv_cm_s, "cm/s", GROUP_RIGHT_VENTRICLE),
+            (
+                _label_catalog("tdi.s_prime_sept"),
+                "tdi.s_prime_sept",
+                doppler.s_prime_sept_cm_s,
+                "cm/s",
+                GROUP_MITRAL_VALVE,
+            ),
+            (
+                _label_catalog("tdi.s_prime_lat"),
+                "tdi.s_prime_lat",
+                doppler.s_prime_lat_cm_s,
+                "cm/s",
+                GROUP_MITRAL_VALVE,
+            ),
+            (_label_catalog("mr.dpdt"), "mr.dpdt", lv_dpdt_mmhg_s(doppler.mr_dpdt_ms), "mmHg/s", GROUP_LEFT_VENTRICLE),
+            (_label_catalog("tr.dpdt"), "tr.dpdt", rv_dpdt_mmhg_s(doppler.tr_dpdt_ms), "mmHg/s", GROUP_RIGHT_VENTRICLE),
         ]
         flow_groups = {
             "MV": GROUP_MITRAL_VALVE,
@@ -1362,9 +1384,20 @@ def _append_linear_report_values(
     calibrated: bool,
     length_unit: str,
 ) -> None:
-    """Append linear calipers in calibrated or pixel units."""
+    """Append linear calipers in calibrated or pixel units.
+
+    The generic distance caliper (``Dist1``, ``Dist2``…) is a drawing tool, not
+    a parameter: it exists to measure an artery the catalog has no name for yet,
+    and its printed row would be «Dist1 — 4.2 см» with no clinical meaning
+    (2026-11-17 list, item 7).  Such a caliper reaches the report only after the
+    physician names it with the label picker; until then it stays on the frame.
+    Named rows are unaffected — including the ones whose stored label happens to
+    start with «Dist», because a named tool always maps to a catalog id.
+    """
     for measurement in snapshot.linear_measurements:
         raw_label = measurement.label
+        if is_unnamed_caliper_label(raw_label):
+            continue
         label = _cal(raw_label)
         origin = measurement_origin(
             METHOD_DOPPLER_CALIPER if measurement.doppler else METHOD_LINEAR_CALIPER,

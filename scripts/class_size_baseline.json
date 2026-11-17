@@ -5,15 +5,15 @@
   "module_limit": 2000,
   "classes": {
     "application/app_controller.py::AppController": {
-      "lines": 4314,
-      "methods": 167
+      "lines": 4312,
+      "methods": 166
     },
     "presentation/doppler_overlay.py::DopplerOverlayTools": {
-      "lines": 1657,
-      "methods": 126
+      "lines": 1635,
+      "methods": 122
     },
     "presentation/main_window.py::MainWindow": {
-      "lines": 6436,
+      "lines": 6435,
       "methods": 418
     },
     "presentation/orthanc_study_dialog.py::OrthancStudyDialog": {
@@ -25,8 +25,8 @@
       "methods": 117
     },
     "presentation/viewer_widget.py::ViewerWidget": {
-      "lines": 7226,
-      "methods": 401
+      "lines": 7214,
+      "methods": 398
     }
   },
   "modules": {
@@ -34,7 +34,7 @@
     "presentation/main_window.py": 6681,
     "presentation/orthanc_study_dialog.py": 3039,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 8113
+    "presentation/viewer_widget.py": 8074
   },
   "fields": {
     "application/app_controller.py::AppController": 88,

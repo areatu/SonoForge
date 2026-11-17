@@ -61,6 +61,32 @@ INTERVAL_LABELS: tuple[str, ...] = (
 )
 
 
+#: The fixed velocities of the dP/dt interval and how far a click may miss
+#: them.  The physician measures the *time* the regurgitant jet needs to rise
+#: from the first velocity to the second, so the two clicks are bounded by the
+#: method itself: MR dP/dt uses 1 → 3 m/s, TR dP/dt uses 1 → 2 m/s (Э11).
+#: Values are in cm/s — the storage unit of every Doppler velocity.
+DPDT_CLICK_VELOCITIES_CM_S: dict[str, tuple[float, float]] = {
+    "MR dP/dt": (100.0, 300.0),
+    "TR dP/dt": (100.0, 200.0),
+}
+
+#: Radius of the click snap around a dP/dt velocity, in pixels of the plot.
+DPDT_SNAP_RADIUS_PX = 26.0
+
+
+def dpdt_click_velocity_cm_s(label: str, *, second: bool) -> float | None:
+    """Velocity a dP/dt click is bound to: 100 cm/s, then 300 (MR) or 200 (TR).
+
+    ``None`` for any other interval: those clicks measure whatever the
+    physician points at, the dP/dt intervals do not.
+    """
+    pair = DPDT_CLICK_VELOCITIES_CM_S.get(canonical_interval_label(label))
+    if pair is None:
+        return None
+    return pair[1] if second else pair[0]
+
+
 def normalize_label(label: str) -> str:
     """Return a comparison key tolerant of punctuation and prime glyphs."""
 

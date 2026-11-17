@@ -29,7 +29,7 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-from PySide6.QtCore import QObject, QPoint, Signal
+from PySide6.QtCore import QObject, QPoint, QTimer, Signal
 
 try:
     from shiboken6 import isValid as _shiboken_is_valid
@@ -73,6 +73,7 @@ class MagnifierController(QObject):
         self._reduce_motion = False
 
         self._lens: Any | None = None
+        self._warmup_scheduled = False
         self._lens_factory = lens_factory
         self._geometry_provider = geometry_provider
         self._cursor_provider = cursor_provider
@@ -189,6 +190,38 @@ class MagnifierController(QObject):
         return accepted(reason="held")
 
     # -- loupe geometry -----------------------------------------------------
+
+    def schedule_warmup(self) -> None:
+        """Prepare the loupe in an idle slice instead of on the first Z press.
+
+        The first hold on Windows 10 froze the application for 3–5 s: that one
+        keystroke paid for ``import cv2`` (the lens module), the SVG cursor
+        glyph and the very first translucent child widget of the process, which
+        is when the compositor allocates its backing store.  None of it depends
+        on the click, so it is done once, right after the viewer is shown, in a
+        zero-delay timer — the frame is already painted and the work lands
+        between events (item 6 of the 2026-11-17 list).
+
+        Idempotent: the flag lives here, next to the lens it protects.
+        """
+        if self._warmup_scheduled:
+            return
+        self._warmup_scheduled = True
+        QTimer.singleShot(0, self._warm_up)
+
+    def _warm_up(self) -> None:
+        """Build the cursor and the lens; never raise into the event loop."""
+        try:
+            if not self._enabled:
+                return
+            from echo_personal_tool.presentation.magnifier_cursor import magnifier_cursor
+
+            magnifier_cursor()
+            self._ensure_lens()
+        except (RuntimeError, TypeError, ValueError, ImportError) as exc:
+            # The warm-up is an optimisation: a failure only means the first
+            # hold builds the lens the old way.
+            log_boundary_failure(logger, "ui.cleanup", exc, code="cleanup", level=logging.DEBUG)
 
     def _ensure_lens(self) -> Any | None:
         lens = self._live_lens()

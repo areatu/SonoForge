@@ -433,7 +433,15 @@ class TestPeakMarkerCaptions:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
 
         assert peak_marker_caption(_peak("E", 90.0, mode="PW")) == "E 90 cm/s"
-        assert peak_marker_caption(_peak("e_sept", 8.0)) == "e_sept 8.0 cm/s"
+        assert peak_marker_caption(_peak("e_sept", 8.0)) == "e′ септ. 8.0 cm/s"
+
+    def test_tissue_caption_prints_the_clinical_name_not_the_storage_label(self) -> None:
+        """«s_prime_rv 7.0 cm/s» on the frame was the owner's complaint (item 4)."""
+        from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
+
+        assert peak_marker_caption(_peak("s_prime_rv", 7.0)) == "s′ ПЖ 7.0 cm/s"
+        assert peak_marker_caption(_peak("s_sept", 8.4)) == "s′ септ. 8.4 cm/s"
+        assert peak_marker_caption(_peak("s_lat", 9.1)) == "s′ лат. 9.1 cm/s"
 
     def test_caption_uses_magnitude_and_own_mode(self) -> None:
         from echo_personal_tool.presentation.doppler_overlay import peak_marker_caption
@@ -477,7 +485,7 @@ class TestDopplerCaliperGradient:
         snapshot = MeasurementSnapshot(
             linear_measurements=(
                 LinearMeasurement(
-                    label="Dist1",
+                    label="VTI",
                     pixel_length=10.0,
                     millimeter_length=None,
                     time_ms=100.0,
@@ -493,9 +501,31 @@ class TestDopplerCaliperGradient:
             for value in group.values
             if group.key == GROUP_OTHER
         }
-        assert rows["Dist1 Δt"] == ("100.0", "ms")
-        assert rows["Dist1 ΔV"] == ("3.12", "m/s")
-        assert rows["Dist1 PGmax"] == ("39", "mmHg")
+        assert rows["VTI Δt"] == ("100.0", "ms")
+        assert rows["VTI ΔV"] == ("3.12", "m/s")
+        assert rows["VTI PGmax"] == ("39", "mmHg")
+
+    def test_an_unnamed_dist_caliper_never_reaches_the_report(self) -> None:
+        """«Dist1 Δt» is a drawing, not a parameter (2026-11-17 list, item 7)."""
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+        snapshot = MeasurementSnapshot(
+            linear_measurements=(
+                LinearMeasurement(label="Dist1", pixel_length=10.0, millimeter_length=4.2),
+                LinearMeasurement(
+                    label="Dist2",
+                    pixel_length=12.0,
+                    millimeter_length=None,
+                    time_ms=90.0,
+                    velocity_cm_s=200.0,
+                    doppler=True,
+                    doppler_mode="CW",
+                ),
+            )
+        )
+        labels = [value.label for group in build_report_groups(snapshot) for value in group.values]
+        assert not [label for label in labels if label.startswith("Dist")]
 
     def test_codec_round_trip_keeps_doppler_mode(self) -> None:
         from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement

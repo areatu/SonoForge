@@ -100,6 +100,22 @@ PERCENT_LABELS = frozenset({"%D", "%S", "%D стеноз", "%S стеноз", "A
 #: Labels under which the area comparison tools store a planimeter area (cm²).
 AREA_LABELS = frozenset({"S1", "S2", "AR Jet S1", "LVOT S"})
 
+#: Prefix of the labels the generic distance caliper gives itself (Dist1…).
+#: One constant for the viewer that creates the label and the report that must
+#: not print it (2026-11-17 list, item 7).
+GENERIC_DIST_LABEL_PREFIX = "Dist"
+
+
+def is_unnamed_caliper_label(label: str) -> bool:
+    """True for the generic distance caliper — a drawing, not a parameter.
+
+    ``Dist1``/``Dist2``… are placeholders the viewer assigns itself so the
+    physician can measure something the catalog has no name for; the label
+    picker renames the caliper to a real parameter.  A row that still carries
+    the placeholder has no clinical meaning and must not reach the report.
+    """
+    return (label or "").strip().startswith(GENERIC_DIST_LABEL_PREFIX)
+
 
 @dataclass(frozen=True)
 class LinearMeasurement:

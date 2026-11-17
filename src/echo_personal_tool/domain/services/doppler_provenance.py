@@ -40,6 +40,7 @@ from echo_personal_tool.domain.models.value_origin import (
 )
 from echo_personal_tool.domain.services.doppler_repeats import mean_of_last
 from echo_personal_tool.domain.services.nomenclature import flow_measurement_id
+from echo_personal_tool.domain.translation import tr
 
 #: Report measurement id → the peak labels that feed it.  The aliases mirror
 #: the lookup in ``doppler_metrics`` so the card cites exactly the markers the
@@ -49,6 +50,11 @@ _PEAK_FIELDS: dict[str, tuple[str, ...]] = {
     "mv.a": ("a",),
     "tdi.e_sept": ("e_prime_sept", "e_sept", "esept"),
     "tdi.e_lat": ("e_prime_lat", "e_lat", "elat"),
+    # The three annular systolic peaks are measured exactly like e'/a': one
+    # peak marker each, and the report card must name it (2026-11-17, item 5).
+    "rv.s_prime": ("s_prime_rv", "rv_s_prime"),
+    "tdi.s_prime_sept": ("s_prime_sept", "s_sept", "ssept"),
+    "tdi.s_prime_lat": ("s_prime_lat", "s_lat", "slat"),
 }
 
 #: Report measurement id → canonical interval label.
@@ -64,6 +70,10 @@ _INTERVAL_FIELDS: dict[str, str] = {
     "av.at": "AV AT",
     "av.et": "AV ET",
     "rvot.at": "RVOT AT",
+    # dP/dt is computed from the Δt between two fixed velocities on the
+    # regurgitant CW jet; that interval marker is the measurement behind it.
+    "mr.dpdt": "MR dP/dt",
+    "tr.dpdt": "TR dP/dt",
 }
 
 #: Report measurement id → the result fields whose values it combines.
@@ -78,6 +88,12 @@ _COMPOSITE_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
         ("a' sept", "tdi.a_prime_sept"),
         ("a' lat", "tdi.a_prime_lat"),
     ),
+}
+
+#: Report measurement id → the fixed pressure rise of the dP/dt method (mmHg).
+_DPDT_DELTA_P_MMHG: dict[str, float] = {
+    "mr.dpdt": 32.0,
+    "tr.dpdt": 12.0,
 }
 
 #: Report/component id → ``DopplerResults`` attribute.
@@ -105,6 +121,11 @@ _FIELD_ATTRS: dict[str, str] = {
     "av.at": "av_at_ms",
     "av.et": "av_et_ms",
     "rvot.at": "rvot_at_ms",
+    "rv.s_prime": "s_prime_rv_cm_s",
+    "tdi.s_prime_sept": "s_prime_sept_cm_s",
+    "tdi.s_prime_lat": "s_prime_lat_cm_s",
+    "mr.dpdt": "mr_dpdt_ms",
+    "tr.dpdt": "tr_dpdt_ms",
 }
 
 #: Unit of every component value (ratios have none).
@@ -116,6 +137,9 @@ _FIELD_UNITS: dict[str, str] = {
     "tdi.e_avg": "cm/s",
     "tdi.a_prime_sept": "cm/s",
     "tdi.a_prime_lat": "cm/s",
+    "rv.s_prime": "cm/s",
+    "tdi.s_prime_sept": "cm/s",
+    "tdi.s_prime_lat": "cm/s",
 }
 
 #: Component ids whose input is itself an aggregate of several measurements.
@@ -230,7 +254,20 @@ def doppler_value_origin(doppler: DopplerResults, measurement_id: str) -> ValueO
         return _origin_from_markers(markers, _peak_inputs(markers, measurement_id))
     if measurement_id in _INTERVAL_FIELDS:
         markers = _intervals(doppler, _INTERVAL_FIELDS[measurement_id])
-        return _origin_from_markers(markers, _interval_inputs(markers))
+        inputs = _interval_inputs(markers)
+        delta_p = _DPDT_DELTA_P_MMHG.get(measurement_id)
+        if delta_p is not None:
+            # dP/dt = ΔP / Δt: the gradient is a fixed constant of the method
+            # (Bargiggia 1989 / Rudski 2010), the Δt is the measurement.  The
+            # card names both so nobody has to guess where «32» comes from.
+            inputs = (
+                OriginInput(
+                    id=tr("domain.origin.dpdt_delta_p"),
+                    value=f"{format_measurement('doppler.pg_peak', delta_p, 'mmHg')} mmHg",
+                    source="method",
+                ),
+            ) + inputs
+        return _origin_from_markers(markers, inputs)
     if measurement_id in _COMPOSITE_FIELDS:
         markers = _field_markers(doppler, measurement_id)
         if not markers:
