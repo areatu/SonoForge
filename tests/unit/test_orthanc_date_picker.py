@@ -364,3 +364,25 @@ class TestDialogDateFilter:
         from echo_personal_tool.presentation.orthanc_study_delegate import configure_pacs_tab_order
 
         configure_pacs_tab_order(dialog)  # must not raise
+
+    def test_dialog_applies_the_chain_it_declares(self, dialog):
+        """Building the dialog must actually wire the chain, not silently skip it.
+
+        ``QWidget.setTabOrder`` is a no-op while the widgets still sit in
+        different top-level windows, so calling it mid-build passes silently
+        and leaves the Tab key on the default creation order.
+        """
+
+        def distance(first, second, cap: int = 8) -> int | None:
+            cursor = first.nextInFocusChain()
+            for step in range(1, cap + 1):
+                if cursor is second:
+                    return step
+                cursor = cursor.nextInFocusChain()
+                if cursor is None:
+                    break
+            return None
+
+        chips = list(dialog._period_buttons.values())
+        assert distance(chips[-1], dialog._date_picker.focus_chain()[0]) == 1
+        assert distance(dialog._thumbs_check, chips[0]) is not None

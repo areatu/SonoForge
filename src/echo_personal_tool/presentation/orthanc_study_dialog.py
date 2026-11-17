@@ -832,6 +832,9 @@ class OrthancStudyDialog(QDialog):
         layout.addWidget(splitter, stretch=1)
         layout.addLayout(status_row)
         layout.addLayout(actions_row)
+        # Only now are every chained widget and the dialog in the same top-level
+        # window; QWidget.setTabOrder is a silent no-op before that (issue 484).
+        configure_pacs_tab_order(self)
 
         self._apply_local_style(p)
         self._install_shortcuts()
@@ -861,7 +864,6 @@ class OrthancStudyDialog(QDialog):
         actions_row.addWidget(self._summary_label, stretch=1)
         for btn in (self._background_btn, self._cancel_btn, self._save_disk_btn, self._load_btn):
             actions_row.addWidget(btn)
-        configure_pacs_tab_order(self)
         return actions_row
 
     def _build_period_row(self) -> QVBoxLayout:
