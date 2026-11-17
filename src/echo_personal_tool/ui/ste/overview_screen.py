@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QPolygonF, QResizeEvent
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QPolygonF, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.resources.bundled_fonts import ui_font
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
 
@@ -393,9 +394,11 @@ class OverviewScreen(QWidget):
         # ── Top ribbon: GLS_AV large, per-view GLS small, QC counts.
         ribbon = QHBoxLayout()
         self._avg_label = QLabel("--")
-        f = QFont()
-        f.setPointSize(22)
-        f.setBold(True)
+        # GLS_AV is a number, but the font must still be the UI family: a bare
+        # QFont() is the system face, so the headline used a different typeface
+        # from the label right next to it («GLS ср.»).  Pixels, like the rest of
+        # the interface (pt belongs to PDF/print).
+        f = ui_font(pixel_size=30, bold=True)
         self._avg_label.setFont(f)
         self._avg_label.setStyleSheet("color: #ffd54f;")
         ribbon.addWidget(self._avg_label)

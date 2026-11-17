@@ -7,12 +7,12 @@ from typing import Any
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.services.cine_phase_timeline import PhaseTimeline
+from echo_personal_tool.resources.bundled_fonts import overlay_label_font
 from echo_personal_tool.ui.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.ui.segment_label_anchors import segment_label_anchors
 from echo_personal_tool.ui.segment_labels import short_segment_label
@@ -572,9 +572,9 @@ class CinePanel(QWidget):
                 fill=pg.mkBrush(6, 10, 16, 120),
             )
             text_item.setPos(x, y)
-            font = QFont("sans-serif", 8)
-            font.setBold(True)
-            text_item.setFont(font)
+            # Bundled UI family in pixels (see overlay_label_font): the label
+            # is Cyrillic and used to fall back to the system sans in points.
+            text_item.setFont(overlay_label_font())
             text_item.setZValue(20)
             self._plot.addItem(text_item)
             self._segment_labels.append(text_item)
