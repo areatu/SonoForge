@@ -232,11 +232,18 @@ class DecodeGate:
             while self._over_file_bounds(queue):
                 victim = self._speculative_victim(queue, protected)
                 if victim is None:
+                    # Prefer keeping the newest request, but it must not bypass
+                    # the cap when it alone is oversized. Interactive requests
+                    # remain exempt because victim selection is speculative-only.
+                    victim = self._speculative_victim(queue, None)
+                if victim is None:
                     break
                 self._remove_locked(key, victim)
                 dropped.append(victim)
         while self._over_global_bounds():
             victim = self._speculative_victim_global(protected)
+            if victim is None:
+                victim = self._speculative_victim_global(None)
             if victim is None:
                 break
             self._remove_locked(decode_gate_key(victim.decode_path), victim)

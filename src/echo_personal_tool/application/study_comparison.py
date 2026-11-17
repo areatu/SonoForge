@@ -74,6 +74,21 @@ def _study_field(study: StudyMetadata, attribute: str, *, casefold: bool = True)
     )
 
 
+def _patient_identity_uncertain(study: StudyMetadata) -> bool:
+    """Do not combine partial or contradictory headers into a trusted identity."""
+    instances = [instance for series in study.series for instance in series.instances]
+    if not instances:
+        return True
+    for instance in instances:
+        if not str(instance.patient_id or "").strip() or not str(instance.issuer_of_patient_id or "").strip():
+            return True
+    for attribute in ("patient_id", "issuer_of_patient_id", "patient_surname", "patient_birth_date", "patient_sex"):
+        values = [str(getattr(instance, attribute, "") or "").strip() for instance in instances]
+        if any(values) and not _single_text(values, casefold=attribute not in ("patient_id", "issuer_of_patient_id")):
+            return True
+    return False
+
+
 def study_identity(
     study: StudyMetadata,
     *,
@@ -92,6 +107,7 @@ def study_identity(
         issuer_of_patient_id=_study_field(study, "issuer_of_patient_id", casefold=False),
         patient_birth_date=_study_field(study, "patient_birth_date"),
         patient_sex=_study_field(study, "patient_sex"),
+        patient_identity_uncertain=_patient_identity_uncertain(study),
         modality=modality,
         source=source,
         tab_id=tab_id,

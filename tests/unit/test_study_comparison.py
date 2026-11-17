@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from echo_personal_tool.application.study_comparison import (
     comparison_candidates,
     current_study_identity,
@@ -91,7 +93,7 @@ def test_a_matching_surname_without_patient_id_is_unverified() -> None:
         _identity("previous", datetime(2026, 1, 1), "Ivanov"),
     )
     assert pair.patient_match is PatientMatch.UNVERIFIED
-    assert pair.needs_patient_confirmation is False
+    assert pair.needs_patient_confirmation is True
 
 
 def test_patient_id_is_compared_case_sensitively() -> None:
@@ -158,7 +160,7 @@ def test_a_missing_name_is_unverified_not_the_same_patient() -> None:
         _identity("previous", datetime(2026, 1, 1), "Ivanov"),
     )
     assert pair.patient_match is PatientMatch.UNVERIFIED
-    assert pair.needs_patient_confirmation is False
+    assert pair.needs_patient_confirmation is True
 
 
 def test_the_order_is_by_explicit_date() -> None:
@@ -308,3 +310,36 @@ def test_an_unknown_budget_does_not_block_the_pair() -> None:
     budget = ComparisonMemoryBudget(cap_bytes=None)
     assert budget.enforced is False
     assert budget.reserve("left", 10**12) is True
+
+
+def test_identifier_internal_whitespace_is_not_silently_collapsed() -> None:
+    pair = ComparisonIdentity(
+        StudyIdentity("current", patient_id="A  B", issuer_of_patient_id="HOSP"),
+        StudyIdentity("previous", patient_id="A B", issuer_of_patient_id="HOSP"),
+    )
+    assert pair.patient_match is PatientMatch.DIFFERENT
+    assert pair.needs_patient_confirmation
+
+
+@pytest.mark.parametrize("field,other_value", [("surname", "Petrov"), ("birth_date", "19900202"), ("sex", "F")])
+def test_conflicting_instance_headers_cannot_be_erased_into_same(field, other_value) -> None:
+    values = dict(surname="Ivanov", birth_date="19800101", sex="M", patient_id="MRN-1", issuer="HOSP")
+    first = _instance("one", **values)
+    second = _instance("two", **{**values, field: other_value})
+    current = study_identity(_study("current", datetime(2026, 1, 1), first, second))
+    previous = study_identity(_study("previous", datetime(2025, 1, 1), first))
+    pair = ComparisonIdentity(current, previous)
+    assert current.patient_identity_uncertain
+    assert pair.patient_match is PatientMatch.UNVERIFIED
+    assert pair.needs_patient_confirmation
+
+
+@pytest.mark.parametrize("partial", [True, False])
+def test_partial_identity_pairs_across_instances_cannot_establish_same(partial) -> None:
+    first = _instance("one", patient_id="MRN-1", issuer="" if partial else "HOSP")
+    second = _instance("two", patient_id="", issuer="HOSP")
+    current = study_identity(_study("current", datetime(2026, 1, 1), first, second))
+    previous = StudyIdentity("previous", patient_id="MRN-1", issuer_of_patient_id="HOSP")
+    pair = ComparisonIdentity(current, previous)
+    assert pair.patient_match is PatientMatch.UNVERIFIED
+    assert pair.needs_patient_confirmation
