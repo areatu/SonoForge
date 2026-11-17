@@ -504,3 +504,8 @@ class TestBuildRecord:
         record = json.loads(output.read_text(encoding="utf-8"))
         assert record["profile"] == "presenter"
         assert build_record.validate_record(record) == []
+
+    def test_package_version_matches_repo_package(self) -> None:
+        from echo_personal_tool import __version__
+
+        assert build_record.package_version(ROOT) == __version__
