@@ -105,8 +105,6 @@ def build_period_block(
     dialog's minimum width.
     """
     group, buttons, _date_chip = create_period_chips(parent)
-    picker = OrthancDatePicker(parent)
-    picker.setVisible(False)
     chips_row = QHBoxLayout()
     chips_row.setContentsMargins(10, 8, 10, 0)
     chips_row.setSpacing(6)
@@ -120,6 +118,11 @@ def build_period_block(
     clear_selection_btn.clicked.connect(on_clear_selection)
     for bulk in (select_all_btn, clear_selection_btn):
         chips_row.addWidget(bulk)
+    # Built last on purpose: siblings join the focus chain in creation order, so
+    # the selector lands right after the bulk actions (configure_pacs_tab_order
+    # then links it to the chips) instead of between them and the row.
+    picker = OrthancDatePicker(parent)
+    picker.setVisible(False)
     block = QVBoxLayout()
     block.setContentsMargins(0, 0, 0, 0)
     block.setSpacing(0)
