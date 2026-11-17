@@ -30,6 +30,8 @@
 
 - `feat(ui)`: 2026-11-17 — произвольная дата в диалоге «Загрузка с сервера»: чип «Дата» и селектор «День · Месяц · Год», клиентский фильтр плюс `study_date` в запросе ([полностью](changelog.d/006-feat-ui-pacs-exact-date.md))
 - `fix(ui)`: 2026-11-17 — разная высота кириллических букв и бахрома ClearType: полный хинтинг заменён на `PreferNoHinting`, подписи поверх кадра переведены на bundled Inter в px ([полностью](changelog.d/005-fix-ui-cyrillic-hinting.md))
+- `feat(ctmr)`: #557 — header-only classic CT/MR stack index с patient-space порядком ([полностью](changelog.d/005-feat-ctmr-stack-index-557.md))
+
 - `feat(imt)`: #558 — редактируемый research overlay двух границ и документ v7 ([полностью](changelog.d/004-feat-imt-viewer-document-558.md))
 - `feat(imt)`: #558 — исследовательское ядро seeded КИМ, физические нормали и draft/QC workflow; без GUI-интеграции ([полностью](changelog.d/003-feat-imt-research-core-558.md))
 - `refactor(analysis)`: #552 — владелец публикации STE и защита от устаревших success/error ([полностью](changelog.d/002-refactor-analysis-ownership-552.md))
