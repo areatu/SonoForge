@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
@@ -26,6 +26,7 @@ from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.imt import ImtDraft, ImtRefusal
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
@@ -33,6 +34,7 @@ from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 from echo_personal_tool.domain.services.imt_validation import MAX_IMT_MEASUREMENTS, imt_key, validate_imt
 from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
+from echo_personal_tool.domain.services.report_selection import contour_candidate_text, select_report_sources
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases
@@ -400,6 +402,19 @@ class StudyMeasurementData:
         for _uid, _frame, dto in self.doppler_by_instance_frame:
             aggregated = merge_doppler_dtos(aggregated, dto)
         return aggregated
+
+
+def report_measurement_sources(
+    data: StudyMeasurementData, choices: Mapping[str, str], pixel_spacing: tuple[float, float], calibrated: bool
+) -> tuple[StudyMeasurementData, tuple[ReportRepeat, ...]]:
+    """Project a transient session on the resolved grid; never change the saved study."""
+    linear, linear_choices = select_report_sources(data.linear_measurements, choices)
+    contours, contour_choices = select_report_sources(
+        data.contours, choices, describe=lambda c: contour_candidate_text(c, pixel_spacing, calibrated)
+    )
+    vessels, vessel_choices = select_report_sources(data.vessel_measurements, choices)
+    projected = replace(data, linear_measurements=linear, contours=contours, vessel_measurements=vessels)
+    return projected, linear_choices + contour_choices + vessel_choices
 
 
 class StudyMeasurementSessionStore:

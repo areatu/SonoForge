@@ -12,8 +12,8 @@ with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
-from dataclasses import dataclass, field, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -31,6 +31,7 @@ from echo_personal_tool.domain.measurement_catalog import (
 from echo_personal_tool.domain.measurement_units import area_for_display, volume_for_display
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS, is_unnamed_caliper_label
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
@@ -76,6 +77,12 @@ from echo_personal_tool.domain.services.organ_volumes import (
     thyroid_lobe_volume_ml,
 )
 from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
+from echo_personal_tool.domain.services.report_document import PatientInfo as PatientInfo
+from echo_personal_tool.domain.services.report_document import ReportDocument as ReportDocument
+from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
+from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
+from echo_personal_tool.domain.services.report_document import without_values as without_values
+from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
 from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
@@ -254,114 +261,6 @@ def reference_unit_scale(param_id: str) -> float:
     its own copy: a value in cm/s must meet the m/s ranges of ``tr_vmax``.
     """
     return _UNIT_SCALE.get(param_id or "", 1.0)
-
-
-@dataclass(frozen=True)
-class ReportValue:
-    """One measured parameter as the report shows it."""
-
-    label: str
-    value: str
-    unit: str = ""
-    norm: str = ""
-    pathological: bool = False
-    group: str = GROUP_OTHER
-    #: Number of repeats that actually contributed to an averaged value (D-23).
-    #: Kept separate from ``value`` so norms and machine consumers still see
-    #: the unannotated numeric result.
-    sample_count: int | None = None
-    #: Recorded lineage for the «откуда значение» card (UI-4 PR-4).  ``None``
-    #: means nothing was recorded: the card says so instead of guessing.
-    origin: ValueOrigin | None = None
-    #: Stable identifier of this row inside the document (item 9 of the
-    #: 2026-11-06 list): ``group:label:ordinal``.  Hiding a row is addressed by
-    #: this key, not by its position, so the choice survives other rows being
-    #: hidden or restored.  Empty for rows the builder does not own (the
-    #: «не оценивалось» marks appended by the window).
-    key: str = ""
-    #: Sample SD and coefficient of variation of the selected repeats
-    #: (issue 559).  Kept as strings so the machine-readable ``value`` stays
-    #: the plain mean; the human value adds them after the ``n`` suffix.
-    repeat_sd: str = ""
-    repeat_cv: str = ""
-
-    @property
-    def display_value(self) -> str:
-        """Value plus the localized count of samples entering a repeat mean."""
-        text = self.value
-        if self.sample_count is not None and self.sample_count > 1:
-            text += tr("domain.report.repeat_suffix", count=self.sample_count)
-        if self.repeat_sd:
-            text += tr("domain.report.repeat_sd", sd=self.repeat_sd)
-        if self.repeat_cv:
-            text += tr("domain.report.repeat_cv", cv=self.repeat_cv)
-        return text
-
-
-@dataclass(frozen=True)
-class ReportGroup:
-    title: str
-    key: str
-    values: tuple[ReportValue, ...]
-    #: Footnotes printed under the group table (calculations: provenance of
-    #: the inputs, assumptions, warnings and the RUO statement).
-    notes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class PatientInfo:
-    """Editable report header; empty strings mean "not filled in"."""
-
-    name: str = ""
-    patient_id: str = ""
-    birth_date: str = ""
-    age: str = ""
-    sex: str = ""
-    study_date: str = ""
-    height_cm: float | None = None
-    weight_kg: float | None = None
-    bsa_m2: float | None = None
-    physician: str = ""
-    institution: str = ""
-    indication: str = ""
-    conclusion: str = ""
-    equipment: str = ""
-
-
-@dataclass(frozen=True)
-class ReportDocument:
-    patient: PatientInfo = field(default_factory=PatientInfo)
-    groups: tuple[ReportGroup, ...] = ()
-    #: Printed title of the sheet (item 7 of the 2026-11-06 list).  Empty means
-    #: the default «Протокол ЭхоКГ», so a document built before the report
-    #: formats existed still prints exactly what it printed then.
-    title: str = ""
-    #: Format id the document was built for (``echo`` / ``ultrasound_generic``).
-    #: Kept in the document so CSV/JSON exports and the header of the sheet name
-    #: the same thing as the PDF.
-    profile_id: str = ""
-    #: Export status (#555): a draft is not a signed-off protocol. The JSON
-    #: and CSV exports and the report-mode status banner print it; the PDF
-    #: sheet does not (2026-11-16 list, item 5) — protocols may be focused
-    #: and partial, and the printed sheet is the protocol itself.
-    draft: bool = False
-    #: Export-level warnings (no scale, stale record, unreviewed contours),
-    #: already localized. Kept in the document so the banner and the machine
-    #: exports say the same thing.
-    notices: tuple[str, ...] = ()
-
-    @property
-    def status_text(self) -> str:
-        """Localized export status, the same words in PDF, JSON and CSV."""
-        return tr("report.status.draft" if self.draft else "report.status.final")
-
-    @property
-    def has_measurements(self) -> bool:
-        return any(group.values for group in self.groups)
-
-    @property
-    def pathological_values(self) -> tuple[ReportValue, ...]:
-        return tuple(value for group in self.groups for value in group.values if value.pathological)
 
 
 @lru_cache(maxsize=1)
@@ -646,6 +545,7 @@ def _value(
     repeat_sd: float | None = None,
     repeat_cv: float | None = None,
     origin: ValueOrigin | None = None,
+    parameter_id: str = "",
 ) -> ReportValue | None:
     """One report row formatted via :func:`format_measurement` (issue 482).
 
@@ -667,6 +567,7 @@ def _value(
     return ReportValue(
         label=label,
         value=format_measurement(measurement_id, value, unit),
+        parameter_id=parameter_id or measurement_id,
         unit=unit,
         norm=norm_text,
         pathological=pathological,
@@ -679,7 +580,7 @@ def _value(
 
 
 def _text_value(label: str, text: str, *, group: str | None = None) -> ReportValue:
-    return ReportValue(label=label, value=text, group=group or group_for_label(label))
+    return ReportValue(label=label, value=text, parameter_id="lv.diastology", group=group or group_for_label(label))
 
 
 _STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
@@ -939,7 +840,7 @@ def _append_left_ventricle_report_values(
             (_label_catalog("lv.edv_teich"), "lv.edv_teich", teichholz.edv_ml, "mL", None, teich_ed_origin),
             (_label_catalog("lv.esv_teich"), "lv.esv_teich", teichholz.esv_ml, "mL", None, teich_es_origin),
             (_label_catalog("lv.ef_teich"), "lv.ef_teich", teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
-            (tr("domain.report.sv"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
+            (tr("result.lv_sv_teich"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
         )
         for label, measurement_id, value, unit, norm_label, row_origin in rows:
             item = _value(
@@ -951,6 +852,7 @@ def _append_left_ventricle_report_values(
                 group=GROUP_LEFT_VENTRICLE,
                 norm_label=norm_label,
                 origin=row_origin,
+                parameter_id="lv.sv_teich" if measurement_id == "lv.sv" else measurement_id,
             )
             if item:
                 values.append(item)
@@ -1110,6 +1012,7 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
         flow_sample_count_by_label: dict[str, int] = {}
         flow_stats_by_label: dict[str, RepeatStatistics] = {}
         flow_origins: dict[str, ValueOrigin] = {}
+        flow_parameters: dict[str, str] = {}
         doppler_values: list[tuple[str, str, float | None, str, str]] = [
             (_label("result.mv_e"), "mv.e", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             (_label("result.mv_a"), "mv.a", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -1189,7 +1092,10 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 )
             )
             for kind in ("Vmax", "PGmax", "Vmean", "PGmean", "VTI"):
-                flow_origins[flow_measurement_id(flow.site, kind)] = doppler_flow_origin(doppler, flow, kind)
+                flow_label = _flow(flow.site, kind)
+                flow_origins[flow_label] = doppler_flow_origin(doppler, flow, kind)
+                # A generic precision id (e.g. doppler.vmean) is not a site.
+                flow_parameters[flow_label] = f"{flow.site.lower()}.{kind.lower()}"
             flow_mode_by_label[_flow(flow.site, "Vmax")] = flow.mode
             flow_mode_by_label[_flow(flow.site, "Vmean")] = flow.mode
             vmax_repeat_count = flow.vmax_repeats or flow.vti_repeats
@@ -1242,7 +1148,8 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 sample_count=sample_count,
                 repeat_sd=repeat_sd,
                 repeat_cv=repeat_cv,
-                origin=flow_origins.get(measurement_id) or doppler_value_origin(doppler, measurement_id),
+                origin=flow_origins.get(label) or doppler_value_origin(doppler, measurement_id),
+                parameter_id=flow_parameters.get(label, measurement_id),
             )
             if item:
                 values.append(item)
@@ -1264,6 +1171,7 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
             value=bsa_source_label(indexed.bsa_basis),
+            parameter_id="patient.bsa_source",
             group=GROUP_OTHER,
         )
         indexed_values = (
@@ -1371,6 +1279,7 @@ def _append_planimeter_report_values(values: list[ReportValue], snapshot: Measur
             sex=sex,
             default_group=GROUP_PLANIMETRY,
             origin=_planimeter_origin(planimeter_item),
+            parameter_id=named_parameter(measurement_id, planimeter_item.label),
         )
         if entry:
             values.append(entry)
@@ -1399,6 +1308,7 @@ def _append_linear_report_values(
         if is_unnamed_caliper_label(raw_label):
             continue
         label = _cal(raw_label)
+        parameter = linear_parameter(measurement)
         origin = measurement_origin(
             METHOD_DOPPLER_CALIPER if measurement.doppler else METHOD_LINEAR_CALIPER,
             measurement_id=measurement.measurement_id,
@@ -1413,6 +1323,7 @@ def _append_linear_report_values(
                 measurement.millimeter_length,
                 "%",
                 sex=sex,
+                parameter_id=parameter,
                 origin=origin,
             )
             if entry:
@@ -1425,6 +1336,7 @@ def _append_linear_report_values(
                 measurement.millimeter_length,
                 "cm²",
                 sex=sex,
+                parameter_id=parameter,
                 origin=origin,
             )
             if entry:
@@ -1439,6 +1351,7 @@ def _append_linear_report_values(
                     "ms",
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.dt",
                     origin=origin,
                 )
                 if entry:
@@ -1457,6 +1370,7 @@ def _append_linear_report_values(
                     unit,
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.dv",
                     origin=origin,
                 )
                 if entry:
@@ -1468,6 +1382,7 @@ def _append_linear_report_values(
                     "mmHg",
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.pg",
                     origin=origin,
                 )
                 if pg_entry:
@@ -1489,7 +1404,7 @@ def _append_linear_report_values(
             caliper_id = measurement_for_caliper(raw_label) or "caliper.length"
         if caliper_val is None:
             continue
-        entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin)
+        entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin, parameter_id=parameter)
         if entry:
             values.append(entry)
 
@@ -1664,6 +1579,7 @@ def _append_vessel_report_values(values: list[ReportValue], snapshot: Measuremen
             values.append(
                 ReportValue(
                     label=row_label,
+                    parameter_id=f"{named_parameter('vessel', vessel.label)}.{measurement_id.removeprefix('vessel.')}",
                     value=format_measurement(measurement_id, vessel_val, unit),
                     unit=unit,
                     group=group_for_label(row_label) if site else GROUP_VESSELS,
@@ -1684,6 +1600,7 @@ def build_report_groups(
     sex: str = "",
     length_display_unit: str = "mm",
     include_inputs: bool = True,
+    value_order: Iterable[str] = (),
 ) -> tuple[ReportGroup, ...]:
     """Group every measurement of the study snapshot by anatomical structure.
 
@@ -1746,6 +1663,8 @@ def build_report_groups(
 
         calculation_notes = report_notes(calculations, include_inputs=include_inputs)
 
+    ranks = {key: index for index, key in enumerate(dict.fromkeys(value_order))}
+    repeats = {row: repeat for repeat in snapshot.report_repeats for row in repeat.parameter_ids}
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
         group_values = tuple(value for value in values if value.group == key)
@@ -1760,53 +1679,27 @@ def build_report_groups(
             ReportGroup(
                 title=tr(f"report.group.{key}"),
                 key=key,
-                values=_keyed_values(key, group_values),
+                values=_keyed_values(key, group_values, ranks, repeats),
                 notes=notes,
             )
         )
     return tuple(grouped)
 
 
-def _keyed_values(group_key: str, values: tuple[ReportValue, ...]) -> tuple[ReportValue, ...]:
-    """Give every row its stable ``group:label:ordinal`` key (item 9).
-
-    The ordinal counts same-labelled rows inside the group — two planimeter
-    contours of one frame stay apart — and it is computed over the *whole*
-    group, before any hiding, so restoring a row never renumbers the others.
-    """
+def _keyed_values(
+    group_key: str, values: tuple[ReportValue, ...], ranks: Mapping[str, int], repeats: Mapping[str, ReportRepeat]
+) -> tuple[ReportValue, ...]:
+    """Key before sorting/hiding; never derive a preference from translated prose."""
     counters: dict[str, int] = {}
-    keyed: list[ReportValue] = []
+    keyed = []
     for value in values:
-        ordinal = counters.get(value.label, 0)
-        counters[value.label] = ordinal + 1
-        keyed.append(value if value.key else replace(value, key=f"{group_key}:{value.label}:{ordinal}"))
+        parameter = value.parameter_id or value.label
+        ordinal = counters.get(parameter, 0)
+        counters[parameter] = ordinal + 1
+        keyed.append(replace(value, key=f"{group_key}:{parameter}:{ordinal}", repeat=repeats.get(parameter)))
+    if ranks:
+        keyed.sort(key=lambda value: ranks.get(value.key, len(ranks)))
     return tuple(keyed)
-
-
-def without_values(document: ReportDocument, hidden_keys: Iterable[str]) -> ReportDocument:
-    """Drop the rows the physician hid from the sheet (item 9).
-
-    The filter works on the built document, once, so the preview, the PDF, the
-    CSV and the JSON all lose the same rows; a group that becomes empty
-    disappears with its notes.  Unknown keys are ignored, which keeps a study
-    reload from resurrecting a row that no longer exists.
-    """
-    hidden = frozenset(key for key in hidden_keys if key)
-    if not hidden:
-        return document
-    groups: list[ReportGroup] = []
-    dropped = False
-    for group in document.groups:
-        values = tuple(value for value in group.values if value.key not in hidden)
-        if not values:
-            dropped = True
-            continue
-        if len(values) != len(group.values):
-            dropped = True
-            groups.append(replace(group, values=values))
-        else:
-            groups.append(group)
-    return replace(document, groups=tuple(groups)) if dropped else document
 
 
 def _calculator_inputs(
@@ -1854,6 +1747,7 @@ def _calculation_values(calculations: CalculationsSnapshot) -> list[ReportValue]
             rows.append(
                 ReportValue(
                     label=output.label,
+                    parameter_id=f"calc.{output.id}",
                     value=output.formatted(),
                     unit=output.unit,
                     group=GROUP_CALCULATIONS,
@@ -1897,6 +1791,7 @@ def build_report_document(
     profile_id: str = "",
     include_inputs: bool = True,
     hidden_keys: Iterable[str] = (),
+    value_order: Iterable[str] = (),
     study_profile_id: str = "",
     draft: bool = False,
 ) -> ReportDocument:
@@ -1928,47 +1823,20 @@ def build_report_document(
         snapshot = restrict_snapshot_to_profile(snapshot, study_profile(study_profile_id))
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
         info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
-    if not profile_id:
-        # No format asked for: keep the pre-item-7 document byte for byte, so
-        # the dialog and every older caller print what they printed before.
-        return _with_export_status(
-            without_values(
-                ReportDocument(
-                    patient=info,
-                    groups=build_report_groups(
-                        snapshot,
-                        sex=sex,
-                        length_display_unit=length_display_unit,
-                        include_inputs=include_inputs,
-                    ),
-                ),
-                hidden_keys,
-            ),
-            snapshot,
-            draft,
-        )
-    chosen = profile(profile_id)
-    groups = chosen.groups(
-        build_report_groups(
-            snapshot,
-            sex=sex,
-            length_display_unit=length_display_unit,
-            include_inputs=include_inputs,
-        )
-    )
-    return _with_export_status(
-        without_values(
-            ReportDocument(
-                patient=info,
-                groups=groups,
-                title=profile_title(chosen.id, tr),
-                profile_id=chosen.id,
-            ),
-            hidden_keys,
-        ),
+    groups = build_report_groups(
         snapshot,
-        draft,
+        sex=sex,
+        length_display_unit=length_display_unit,
+        include_inputs=include_inputs,
+        value_order=value_order,
     )
+    document = ReportDocument(patient=info, groups=groups)
+    if profile_id:
+        chosen = profile(profile_id)
+        document = replace(
+            document, groups=chosen.groups(groups), title=profile_title(chosen.id, tr), profile_id=chosen.id
+        )
+    return _with_export_status(without_values(document, hidden_keys), snapshot, draft)
 
 
 def with_extra_values(document: ReportDocument, rows: tuple[ReportValue, ...]) -> ReportDocument:
