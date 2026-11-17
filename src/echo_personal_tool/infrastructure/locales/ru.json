@@ -3397,5 +3397,21 @@
   "calibration.detail.assumption": "Предположение: {assumption}",
   "properties.calibration.assumption": "Предположение:",
   "properties.calibration.scales": "Масштабы клипа:",
-  "properties.calibration.scales_more": "… и ещё {count}"
+  "properties.calibration.scales_more": "… и ещё {count}",
+  "imt.open": "КИМ: исследовательский overlay",
+  "imt.warning": "Только исследование. Продольный B-mode CCA, дальняя стенка без бляшки. Задайте физическую/QC policy явно. Не для диагноза/PDF.",
+  "imt.side": "Сторона",
+  "imt.roi": "ROI (пиксели)",
+  "imt.guides": "Подсказки границ (Y)",
+  "imt.policy": "Policy (мм/QC)",
+  "imt.unreviewed": "Не подтверждено / требуется проверка",
+  "imt.confirmed": "Подтверждено оператором",
+  "imt.propose": "Предложить две границы",
+  "imt.load": "Загрузить сохранённое",
+  "imt.revalidate": "Повторно проверить на текущем кадре",
+  "imt.confirm": "Подтвердить",
+  "imt.save": "Сохранить в документ исследования",
+  "imt.refused": "Отказ",
+  "persistence.import_category.imt": "КИМ (research)",
+  "imt.summary": "{decision}\nСреднее {mean} / максимум {maximum} / SD {sd} мм\nПокрытие {coverage}, длина {length} мм, ревизия {revision}"
 }

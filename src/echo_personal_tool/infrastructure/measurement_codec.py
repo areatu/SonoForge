@@ -60,6 +60,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.imt import ImtDraft, ImtPolicy, ImtRefusal, ImtSource
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.manual_calculator_input import (
     MANUAL_CALCULATOR_ORIGIN,
@@ -80,6 +81,7 @@ from echo_personal_tool.domain.models.result_provenance import (
 )
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
+from echo_personal_tool.infrastructure.imt_storage import validate_imt_storage
 
 # persisted provenance bases per result family
 try:
@@ -111,8 +113,8 @@ FORMAT = "sonoforge.study-measurements"
 #: derived results were normalised by, plus the manual BSA input;
 #: QH-1d: v4 also adds manual calculator inputs;
 #: QH-1b.2 slices 3a–c: v5 adds Simpson/Doppler/derived bases per result family;
-#: item 2/4: v6 adds the named-artery site label of vessel measurements).
-VERSION = 6
+#: item 2/4: v6 adds the named-artery site label; v7 adds structured research IMT).
+VERSION = 7
 #: Meaning of Doppler labels/units written by this build (D-23).
 SEMANTICS_VERSION = 2
 #: Oldest document structure/semantics that can be migrated on read.
@@ -126,13 +128,16 @@ FIELDS = frozenset(
     """contours linear_measurements doppler_by_instance doppler_by_instance_frame
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
- height_source weight_source vessel_measurements simpson_area_by_frame strain result_provenance
+ height_source weight_source vessel_measurements simpson_area_by_frame strain imt_measurements result_provenance
  manual_bsa_m2 bsa_basis manual_calculator_inputs calibration_by_instance
  simpson_basis doppler_basis derived_snapshot""".split()
 )
 TYPES = frozenset(
     (
         StudyMeasurementData,
+        ImtDraft,
+        ImtPolicy,
+        ImtSource,
         Contour,
         LinearMeasurement,
         DopplerMeasurementDTO,
@@ -193,6 +198,8 @@ def study_key(uid: str) -> str:
 def _encode(value: object) -> object:
     if dataclasses.is_dataclass(value) and type(value) in TYPES:
         fields = FIELDS if isinstance(value, StudyMeasurementData) else {f.name for f in dataclasses.fields(value)}
+        if isinstance(value, StudyMeasurementData) and not value.imt_measurements:
+            fields = fields - {"imt_measurements"}
         if isinstance(value, LinearMeasurement) and not value.submillimeter:
             fields = fields - {"submillimeter"}  # Keep ordinary/legacy documents unchanged.
         if isinstance(value, StrainReport) and not value.lineage_by_view:
@@ -323,6 +330,10 @@ def _validate_derived_snapshot(snapshot: object) -> None:
 
 
 def validate_data(data: StudyMeasurementData, sources: dict) -> None:
+    try:
+        validate_imt_storage(data.imt_measurements, sources)
+    except ImtRefusal as exc:
+        raise MeasurementStorageError("invalid") from exc
     for name, limit in (("height", 300), ("weight", 700)):
         value = getattr(data, "height_cm" if name == "height" else "weight_kg")
         source = getattr(data, name + "_source")
@@ -436,20 +447,15 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
         if value <= 0:
             raise MeasurementStorageError("invalid")
     # validate measurement_id / revision for primary measurements
-    for item in data.contours:
-        if len(item.measurement_id) > 256:
+    primaries: tuple[Contour | LinearMeasurement | VesselMeasurement, ...] = (
+        *data.contours,
+        *data.linear_measurements,
+        *data.vessel_measurements,
+    )
+    for primary in primaries:
+        if len(primary.measurement_id) > 256:
             raise MeasurementStorageError("invalid")
-        if type(item.revision) is not int or item.revision < 0:
-            raise MeasurementStorageError("invalid")
-    for item in data.linear_measurements:
-        if len(item.measurement_id) > 256:
-            raise MeasurementStorageError("invalid")
-        if type(item.revision) is not int or item.revision < 0:
-            raise MeasurementStorageError("invalid")
-    for item in data.vessel_measurements:
-        if len(item.measurement_id) > 256:
-            raise MeasurementStorageError("invalid")
-        if type(item.revision) is not int or item.revision < 0:
+        if type(primary.revision) is not int or primary.revision < 0:
             raise MeasurementStorageError("invalid")
     # an explicit disk allowlist for primary manual calculator values.
     # The registry chooses the canonical unit; this snapshot deliberately stores
@@ -727,6 +733,8 @@ def loads(payload: bytes) -> dict:
         if version < VERSION:
             record = migrate(record)
         validate_data(record["data"], sources)
+        if any(item.source.study_uid != record["study_uid"] for item in record["data"].imt_measurements):
+            raise MeasurementStorageError("source")
         return record
     except MeasurementStorageError:
         raise

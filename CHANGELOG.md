@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(imt)`: #558 — редактируемый research overlay двух границ и документ v7 ([полностью](changelog.d/004-feat-imt-viewer-document-558.md))
+
 - `feat(imt)`: #558 — исследовательское ядро seeded КИМ, физические нормали и draft/QC workflow; без GUI-интеграции ([полностью](changelog.d/003-feat-imt-research-core-558.md))
 - `refactor(analysis)`: #552 — владелец публикации STE и защита от устаревших success/error ([полностью](changelog.d/002-refactor-analysis-ownership-552.md))
 - `fix(decode)`: #553 — приёмка очередей и отмены: caps входящего prefetch и bounded full-decode futures ([полностью](changelog.d/001-fix-decode-cancellation-553.md))

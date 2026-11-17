@@ -95,6 +95,7 @@ _IMPORT_CATEGORIES = (
     ("linear", "linear_measurements"),
     ("doppler", "doppler"),
     ("vessel", "vessel_measurements"),
+    ("imt", "imt_measurements"),
     ("strain", "strain"),
     ("metrics", "metrics"),
     ("calculator_inputs", "manual_calculator_inputs"),
@@ -113,6 +114,7 @@ def _import_category_counts(data: StudyMeasurementData) -> tuple[tuple[str, int]
             if entry[-1].peaks or entry[-1].intervals or entry[-1].traces
         ),
         "vessel": len(data.vessel_measurements),
+        "imt": len(data.imt_measurements),
         "strain": int(data.strain is not None),
         "metrics": sum(value is not None for value in (data.height_cm, data.weight_kg)),
         "calculator_inputs": len(data.manual_calculator_inputs),
@@ -125,6 +127,7 @@ def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
     values = {}
     for field in ("contours", "linear_measurements", "vessel_measurements"):
         values[field] = tuple(x for x in getattr(data, field) if x.sop_instance_uid in uids)
+    values["imt_measurements"] = tuple(x for x in data.imt_measurements if x.source.instance_uid in uids)
     for field in data.__dataclass_fields__:
         if "by_instance" in field or field == "simpson_area_by_frame":
             values[field] = tuple(x for x in getattr(data, field) if x[0] in uids)
@@ -138,6 +141,7 @@ def combine(full: StudyMeasurementData, incoming: StudyMeasurementData, active: 
     values = {}
     for field in ("contours", "linear_measurements", "vessel_measurements"):
         values[field] = getattr(missing, field) + getattr(incoming, field)
+    values["imt_measurements"] = missing.imt_measurements + incoming.imt_measurements
     for field in incoming.__dataclass_fields__:
         if "by_instance" in field or field == "simpson_area_by_frame":
             values[field] = getattr(missing, field) + getattr(incoming, field)
@@ -153,6 +157,7 @@ def _source_uids(data: StudyMeasurementData) -> set[str]:
     for name in data.__dataclass_fields__:
         if "by_instance" in name or name == "simpson_area_by_frame":
             uids.update(x[0] for x in getattr(data, name))
+    uids.update(x.source.instance_uid for x in data.imt_measurements)
     return uids
 
 

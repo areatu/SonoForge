@@ -23,6 +23,7 @@ from echo_personal_tool.domain.models.doppler import (
 )
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.imt import ImtDraft, ImtRefusal
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
@@ -30,6 +31,7 @@ from echo_personal_tool.domain.models.vessel_measurement import VesselMeasuremen
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
+from echo_personal_tool.domain.services.imt_validation import MAX_IMT_MEASUREMENTS, imt_key, validate_imt
 from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
@@ -335,6 +337,7 @@ class StudyMeasurementData:
     #: Speckle-tracking result of the study (plan §5.3 п.6). Kept per study,
     #: not per instance: GLS_AV is an average over apical views that normally
     #: live in different clips of the same study.
+    imt_measurements: tuple[ImtDraft, ...] = ()
     strain: StrainReport | None = None
     #: Provenance for derived results (QH-1b.1, spec §5.2). Empty for legacy docs
     #: (v1/v2) — those results become UNVERIFIED, not automatically FRESH.
@@ -372,6 +375,7 @@ class StudyMeasurementData:
             self.contours
             or self.linear_measurements
             or self.vessel_measurements
+            or self.imt_measurements
             or self.simpson_area_by_frame
             or self.strain is not None
             or self.manual_calculator_inputs
@@ -953,6 +957,21 @@ class StudyMeasurementSessionStore:
         if data.derived_snapshot == snapshot:
             return
         self.restore(study_uid, replace(data, derived_snapshot=snapshot))
+
+    def set_imt_measurement(self, study_uid: str, draft: ImtDraft) -> None:
+        """One structured IMT record per source/frame/side/segment, dirty on save."""
+        if draft.source.study_uid != study_uid:
+            raise ImtRefusal("stale_draft")
+        validate_imt(draft)
+        data = self.get(study_uid)
+        entries = {imt_key(item): item for item in data.imt_measurements}
+        previous = entries.get(imt_key(draft))
+        if previous is not None and draft.revision < previous.revision:
+            raise ImtRefusal("stale_revision")
+        entries[imt_key(draft)] = draft
+        if len(entries) > MAX_IMT_MEASUREMENTS:
+            raise ImtRefusal("imt_record_limit")
+        self._set(study_uid, replace(data, imt_measurements=tuple(entries.values())))
 
     def merge_vessel_measurements(
         self,

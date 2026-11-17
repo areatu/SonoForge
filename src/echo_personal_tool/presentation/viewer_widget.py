@@ -1657,7 +1657,7 @@ class ViewerWidget(QWidget):
         """
         return self._results_overlay_controller
 
-    # ── QH-3 ViewerContext + generation (S-02 isolation) ──────────────────
+    overlay_view = property(lambda self: self._view)
 
     def get_viewer_context(self) -> ViewerContext:
         """Current explicit context (identity + generation) for controllers."""
