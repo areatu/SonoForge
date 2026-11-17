@@ -28,4 +28,5 @@
 
 ## Unreleased
 
+- `refactor(analysis)`: #552 — владелец публикации STE и защита от устаревших success/error ([полностью](changelog.d/002-refactor-analysis-ownership-552.md))
 - `fix(decode)`: #553 — приёмка очередей и отмены: caps входящего prefetch и bounded full-decode futures ([полностью](changelog.d/001-fix-decode-cancellation-553.md))

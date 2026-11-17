@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar
 from weakref import WeakKeyDictionary
@@ -31,6 +31,7 @@ from weakref import WeakKeyDictionary
 import numpy as np
 import psutil
 
+from echo_personal_tool.application.analysis_jobs import AnalysisJobs
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.key_images import KeyImageService
@@ -277,6 +278,7 @@ class AppServices:
     frame_cache: FrameCache
     segmenter: IOnnxSegmenter
     io: AppIoFacades
+    analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
 
     @property
     def cache_budget(self) -> FrameCacheBudget:
@@ -298,6 +300,14 @@ def services_of(controller: object) -> AppServices | None:
         return _CONTROLLER_SERVICES.get(controller)
     except TypeError:
         return None
+
+
+def analysis_jobs_of(controller: object) -> AnalysisJobs:
+    """The composition-owned publication ledger for a bound controller."""
+    services = services_of(controller)
+    if services is None:
+        raise RuntimeError("Controller services are not bound")
+    return services.analysis_jobs
 
 
 def normalize_profile_name(profile: str | None) -> str:
