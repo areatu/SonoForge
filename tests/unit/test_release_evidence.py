@@ -476,8 +476,11 @@ class TestBuildRecord:
         problems = build_record.validate_record(record)
         assert any("sha256" in problem for problem in problems)
 
-    def test_package_version_is_read_from_src(self) -> None:
-        assert build_record.package_version(ROOT) == "0.4.0"
+    def test_package_version_is_read_from_src(self, tmp_path: Path) -> None:
+        source = tmp_path / "src" / "echo_personal_tool" / "__init__.py"
+        source.parent.mkdir(parents=True)
+        source.write_text('__version__ = "1.2.3"\n', encoding="utf-8")
+        assert build_record.package_version(tmp_path) == "1.2.3"
 
     def test_cli_writes_a_valid_record(self, tmp_path: Path) -> None:
         artifact = tmp_path / "artifact.bin"
@@ -501,3 +504,8 @@ class TestBuildRecord:
         record = json.loads(output.read_text(encoding="utf-8"))
         assert record["profile"] == "presenter"
         assert build_record.validate_record(record) == []
+
+    def test_package_version_matches_repo_package(self) -> None:
+        from echo_personal_tool import __version__
+
+        assert build_record.package_version(ROOT) == __version__
