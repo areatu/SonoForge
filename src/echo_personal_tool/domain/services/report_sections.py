@@ -25,7 +25,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final
 
-from echo_personal_tool.domain.measurement_catalog import CALIPER_TO_MEASUREMENT, CATALOG, MEASUREMENTS, SECTIONS
+from echo_personal_tool.domain.measurement_catalog import (
+    CALIPER_TO_MEASUREMENT,
+    CATALOG,
+    FLAG_CARDIAC,
+    MEASUREMENTS,
+    SECTIONS,
+)
 from echo_personal_tool.domain.models.result_provenance import Freshness
 from echo_personal_tool.domain.models.value_origin import KIND_MANUAL, METHOD_NOT_EVALUATED, ValueOrigin
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS
@@ -196,6 +202,11 @@ def _tool_recommendations(profile_id: str) -> tuple[_Recommendation, ...]:
     recommendations: list[_Recommendation] = []
     for tool in tools:
         if tool.id.startswith("tool."):
+            continue
+        # An echocardiography instrument stays out of an organ checklist exactly
+        # as ``tool_panel_view`` hides its button: a shared section («М-режим»)
+        # must not demand e.g. the IVC diameters of a precerebral study.
+        if FLAG_CARDIAC in tool.flags:
             continue
         for key in tool.result_keys:
             if key in seen or key not in _ORGAN_SNAPSHOT_KEYS:

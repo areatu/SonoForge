@@ -2,31 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
-import types
-
 import pytest
-
-# TEMPORARY SHIM — remove once domain/calculations/right_atrial_pressure.py
-# lands (parallel agent): report_builder imports rap_from_ivc_pair at load time.
-try:
-    importlib.import_module("echo_personal_tool.domain.calculations.right_atrial_pressure")
-except ImportError:
-
-    def _rap_from_ivc_pair(expiration_mm, inspiration_mm):
-        if expiration_mm is None or inspiration_mm is None:
-            return None, None
-        collapse = 100.0 * (expiration_mm - inspiration_mm) / expiration_mm
-        if expiration_mm > 21.0 and collapse < 50.0:
-            return collapse, 15
-        if expiration_mm <= 21.0 and collapse > 50.0:
-            return collapse, 3
-        return collapse, 8
-
-    _shim = types.ModuleType("echo_personal_tool.domain.calculations.right_atrial_pressure")
-    _shim.rap_from_ivc_pair = _rap_from_ivc_pair
-    sys.modules[_shim.__name__] = _shim
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
@@ -629,9 +605,7 @@ class TestRapFromIvcPair:
 
     def test_incomplete_pair_adds_no_rap_rows(self) -> None:
         snapshot = _snapshot(
-            linear_measurements=(
-                LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),
-            ),
+            linear_measurements=(LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),),
         )
         groups = build_report_groups(snapshot, sex="M")
         units = {value.unit for group in groups for value in group.values}

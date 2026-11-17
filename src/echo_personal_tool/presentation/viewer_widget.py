@@ -57,9 +57,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_area_label,
     next_volume_label,
 )
-from echo_personal_tool.domain.doppler_catalog import format_velocity_measurement
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
-from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
@@ -109,7 +107,6 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     refine_open_arc_contour,
 )
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
-from echo_personal_tool.domain.services.nomenclature import is_renamable_caliper_label
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
 )
@@ -164,6 +161,10 @@ from echo_personal_tool.presentation.viewer.mmode_controller import (
 from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
+)
+from echo_personal_tool.presentation.viewer.point_label_menu import (
+    offer_caliper,
+    offer_point,
 )
 from echo_personal_tool.presentation.viewer.transport import ViewerTransport
 from echo_personal_tool.presentation.viewer.zoom import ViewerZoom
@@ -250,9 +251,6 @@ _CONTOUR_FINISH_MAX_INTERVAL_MS = 400.0
 _CONTOUR_FINISH_MAX_SCREEN_PX = 12.0
 #: Clicking this close to the first point closes the polygon instead of adding.
 _CONTOUR_CLOSE_FIRST_POINT_PX = 16.0
-#: Screen radius of the point-menu hit (2026-11-17 list, item 1): the nearest
-#: caliper end / contour node within it opens the naming menu on right-click.
-_LABEL_POINT_HIT_RADIUS_PX = 14.0
 #: A polygon needs at least this many points before any gesture can close it.
 _CONTOUR_MIN_POINTS_TO_CLOSE = 3
 #: Clicks closer than this (image px) to the previous point are ignored, so a
@@ -1458,7 +1456,7 @@ class ViewerWidget(QWidget):
                         return True
                     # A right-click on a committed general-tools point names it
                     # (item 1) instead of starting the radial gesture.
-                    if self._offer_label_picker_for_point(event.globalPosition()):
+                    if offer_point(self, event.globalPosition()):
                         return True
                     # an idle right-press starts the radial-menu gesture
                     # (three controller entry points; the window owns it).
@@ -7398,25 +7396,6 @@ class ViewerWidget(QWidget):
         except Exception:  # noqa: BLE001
             return QPoint(int(point[0]), int(point[1]))
 
-    def _format_caliper_value_for_picker(self, measurement: LinearMeasurement) -> str:
-        mid = measurement_for_caliper(measurement.label)
-        if measurement.doppler:
-            if measurement.velocity_cm_s is not None:
-                vel_str, unit = format_velocity_measurement(
-                    mid or "doppler.vmax", abs(measurement.velocity_cm_s), measurement.doppler_mode
-                )
-                return f"{vel_str} {unit}"
-            if measurement.time_ms is not None:
-                return f"{_fmt(mid or 'doppler.pht', measurement.time_ms, 'ms')} {tr('unit.ms')}"
-            return ""
-        if measurement.millimeter_length is not None:
-            mm = float(measurement.millimeter_length)
-            if self._length_display_unit == "cm":
-                return f"{_fmt(mid or 'caliper.length', mm / 10.0, 'cm')} {tr('unit.cm')}"
-            fallback_id = "caliper.length_submm" if measurement.submillimeter else "caliper.length"
-            return f"{_fmt(mid or fallback_id, mm, 'mm')} {tr('unit.mm')}"
-        return f"{_fmt(mid or 'caliper.length', measurement.pixel_length, 'px')} px"
-
     def _open_label_picker_for_contour(
         self,
         contour: Contour,
@@ -7449,7 +7428,11 @@ class ViewerWidget(QWidget):
                 area = closed_polygon_area_cm2(contour, spacing)
                 if area is not None:
                     value_text = f"{_fmt('planimeter.area', area, 'cm²')} {tr('unit.cm2')}"
-        anchor_point = anchor_point if anchor_point is not None else (points[-1] if points else (self.width() / 2.0, self.height() / 2.0))
+        anchor_point = (
+            anchor_point
+            if anchor_point is not None
+            else (points[-1] if points else (self.width() / 2.0, self.height() / 2.0))
+        )
         from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
 
         self.label_picker_owner.offer(
@@ -7503,96 +7486,6 @@ class ViewerWidget(QWidget):
             return True
         return False
 
-    def _label_picker_point_hit(self, global_pos) -> tuple[str, object, tuple[float, float]] | None:
-        """What committed point sits under the cursor: caliper end or contour node.
-
-        Item 1 of the 2026-11-17 list: a right-click on one of the points of a
-        general-tools measurement (a free/renamed caliper, an area or volume
-        polygon) opens the naming menu there.  The hit is found in screen
-        pixels so the grab radius does not stretch with zoom; the nearest of
-        the two kinds wins so a crowded overlay answers with one menu only.
-        """
-        if self.contour_state.mode_active or self.contour_state.freehand_recording:
-            return None
-        local = self.mapFromGlobal(global_pos.toPoint())
-        frame = self._current_frame_index()
-        best: tuple[float, str, object, tuple[float, float]] | None = None
-
-        def _consider(dist: float, kind: str, payload: object, point: tuple[float, float]) -> None:
-            nonlocal best
-            if dist <= _LABEL_POINT_HIT_RADIUS_PX and (best is None or dist < best[0]):
-                best = (dist, kind, payload, point)
-
-        for key, measurement in self._stored_linear_measurements.items():
-            if not is_renamable_caliper_label(measurement.label):
-                continue
-            if frame is not None and measurement.frame_index not in (None, frame):
-                continue
-            for point in (measurement.start, measurement.end):
-                if point is None:
-                    continue
-                view_point = self._map_image_point_to_viewer(point)
-                dist = float((view_point.x() - local.x()) ** 2 + (view_point.y() - local.y()) ** 2) ** 0.5
-                _consider(dist, "caliper", (key, measurement), point)
-        for contour in self.contour_state.visible:
-            if contour.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
-                continue
-            for point in contour.points:
-                view_point = self._map_image_point_to_viewer(point)
-                dist = float((view_point.x() - local.x()) ** 2 + (view_point.y() - local.y()) ** 2) ** 0.5
-                _consider(dist, "contour", contour, point)
-        if best is None:
-            return None
-        return best[1], best[2], best[3]
-
-    def _offer_label_picker_for_point(self, global_pos) -> bool:
-        """Open the naming menu over a committed general-tools point (item 1).
-
-        Right-click replaces the auto-popup the tools no longer raise: the
-        physician asks for the menu where the point already is, and any name —
-        catalogued («ЛП ПЗР») or invented («сепарация перикарда») — travels
-        with the value into the report through the label-rename path.
-        """
-        if self.contour_state.mode_active or self.contour_state.freehand_recording:
-            return False
-        # An armed generic caliper is repeat mode, not a drawing in progress;
-        # only a half-placed segment or a running calibration must win.
-        if self._calibration_active or self._linear_caliper_start is not None:
-            return False
-        if not self.label_picker_owner.enabled or self.is_protocol_active():
-            return False
-        hit = self._label_picker_point_hit(global_pos)
-        if hit is None:
-            return False
-        kind, payload, point = hit
-        if kind == "caliper":
-            key, measurement = payload
-            self._offer_caliper_label_picker(key, measurement, anchor_point=point, allow_free_text=True)
-            return True
-        self._open_label_picker_for_contour(payload, anchor_point=point, allow_free_text=True)
-        return True
-
-    def _offer_caliper_label_picker(
-        self,
-        key: tuple[str, int],
-        measurement: LinearMeasurement,
-        *,
-        anchor_point: tuple[float, float] | None = None,
-        allow_free_text: bool = False,
-    ) -> None:
-        """Show the popup for one caliper; no gates, the callers decide."""
-        value_text = self._format_caliper_value_for_picker(measurement)
-        context = self._resolve_label_picker_context(doppler_measurement=measurement.doppler)
-        anchor = self._map_image_point_to_viewer(anchor_point if anchor_point is not None else measurement.end)
-        self.label_picker_owner.offer(
-            target=("caliper", key),
-            value_text=value_text,
-            context=context,
-            anchor=anchor,
-            bounds=self._graphics_content_geometry(),
-            allow_free_text=allow_free_text,
-        )
-
     def _open_label_picker_for_caliper(
         self,
         key: tuple[str, int],
@@ -7603,9 +7496,7 @@ class ViewerWidget(QWidget):
     ) -> None:
         if not self._should_show_label_picker():
             return
-        self._offer_caliper_label_picker(
-            key, measurement, anchor_point=anchor_point, allow_free_text=allow_free_text
-        )
+        offer_caliper(self, key, measurement, anchor_point=anchor_point, allow_free_text=allow_free_text)
 
     def _on_doppler_trace_committed(self, trace: object) -> None:
         raw_label = getattr(trace, "label", "") or ""

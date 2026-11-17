@@ -175,7 +175,7 @@ def _bsa(height: InputValue, weight: InputValue) -> InputValue:
     return InputValue("bsa", bsa, source=SOURCE_DERIVED, detail="Du Bois")
 
 
-def _ivc_pair_mm(measurements) -> tuple[float | None, float | None]:
+def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:
     """Newest M-mode IVC diameters (expiration, inspiration) in mm.
 
     Tuple order is insertion order — the last entry of each label wins; the
