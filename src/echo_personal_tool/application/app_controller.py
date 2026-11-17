@@ -28,12 +28,14 @@ from echo_personal_tool.application.composition import (
     analysis_jobs_of,
     bind_controller_services,
     in_memory_app_services,
+    segmentation_jobs_of,
     services_of,
 )
 from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
 from echo_personal_tool.application.frame_access import FrameAccess
 from echo_personal_tool.application.localization import get_language
+from echo_personal_tool.application.segmentation_delivery import connect_segmentation
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
@@ -515,6 +517,8 @@ class AppController(QObject):
 
     def _begin_study_switch(self) -> None:
         analysis_jobs_of(self).invalidate()
+        segmentation_jobs_of(self).invalidate()
+        self._segment_in_progress = False
         self._cache_retained_studies = tuple(self._studies)
         self._study_load_generation += 1
         self._study_switching = True
@@ -654,6 +658,7 @@ class AppController(QObject):
             self.frame_load_failed.emit("Instance has no file path")
             return
         analysis_jobs_of(self).invalidate()  # even a reload of the same SOP revokes old jobs
+        segmentation_jobs_of(self).invalidate()
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
         prefetch_was_active = self._prefetch_load_id != 0
@@ -1131,9 +1136,12 @@ class AppController(QObject):
         view: str = "A4C",
         chamber: str = "LV",
     ) -> None:
+        previous = (self._auto_segment_phase, self._auto_segment_view, self._auto_segment_chamber)
         self._auto_segment_phase = phase.upper() if phase else None
         self._auto_segment_view = view
         self._auto_segment_chamber = chamber
+        if previous != (self._auto_segment_phase, self._auto_segment_view, self._auto_segment_chamber):
+            segmentation_jobs_of(self).invalidate()
 
     def is_lv_auto_session_active(self) -> bool:
         phase = self._auto_segment_phase
@@ -1330,7 +1338,7 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_unavailable"))
             return
 
-        frame = np.ascontiguousarray(self._current_frame_pixels)
+        frame = np.ascontiguousarray(self._current_frame_pixels).copy()
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
         instance_path = self._current_instance.path if self._current_instance is not None else None
         media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
@@ -1350,33 +1358,13 @@ class AppController(QObject):
 
         self._segment_in_progress = True
         worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
-        worker.signals.finished.connect(
-            partial(
-                self._on_auto_segment_finished,
-                phase,
-                view,
-                chamber,
-                instance_path,
-                frame_index,
-                original_shape,
-            ),
-            Qt.ConnectionType.QueuedConnection,
+        connect_segmentation(
+            self,
+            worker,
+            partial(self._on_auto_segment_finished, phase, view, chamber, instance_path, frame_index, original_shape),
+            partial(self._on_auto_segment_failed, instance_path, frame_index),
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index),
         )
-
-        worker.signals.failed.connect(
-            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
-        )
-
-        worker.signals.timed_out.connect(
-            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
-        )
-
-        worker.setAutoDelete(False)
-        self._retain_worker(worker)
-        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
 
     def on_doppler_markers_changed(self, dto: object) -> None:
         if self._study_switching:
@@ -1574,6 +1562,13 @@ class AppController(QObject):
                 tagged.append(contour)
         contour_tuple = tuple(tagged)
         self._state_manager.set_contours(contour_tuple, emit=False)
+        segmentation_jobs_of(self).observe_state(
+            self._state_manager.snapshot,
+            self._current_instance,
+            self._resolve_study_uid,
+            self._study_load_generation,
+            self._loaded_frame_index,
+        )
         study_uid = self._resolve_study_uid()
         # The viewer reports every contour of the clip it shows, so for that
         # clip the report is authoritative: a planimeter polygon it no longer
@@ -1753,6 +1748,7 @@ class AppController(QObject):
             return
         study_uid = self._resolve_study_uid()
         analysis_jobs_of(self).invalidate()
+        segmentation_jobs_of(self).invalidate()
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self.measurement_persistence.barrier(study_uid)
         self._measurement_session.reset_measurements(study_uid)
@@ -1830,6 +1826,13 @@ class AppController(QObject):
             return
         analysis_jobs_of(self).observe_state(
             state, self._current_instance, self._resolve_study_uid, self._study_load_generation
+        )
+        segmentation_jobs_of(self).observe_state(
+            state,
+            self._current_instance,
+            self._resolve_study_uid,
+            self._study_load_generation,
+            self._loaded_frame_index,
         )
         if self._advancing_frame:
             # Playback advanced the frame itself and owns the timer schedule; only make sure
@@ -3660,7 +3663,7 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_unavailable"))
             return
 
-        frame = np.ascontiguousarray(self._current_frame_pixels)
+        frame = np.ascontiguousarray(self._current_frame_pixels).copy()
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
         instance_path = self._current_instance.path if self._current_instance is not None else None
         media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
@@ -3687,33 +3690,15 @@ class AppController(QObject):
             manifest_section="la_inference",
             parent=self,
         )
-        worker.signals.finished.connect(
+        connect_segmentation(
+            self,
+            worker,
             partial(
-                self._on_la_auto_segment_finished,
-                phase,
-                view,
-                chamber,
-                instance_path,
-                frame_index,
-                original_shape,
+                self._on_la_auto_segment_finished, phase, view, chamber, instance_path, frame_index, original_shape
             ),
-            Qt.ConnectionType.QueuedConnection,
+            partial(self._on_auto_segment_failed, instance_path, frame_index),
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index),
         )
-
-        worker.signals.failed.connect(
-            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
-        )
-
-        worker.signals.timed_out.connect(
-            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
-        )
-
-        worker.setAutoDelete(False)
-        self._retain_worker(worker)
-        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
 
     def _la_segmenter_available(self) -> bool:
         """Check if LA ONNX model is available."""

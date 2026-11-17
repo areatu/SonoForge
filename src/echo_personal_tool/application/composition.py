@@ -48,6 +48,7 @@ from echo_personal_tool.application.recent_folders import (
     RecentFolderStore,
     make_recent_folder_store,
 )
+from echo_personal_tool.application.segmentation_jobs import SegmentationJobs
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
@@ -279,6 +280,7 @@ class AppServices:
     segmenter: IOnnxSegmenter
     io: AppIoFacades
     analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
+    segmentation_jobs: SegmentationJobs = field(default_factory=SegmentationJobs)
 
     @property
     def cache_budget(self) -> FrameCacheBudget:
@@ -308,6 +310,14 @@ def analysis_jobs_of(controller: object) -> AnalysisJobs:
     if services is None:
         raise RuntimeError("Controller services are not bound")
     return services.analysis_jobs
+
+
+def segmentation_jobs_of(controller: object) -> SegmentationJobs:
+    """The composition-owned auto-segmentation publication ledger."""
+    services = services_of(controller)
+    if services is None:
+        raise RuntimeError("Controller services are not bound")
+    return services.segmentation_jobs
 
 
 def normalize_profile_name(profile: str | None) -> str:

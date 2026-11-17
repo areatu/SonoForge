@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `fix(segmentation)`: ticket публикации LV/LA auto-segmentation и защита поздних результатов (#552) ([полностью](changelog.d/011-fix-segmentation-publication-552.md))
 - `fix(mmode)`: происхождение ручной калибровки (#547) и opt-in диагностика памяти/очередей (#553/#545) ([полностью](changelog.d/010-fix-mmode-provenance-547.md))
 - `fix(ui)`: 2026-11-17 — Tab-цепочка диалога «Загрузка с сервера» реально применяется: вызов `setTabOrder` перенесён из середины сборки в её конец, иначе Qt молча игнорировал цепочку ([полностью](changelog.d/009-fix-ui-pacs-tab-chain.md))
 - `feat(ui)`: 2026-11-17 — произвольная дата в диалоге «Загрузка с сервера»: чип «Дата» и селектор «День · Месяц · Год», клиентский фильтр плюс `study_date` в запросе ([полностью](changelog.d/008-feat-ui-pacs-exact-date.md))
