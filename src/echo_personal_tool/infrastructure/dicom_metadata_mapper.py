@@ -177,7 +177,7 @@ def _window_presets(dataset: Dataset) -> tuple[WindowPreset, ...]:
     return tuple(presets)
 
 
-def _display_metadata(dataset: Dataset, modality: str) -> DicomDisplay | None:
+def map_dicom_display(dataset: Dataset, modality: str) -> DicomDisplay | None:
     """Extract the display chain facts; ``None`` keeps the ultrasound path."""
     photometric = str(dataset.get("PhotometricInterpretation", "") or "").strip().upper()
     shape = str(dataset.get("PresentationLUTShape", "") or "").strip().upper()
@@ -295,7 +295,7 @@ def map_instance_metadata(
         patient_weight_kg=_safe_float(dataset.get("PatientWeight")),
         heart_rate_bpm=_positive_float(dataset.get("HeartRate")),
         created_at=_instance_created_at(dataset, path),
-        display=_display_metadata(dataset, modality),
+        display=map_dicom_display(dataset, modality),
     )
 
 
