@@ -17,6 +17,7 @@
     "tests/unit/test_p3_pixel_cache.py",
     "tests/unit/test_dicom_cache_identity.py",
     "tests/unit/test_frame_cache_completeness.py",
-    "tests/unit/test_frame_cache_extended.py"
+    "tests/unit/test_frame_cache_extended.py",
+    "tests/unit/test_user_models.py"
   ]
 }
