@@ -1005,3 +1005,101 @@ def test_revisit_and_partial_reload_preserve_acquisition_order(tmp_path, monkeyp
     full, restored = _open_with_sources(tmp_path, monkeypatch, qapp, both)
     assert restored.get(UID).linear_measurements == (edited, b, extra)
     assert full.close()
+
+
+def test_repeated_close_waits_for_timed_out_repository_shutdown(tmp_path, qapp, monkeypatch):
+    p = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=False)
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+
+    def slow_close():
+        calls.append(1)
+        entered.set()
+        assert release.wait(5)
+        finished.set()
+
+    monkeypatch.setattr(p.repository, "close", slow_close)
+    try:
+        assert not p.close(timeout_ms=20)
+        assert entered.wait(1)
+        assert not p.close(timeout_ms=20)
+        assert calls == [1] and not finished.is_set()
+        release.set()
+        assert finished.wait(2)
+        assert p.close(timeout_ms=500)
+        assert p.close(timeout_ms=20)
+        assert calls == [1]
+    finally:
+        release.set()
+
+
+def test_repeated_close_does_not_convert_io_failure_into_success(tmp_path, qapp, monkeypatch, caplog):
+    p = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=False)
+    calls = []
+
+    def failed_close():
+        calls.append(1)
+        raise OSError("/patient/private/file")
+
+    monkeypatch.setattr(p.repository, "close", failed_close)
+    assert not p.close()
+    assert not p.close()
+    assert calls == [1]
+    assert "operation=measurement.close code=io" in caplog.text
+    assert "/patient/private/file" not in caplog.text
+
+
+def test_failed_flush_does_not_start_shutdown_and_remains_retryable(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    original = p.repository.save
+    close_calls = []
+    close = p.repository.close
+    monkeypatch.setattr(p.repository, "save", lambda *args: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr(p.repository, "close", lambda: (close_calls.append(1), close())[1])
+    store.set_patient_metrics(UID, 173, 70)
+    assert not p.close()
+    assert not close_calls and p.has_pending_edits
+    monkeypatch.setattr(p.repository, "save", original)
+    assert p.close() and close_calls == [1]
+    assert p.close() and close_calls == [1]
+    reopened = MeasurementRepository(tmp_path)
+    try:
+        assert reopened.load(UID)["data"].height_cm == 173
+    finally:
+        reopened.close()
+
+
+def test_repeated_close_does_not_hide_shutdown_submission_failure(tmp_path, qapp, monkeypatch, caplog):
+    p = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=False)
+    calls = []
+
+    def fail_submit(*args, **kwargs):
+        calls.append(1)
+        raise RuntimeError("private shutdown details")
+
+    monkeypatch.setattr(p._executor, "submit", fail_submit)
+    assert not p.close()
+    assert not p.close()
+    assert calls == [1]
+    assert "operation=measurement.close code=io" in caplog.text
+    assert "private shutdown details" not in caplog.text
+
+
+def test_timed_out_close_that_later_fails_remains_failure(tmp_path, qapp, monkeypatch):
+    p = MeasurementPersistence(tmp_path, StudyMeasurementSessionStore(), enabled=False)
+    entered, release = threading.Event(), threading.Event()
+
+    def fail_later():
+        entered.set()
+        assert release.wait(5)
+        raise OSError("late error")
+
+    monkeypatch.setattr(p.repository, "close", fail_later)
+    try:
+        assert not p.close(timeout_ms=20)
+        assert entered.wait(1)
+        release.set()
+        assert not p.close(timeout_ms=1000)
+        assert not p.close(timeout_ms=20)
+    finally:
+        release.set()

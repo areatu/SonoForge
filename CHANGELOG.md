@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `fix(persistence)`: #160 — достоверный результат повторного shutdown ([полностью](changelog.d/014-fix-persistence-shutdown-result-160.md))
 - `feat(report)`: UI-батч из 15 пунктов кардиолога: половые нормы guidelines и индексы аорты, режим «Все измерения» в «Показателях отчёта», выбор измерения в карточке происхождения по наведению, компоновка таблиц и заключения ([полностью](changelog.d/014-feat-report-batch-15-items.md))
 - `fix(imt)`: #558 — инвалидация проверки КИМ и регрессии редактирования/загрузки ([полностью](changelog.d/013-fix-imt-review-invalidation-558.md))
 - `feat(report)`: формализованный черновик заключения и врачебный выбор при неоднозначных клапанных критериях (PR-C) ([полностью](changelog.d/013-feat-report-formal-conclusion.md))
