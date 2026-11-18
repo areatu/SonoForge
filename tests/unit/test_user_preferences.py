@@ -580,3 +580,24 @@ class TestReportTemplatePreference:
 
         damaged = replace(UserPreferences(), report_template_json="{not json")
         assert decode_template(damaged.report_template_json) == default_template()
+
+
+def test_report_layout_roundtrips_as_parameter_keys_not_acquisitions(isolated_prefs):
+    import json
+    from dataclasses import replace
+
+    from echo_personal_tool.domain.services.report_value_layout import DEFAULT_REPORT_VALUE_EXCLUDED
+
+    default = load_user_preferences()
+    assert default.report_value_excluded == DEFAULT_REPORT_VALUE_EXCLUDED
+    order = ("lv:lv.sv:0", "lv:lv.edv_a4c:0")
+    save_user_preferences(replace(default, report_value_order=order, report_value_excluded=()))
+    store = QSettings(up_mod._SETTINGS_ORG, up_mod._SETTINGS_APP)
+    assert json.loads(store.value("report_value_order")) == list(order)
+    reloaded = load_user_preferences()
+    assert reloaded.report_value_order == order and reloaded.report_value_excluded == ()
+    store.setValue("report_value_excluded", "invalid JSON")
+    store.setValue("report_value_order", "[42]")
+    store.sync()
+    assert load_user_preferences().report_value_excluded == DEFAULT_REPORT_VALUE_EXCLUDED
+    assert load_user_preferences().report_value_order == ()

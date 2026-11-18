@@ -136,6 +136,10 @@ from echo_personal_tool.presentation.layout.presets import (
 from echo_personal_tool.presentation.loop_coordinator import LoopCoordinator
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
+from echo_personal_tool.presentation.mode_caliper_actions import (
+    start_mode_caliper,
+    start_mode_caliper_hint,
+)
 from echo_personal_tool.presentation.multiview_controller import MultiViewController
 from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
 from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
@@ -5402,9 +5406,11 @@ class MainWindow(QMainWindow):
             MeasurementAction.RA_AREA: self._on_ra_area,
             MeasurementAction.RAV_VOLUME: self._on_rav_volume,
             MeasurementAction.RV_BASAL: self._on_rv_basal,
-            MeasurementAction.RV_TAPSE: self._on_rv_tapse,
+            MeasurementAction.RV_TAPSE: lambda: start_mode_caliper_hint(self, "TAPSE", "status.rv_tapse_tool"),
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
+            MeasurementAction.IVC_MMODE_EXPIR: lambda: start_mode_caliper(self, "IVC-EXP", "menu.ivc_exp"),
+            MeasurementAction.IVC_MMODE_INSP: lambda: start_mode_caliper(self, "IVC-INSP", "menu.ivc_insp"),
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
@@ -6402,14 +6408,6 @@ class MainWindow(QMainWindow):
     def _on_rv_basal(self) -> None:
         if self._viewer.start_linear_caliper_for("RV basal"):
             self._show_hint("RV: place basal diameter caliper")
-        else:
-            self._show_status("Load a frame first")
-
-    def _on_rv_tapse(self) -> None:
-        if not self._ensure_mmode_ready_for_tapse():
-            return
-        if self._viewer.start_linear_caliper_for("TAPSE"):
-            self._show_hint(tr("status.rv_tapse_tool"))
         else:
             self._show_status("Load a frame first")
 

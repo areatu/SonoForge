@@ -987,15 +987,23 @@ Copying the source DICOM or converting video to MP4 is not measurement export.
 
 ### 17.2 PDF measurement report
 
-1. Open the `Measures` tab.
-2. Click the bottom `Measurement Results` button.
-3. Review the report dialog.
-4. Choose `Export PDF` and a path.
-5. The PDF font size comes from `Settings → Other → PDF font`.
+Open **Report** mode and review the sheet. Choose **Parameters…** above the sheet to edit it.
 
-The report is built from the current `MeasurementSnapshot`: Doppler, Simpson/LVEF, Teichholz, LA/RA/RV, LV mass/RWT, diastology, planimeter, linear, vessel, strain, and indexed fields when computed. Repeated linear labels are reduced to the last value in the text report. A PDF is not DICOM SR and does not contain the entire cine.
+- **Which rows to print.** Check the rows you want. **Move up** and **Move down** move the selected row within its anatomical section. Click **OK** to use that layout in future studies as well. LV lengths in 4C/2C, Teichholz stroke volume and LVOT Vmax are initially hidden; you can include them without changing other parameters such as Simpson stroke volume.
+- **Which measurement to use.** Select a row marked “choices”, or right-click its value and choose **Choose measurement…**. Each option shows the result and its source (clip and frame, when known). **Automatic** uses the last measurement taken, not the largest value or highest frame number. For repeated LV diastolic/systolic diameters or Simpson EDV/ESV, choose the pair together; the default is the last complete pair. You can choose an incomplete acquisition on its own: its missing phase is not filled from another pair. Derived results follow the choice, which applies only to this tab. Accepted spectral Doppler beats are still averaged separately as described in the Doppler section.
+- **Hide just for this report.** Right-click a value and choose **Hide in report**. This hides the row in the active tab only. Use **Hidden → restore** to bring a row back, even the last row of a section. Restoring a row excluded in the saved layout includes it in future studies too.
+
+The preview, printout, PDF, CSV and JSON use the same rows in the same order. A finished sheet keeps its chosen measurements and layout; start a **New draft** to edit it. None of these edits delete the source measurements. The PDF is not DICOM SR and does not contain the entire cine.
 
 When the completeness checklist is not closed, the PDF starts with “The protocol is incomplete: … missing, … stale.” The same warning travels in CSV/JSON with the other document states, so an incomplete export never looks complete. Explicit not-applicable/not-obtained decisions print as rows with their reason; stale values are never substituted by such a row.
+
+### 17.2.1 Draft conclusion
+
+In **Report**, select **Fill conclusion**. This is a qualitative draft for physician review, not a diagnosis. Missing or discordant data are not normal. Aortic segments use approximate absolute adult reference limits; the phrase that the root and ascending aorta are not dilated requires all three measurements (sinus, sinotubular junction and ascending aorta) within range. A confirmed biplane LAVi with current BSA is preferred for the left atrium; in its absence an enlarged AP diameter is described separately, not as a volume assessment.
+
+For discordant quantitative MR, AR or mitral stenosis, the dialog shows the underlying measures and choices. Intermediate MR and TR vena contracta ≥7 mm also require physician adjudication: a single criterion does not determine the final grade. Choose only after integrated assessment or leave for review (cancelling also leaves review). A choice is marked as physician-selected, belongs to the tab, and is invalidated when the evidence changes. Incomplete data, calculator warnings and combined quantitative MR/AR cannot be resolved with this choice. TR velocity alone does not grade regurgitation.
+
+Refilling replaces only the unchanged generated block; manual edits are preserved. After changing measurements, press the button again and review the whole text before printing: the draft does not update automatically. Missing results need separate assessment; the text does not rule out disease.
 
 ### 17.3 Sending an annotated DICOM payload
 

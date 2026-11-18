@@ -15,6 +15,7 @@ from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.report_conclusion import (
     DRAFT_NOTICE_KEY,
     RULESET_VERSION,
+    apply_conclusion_choices,
     build_conclusion,
     merge_conclusion,
     render_conclusion,
@@ -44,6 +45,7 @@ def autofill_conclusion(
     existing: str = "",
     previous_generated: str = "",
     hide_draft_notice: bool = False,
+    choices: dict[str, tuple[tuple[float, ...], str]] | None = None,
 ) -> ConclusionAutofillResult:
     """Build a qualitative draft and merge it without deleting manual edits.
 
@@ -57,6 +59,7 @@ def autofill_conclusion(
     """
 
     draft = build_conclusion(snapshot, sex=sex, age_years=age_years)
+    draft = apply_conclusion_choices(draft, choices or {})
     if hide_draft_notice:
         draft = without_notice(draft, DRAFT_NOTICE_KEY)
     block = render_conclusion(draft, language)

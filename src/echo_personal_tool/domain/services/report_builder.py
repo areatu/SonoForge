@@ -12,8 +12,8 @@ with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
-from dataclasses import dataclass, field, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -23,19 +23,24 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
+from echo_personal_tool.domain.calculations.right_atrial_pressure import rap_from_ivc_pair
 from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.measurement_catalog import (
     format_measurement,
     measurement_for_caliper,
 )
 from echo_personal_tool.domain.measurement_units import area_for_display, volume_for_display
-from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS, is_unnamed_caliper_label
+from echo_personal_tool.domain.models.linear_measurement import (
+    PERCENT_LABELS,
+    LinearMeasurement,
+    is_unnamed_caliper_label,
+)
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
     METHOD_LINEAR_DERIVED,
-    METHOD_PLANIMETER,
     METHOD_SIMPSON_BIPLANE,
     METHOD_SIMPSON_MONOPLANE,
     METHOD_TEICHHOLZ,
@@ -76,6 +81,20 @@ from echo_personal_tool.domain.services.organ_volumes import (
     thyroid_lobe_volume_ml,
 )
 from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
+from echo_personal_tool.domain.services.report_document import PatientInfo as PatientInfo
+from echo_personal_tool.domain.services.report_document import ReportDocument as ReportDocument
+from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
+from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
+from echo_personal_tool.domain.services.report_document import without_values as without_values
+from echo_personal_tool.domain.services.report_provenance import (
+    LVEDD_ALIASES,
+    LVESD_ALIASES,
+    caliper_pair_origin,
+    linear_caliper_origin,
+    planimeter_origin,
+    simpson_origin,
+)
+from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
 from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
@@ -155,6 +174,10 @@ _LABEL_TO_PARAM_ID = {
     "mv": "ms_area",
     "mv area": "ms_area",
     "pht": "ms_pht",
+    # IVC diameter («НПВ» / "IVC"): the reference norm is ≤21 mm. Both keys —
+    # rows look up norms by their localized display label.
+    "нпв": "ivc_diameter",
+    "ivc": "ivc_diameter",
     # Organ measurements (item 2) — the same catalog labels in both display languages.
     "квр печени": "liver_size",
     "liver kvr": "liver_size",
@@ -254,114 +277,6 @@ def reference_unit_scale(param_id: str) -> float:
     its own copy: a value in cm/s must meet the m/s ranges of ``tr_vmax``.
     """
     return _UNIT_SCALE.get(param_id or "", 1.0)
-
-
-@dataclass(frozen=True)
-class ReportValue:
-    """One measured parameter as the report shows it."""
-
-    label: str
-    value: str
-    unit: str = ""
-    norm: str = ""
-    pathological: bool = False
-    group: str = GROUP_OTHER
-    #: Number of repeats that actually contributed to an averaged value (D-23).
-    #: Kept separate from ``value`` so norms and machine consumers still see
-    #: the unannotated numeric result.
-    sample_count: int | None = None
-    #: Recorded lineage for the «откуда значение» card (UI-4 PR-4).  ``None``
-    #: means nothing was recorded: the card says so instead of guessing.
-    origin: ValueOrigin | None = None
-    #: Stable identifier of this row inside the document (item 9 of the
-    #: 2026-11-06 list): ``group:label:ordinal``.  Hiding a row is addressed by
-    #: this key, not by its position, so the choice survives other rows being
-    #: hidden or restored.  Empty for rows the builder does not own (the
-    #: «не оценивалось» marks appended by the window).
-    key: str = ""
-    #: Sample SD and coefficient of variation of the selected repeats
-    #: (issue 559).  Kept as strings so the machine-readable ``value`` stays
-    #: the plain mean; the human value adds them after the ``n`` suffix.
-    repeat_sd: str = ""
-    repeat_cv: str = ""
-
-    @property
-    def display_value(self) -> str:
-        """Value plus the localized count of samples entering a repeat mean."""
-        text = self.value
-        if self.sample_count is not None and self.sample_count > 1:
-            text += tr("domain.report.repeat_suffix", count=self.sample_count)
-        if self.repeat_sd:
-            text += tr("domain.report.repeat_sd", sd=self.repeat_sd)
-        if self.repeat_cv:
-            text += tr("domain.report.repeat_cv", cv=self.repeat_cv)
-        return text
-
-
-@dataclass(frozen=True)
-class ReportGroup:
-    title: str
-    key: str
-    values: tuple[ReportValue, ...]
-    #: Footnotes printed under the group table (calculations: provenance of
-    #: the inputs, assumptions, warnings and the RUO statement).
-    notes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class PatientInfo:
-    """Editable report header; empty strings mean "not filled in"."""
-
-    name: str = ""
-    patient_id: str = ""
-    birth_date: str = ""
-    age: str = ""
-    sex: str = ""
-    study_date: str = ""
-    height_cm: float | None = None
-    weight_kg: float | None = None
-    bsa_m2: float | None = None
-    physician: str = ""
-    institution: str = ""
-    indication: str = ""
-    conclusion: str = ""
-    equipment: str = ""
-
-
-@dataclass(frozen=True)
-class ReportDocument:
-    patient: PatientInfo = field(default_factory=PatientInfo)
-    groups: tuple[ReportGroup, ...] = ()
-    #: Printed title of the sheet (item 7 of the 2026-11-06 list).  Empty means
-    #: the default «Протокол ЭхоКГ», so a document built before the report
-    #: formats existed still prints exactly what it printed then.
-    title: str = ""
-    #: Format id the document was built for (``echo`` / ``ultrasound_generic``).
-    #: Kept in the document so CSV/JSON exports and the header of the sheet name
-    #: the same thing as the PDF.
-    profile_id: str = ""
-    #: Export status (#555): a draft is not a signed-off protocol. The JSON
-    #: and CSV exports and the report-mode status banner print it; the PDF
-    #: sheet does not (2026-11-16 list, item 5) — protocols may be focused
-    #: and partial, and the printed sheet is the protocol itself.
-    draft: bool = False
-    #: Export-level warnings (no scale, stale record, unreviewed contours),
-    #: already localized. Kept in the document so the banner and the machine
-    #: exports say the same thing.
-    notices: tuple[str, ...] = ()
-
-    @property
-    def status_text(self) -> str:
-        """Localized export status, the same words in PDF, JSON and CSV."""
-        return tr("report.status.draft" if self.draft else "report.status.final")
-
-    @property
-    def has_measurements(self) -> bool:
-        return any(group.values for group in self.groups)
-
-    @property
-    def pathological_values(self) -> tuple[ReportValue, ...]:
-        return tuple(value for group in self.groups for value in group.values if value.pathological)
 
 
 @lru_cache(maxsize=1)
@@ -589,6 +504,11 @@ def group_for_label(label: str) -> str:
         "lavi",
     }:
         return GROUP_LEFT_ATRIUM
+    # «НПВ» / "IVC" (and the M-mode pair «НПВ выдох» / «НПВ вдох») belong to
+    # the right atrium; organ labels never reach here (blocks above) and none
+    # of them contains "ivc" as a substring ("LIV-IVS" → "liv-ivs").
+    if any(keyword in text for keyword in ("нпв", "ivc")):
+        return GROUP_RIGHT_ATRIUM
     if tokens & {"ra", "rav"} or "пп" in tokens or "правое предсерд" in text or "right atr" in text:
         return GROUP_RIGHT_ATRIUM
     if any(
@@ -646,6 +566,7 @@ def _value(
     repeat_sd: float | None = None,
     repeat_cv: float | None = None,
     origin: ValueOrigin | None = None,
+    parameter_id: str = "",
 ) -> ReportValue | None:
     """One report row formatted via :func:`format_measurement` (issue 482).
 
@@ -667,6 +588,7 @@ def _value(
     return ReportValue(
         label=label,
         value=format_measurement(measurement_id, value, unit),
+        parameter_id=parameter_id or measurement_id,
         unit=unit,
         norm=norm_text,
         pathological=pathological,
@@ -679,7 +601,7 @@ def _value(
 
 
 def _text_value(label: str, text: str, *, group: str | None = None) -> ReportValue:
-    return ReportValue(label=label, value=text, group=group or group_for_label(label))
+    return ReportValue(label=label, value=text, parameter_id="lv.diastology", group=group or group_for_label(label))
 
 
 _STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
@@ -713,118 +635,6 @@ def _strain_report_notes(strain: StrainReport) -> tuple[str, ...]:
     return tuple(notes)
 
 
-#: Labels of the calipers a Teichholz / Simpson LV volume is derived from.
-_LVEDD_ALIASES = {"lvedd", "lvidd", "lv_edd", "lv_end_diastolic_diameter"}
-_LVESD_ALIASES = {"lvesd", "lvids", "lv_esd", "lv_end_systolic_diameter"}
-
-
-def _linear_caliper_origin(snapshot: MeasurementSnapshot, aliases: set[str], method_id: str) -> ValueOrigin | None:
-    """Origin of a linear caliper whose label matches one of ``aliases``.
-
-    The caliper carries the clip/frame it was drawn on, so a derived volume
-    reports the real source instead of «происхождение не записано».
-    """
-    for measurement in snapshot.linear_measurements:
-        if measurement.label.strip().casefold() in aliases:
-            return measurement_origin(
-                method_id,
-                measurement_id=measurement.measurement_id,
-                revision=measurement.revision,
-                sop_instance_uid=measurement.sop_instance_uid,
-                frame_index=measurement.frame_index,
-            )
-    return None
-
-
-def _lineage_source(lineage: object) -> ClipSource | None:
-    """The clip of a :class:`ContourLineage`, when the contour recorded one."""
-    if lineage is None:
-        return None
-    uid = str(getattr(lineage, "sop_instance_uid", "") or "")
-    if not uid:
-        return None
-    return ClipSource(uid, getattr(lineage, "frame_index", None))
-
-
-def _caliper_pair_origin(snapshot: MeasurementSnapshot, method_id: str) -> ValueOrigin:
-    """Origin of a value derived from *both* LV calipers (EF, stroke volume).
-
-    Both clips are cited, in the order they appear in the study, and the
-    identity is the diastolic caliper — the one the formula is anchored on.
-    """
-    sources: list[ClipSource] = []
-    ids: list[str] = []
-    for origin in (
-        _linear_caliper_origin(snapshot, _LVEDD_ALIASES, method_id),
-        _linear_caliper_origin(snapshot, _LVESD_ALIASES, method_id),
-    ):
-        if origin is None:
-            continue
-        for source in origin.sources:
-            if source not in sources:
-                sources.append(source)
-        if origin.measurement_id and origin.measurement_id not in ids:
-            ids.append(origin.measurement_id)
-    return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
-
-
-def _planimeter_origin(item: object) -> ValueOrigin:
-    """Origin of one planimeter result from the contour it was traced on."""
-    lineage = getattr(item, "contour", None)
-    if lineage is None:
-        # A result stored before the lineage was kept: the method is known,
-        # the clip was never recorded.
-        return measurement_origin(METHOD_PLANIMETER)
-    source = _lineage_source(lineage)
-    return measurement_origin(
-        METHOD_PLANIMETER,
-        measurement_id=str(getattr(lineage, "measurement_id", "") or ""),
-        revision=int(getattr(lineage, "revision", 0) or 0),
-        sop_instance_uid=source.sop_instance_uid if source is not None else "",
-        frame_index=source.frame_index if source is not None else None,
-    )
-
-
-def _simpson_origin(
-    lvef: object,
-    *,
-    method_id: str,
-    views: tuple[str, ...] | None = None,
-    phase: str = "both",
-) -> ValueOrigin:
-    """Origin of a Simpson value from the contours it was traced from.
-
-    ``phase`` selects the contours that took part: ``"ed"`` for the diastolic
-    volume, ``"es"`` for the systolic one, ``"both"`` for EF and stroke
-    volume. ``views`` narrows the citation to the views the value was actually
-    computed from: a 4C volume must not cite the 2C clip, while a biplane
-    volume is the sum of both. Lineage the contours did not record stays
-    unrecorded — the helper never invents a clip.
-    """
-    sources: list[ClipSource] = []
-    ids: list[str] = []
-    for view, metrics in (("a4c", getattr(lvef, "a4c", None)), ("a2c", getattr(lvef, "a2c", None))):
-        if metrics is None:
-            continue
-        if views is not None and view not in views:
-            continue
-        for name in ("ed_contour", "es_contour"):
-            if phase == "ed" and name != "ed_contour":
-                continue
-            if phase == "es" and name != "es_contour":
-                continue
-            lineage = getattr(metrics, name, None)
-            if lineage is None:
-                continue
-            source = _lineage_source(lineage)
-            if source is not None and source not in sources:
-                sources.append(source)
-            identifier = str(getattr(lineage, "measurement_id", "") or "")
-            if identifier and identifier not in ids:
-                ids.append(identifier)
-    return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
-
-
 def _append_left_ventricle_report_values(
     values: list[ReportValue],
     snapshot: MeasurementSnapshot,
@@ -850,16 +660,16 @@ def _append_left_ventricle_report_values(
         # read from that record — a contour whose lineage was not stored
         # leaves its value unrecorded rather than guessed from the snapshot.
         simpson_method = METHOD_SIMPSON_BIPLANE if lvef.method == "simpson_biplan" else METHOD_SIMPSON_MONOPLANE
-        ed_origin = _simpson_origin(lvef, method_id=simpson_method, phase="ed")
-        es_origin = _simpson_origin(lvef, method_id=simpson_method, phase="es")
-        both_origin = _simpson_origin(lvef, method_id=simpson_method, phase="both")
+        ed_origin = simpson_origin(lvef, method_id=simpson_method, phase="ed")
+        es_origin = simpson_origin(lvef, method_id=simpson_method, phase="es")
+        both_origin = simpson_origin(lvef, method_id=simpson_method, phase="both")
         for view_key, view_label, metrics in (("a4c", "4C", lvef.a4c), ("a2c", "2C", lvef.a2c)):
             if metrics is None:
                 continue
             length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
             length_phase = "ed" if metrics.length_ed_mm is not None else "es"
             # The per-view values cite the contours of that view only.
-            view_origin = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase=length_phase)
+            view_origin = simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase=length_phase)
             item = _value(
                 tr("domain.report.lv_length", view=view_label),
                 f"lv.length_{view_key}",
@@ -871,8 +681,8 @@ def _append_left_ventricle_report_values(
             )
             if item:
                 values.append(item)
-            ed_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="ed")
-            es_here = _simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="es")
+            ed_here = simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="ed")
+            es_here = simpson_origin(lvef, method_id=simpson_method, views=(view_key,), phase="es")
             for label_key, kind, volume, origin in (
                 ("domain.report.kdo_lv", "kdo", display_volume(metrics.edv_ml), ed_here),
                 ("domain.report.kso_lv", "kso", display_volume(metrics.esv_ml), es_here),
@@ -932,14 +742,14 @@ def _append_left_ventricle_report_values(
 
     teichholz = snapshot.teichholz
     if teichholz is not None:
-        teich_ed_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES, METHOD_TEICHHOLZ)
-        teich_es_origin = _linear_caliper_origin(snapshot, _LVESD_ALIASES, METHOD_TEICHHOLZ)
-        teich_both_origin = _caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
+        teich_ed_origin = linear_caliper_origin(snapshot, LVEDD_ALIASES, METHOD_TEICHHOLZ)
+        teich_es_origin = linear_caliper_origin(snapshot, LVESD_ALIASES, METHOD_TEICHHOLZ)
+        teich_both_origin = caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
         rows: tuple[tuple[str, str, float | None, str, str | None, ValueOrigin | None], ...] = (
             (_label_catalog("lv.edv_teich"), "lv.edv_teich", teichholz.edv_ml, "mL", None, teich_ed_origin),
             (_label_catalog("lv.esv_teich"), "lv.esv_teich", teichholz.esv_ml, "mL", None, teich_es_origin),
             (_label_catalog("lv.ef_teich"), "lv.ef_teich", teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
-            (tr("domain.report.sv"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
+            (tr("result.lv_sv_teich"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
         )
         for label, measurement_id, value, unit, norm_label, row_origin in rows:
             item = _value(
@@ -951,6 +761,7 @@ def _append_left_ventricle_report_values(
                 group=GROUP_LEFT_VENTRICLE,
                 norm_label=norm_label,
                 origin=row_origin,
+                parameter_id="lv.sv_teich" if measurement_id == "lv.sv" else measurement_id,
             )
             if item:
                 values.append(item)
@@ -958,7 +769,7 @@ def _append_left_ventricle_report_values(
     # LV mass and relative wall thickness are computed from the same M-mode
     # calipers as Teichholz (EDD/ESD, PWT, IVST), so they carry the caliper
     # origin instead of «происхождение не записано».
-    linear_derived_origin = _linear_caliper_origin(snapshot, _LVEDD_ALIASES | _LVESD_ALIASES, METHOD_LINEAR_DERIVED)
+    linear_derived_origin = linear_caliper_origin(snapshot, LVEDD_ALIASES | LVESD_ALIASES, METHOD_LINEAR_DERIVED)
     item = _value(
         _label("panel.lv_mass"),
         "lv.mass",
@@ -985,6 +796,24 @@ def _append_left_ventricle_report_values(
         values.append(item)
     if snapshot.diastology_grade:
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
+
+
+def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:
+    """Newest M-mode IVC diameters (expiration, inspiration) in mm.
+
+    The tuple order is insertion order, so the last matching entry wins; the
+    Doppler-zone calipers and uncalibrated lengths are not IVC diameters.
+    """
+    exp = insp = None
+    for item in measurements:
+        if item.doppler or item.millimeter_length is None:
+            continue
+        key = item.label.strip().casefold()
+        if key == "ivc-exp":
+            exp = item.millimeter_length
+        elif key == "ivc-insp":
+            insp = item.millimeter_length
+    return exp, insp
 
 
 def _append_chamber_report_values(
@@ -1066,6 +895,40 @@ def _append_chamber_report_values(
         if item:
             values.append(item)
 
+    # Derived RAP (ДПП) from the M-mode IVC pair (IVC-EXP / IVC-INSP): both
+    # calipers must be present; the guideline estimate is 3 | 8 | 15 mmHg.
+    exp_mm, insp_mm = _ivc_pair_mm(snapshot.linear_measurements)
+    if exp_mm is not None and insp_mm is not None:
+        collapse, rap = rap_from_ivc_pair(exp_mm, insp_mm)
+        if rap is not None:
+            item = _value(
+                _label("result.rap_by_ivc"),
+                "ra.rap",
+                float(rap),
+                "mmHg",
+                sex=sex,
+                group=GROUP_RIGHT_ATRIUM,
+                norm_label="RAP",
+                # Derived from two calipers, no single clip origin to cite.
+                origin=None,
+            )
+            if item:
+                values.append(item)
+        if collapse is not None:
+            item = _value(
+                _label("result.ivc_collapse"),
+                # No ``ivc.collapse`` catalog entry exists and format_measurement
+                # raises on unknown ids; the row borrows a 0-decimal percent
+                # spec for formatting only (ReportValue keeps no measurement id).
+                "vessel.stenosis_d",
+                float(collapse),
+                "%",
+                sex=sex,
+                group=GROUP_RIGHT_ATRIUM,
+            )
+            if item:
+                values.append(item)
+
     if snapshot.rv_fac_percent is not None:
         item = _value(
             _label("result.fac"),
@@ -1110,6 +973,7 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
         flow_sample_count_by_label: dict[str, int] = {}
         flow_stats_by_label: dict[str, RepeatStatistics] = {}
         flow_origins: dict[str, ValueOrigin] = {}
+        flow_parameters: dict[str, str] = {}
         doppler_values: list[tuple[str, str, float | None, str, str]] = [
             (_label("result.mv_e"), "mv.e", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             (_label("result.mv_a"), "mv.a", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -1189,7 +1053,10 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 )
             )
             for kind in ("Vmax", "PGmax", "Vmean", "PGmean", "VTI"):
-                flow_origins[flow_measurement_id(flow.site, kind)] = doppler_flow_origin(doppler, flow, kind)
+                flow_label = _flow(flow.site, kind)
+                flow_origins[flow_label] = doppler_flow_origin(doppler, flow, kind)
+                # A generic precision id (e.g. doppler.vmean) is not a site.
+                flow_parameters[flow_label] = f"{flow.site.lower()}.{kind.lower()}"
             flow_mode_by_label[_flow(flow.site, "Vmax")] = flow.mode
             flow_mode_by_label[_flow(flow.site, "Vmean")] = flow.mode
             vmax_repeat_count = flow.vmax_repeats or flow.vti_repeats
@@ -1242,7 +1109,8 @@ def _append_doppler_report_values(values: list[ReportValue], snapshot: Measureme
                 sample_count=sample_count,
                 repeat_sd=repeat_sd,
                 repeat_cv=repeat_cv,
-                origin=flow_origins.get(measurement_id) or doppler_value_origin(doppler, measurement_id),
+                origin=flow_origins.get(label) or doppler_value_origin(doppler, measurement_id),
+                parameter_id=flow_parameters.get(label, measurement_id),
             )
             if item:
                 values.append(item)
@@ -1264,11 +1132,12 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
             value=bsa_source_label(indexed.bsa_basis),
+            parameter_id="patient.bsa_source",
             group=GROUP_OTHER,
         )
         indexed_values = (
             ("BSA", "patient.bsa", indexed.bsa_m2, "m²", GROUP_OTHER, None),
-            ("LVMI", "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
+            (_label_catalog("lv.mass_i"), "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
             (_label_catalog("lv.edvi"), "lv.edvi", indexed.simpson_edvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVEDVi"),
             (_label_catalog("lv.esvi"), "lv.esvi", indexed.simpson_esvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVESVi"),
             (
@@ -1370,7 +1239,8 @@ def _append_planimeter_report_values(values: list[ReportValue], snapshot: Measur
             planimeter_item.unit,
             sex=sex,
             default_group=GROUP_PLANIMETRY,
-            origin=_planimeter_origin(planimeter_item),
+            origin=planimeter_origin(planimeter_item),
+            parameter_id=named_parameter(measurement_id, planimeter_item.label),
         )
         if entry:
             values.append(entry)
@@ -1399,6 +1269,7 @@ def _append_linear_report_values(
         if is_unnamed_caliper_label(raw_label):
             continue
         label = _cal(raw_label)
+        parameter = linear_parameter(measurement)
         origin = measurement_origin(
             METHOD_DOPPLER_CALIPER if measurement.doppler else METHOD_LINEAR_CALIPER,
             measurement_id=measurement.measurement_id,
@@ -1413,6 +1284,7 @@ def _append_linear_report_values(
                 measurement.millimeter_length,
                 "%",
                 sex=sex,
+                parameter_id=parameter,
                 origin=origin,
             )
             if entry:
@@ -1425,6 +1297,7 @@ def _append_linear_report_values(
                 measurement.millimeter_length,
                 "cm²",
                 sex=sex,
+                parameter_id=parameter,
                 origin=origin,
             )
             if entry:
@@ -1439,6 +1312,7 @@ def _append_linear_report_values(
                     "ms",
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.dt",
                     origin=origin,
                 )
                 if entry:
@@ -1457,6 +1331,7 @@ def _append_linear_report_values(
                     unit,
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.dv",
                     origin=origin,
                 )
                 if entry:
@@ -1468,6 +1343,7 @@ def _append_linear_report_values(
                     "mmHg",
                     sex=sex,
                     group=GROUP_OTHER,
+                    parameter_id=f"{parameter}.pg",
                     origin=origin,
                 )
                 if pg_entry:
@@ -1489,7 +1365,7 @@ def _append_linear_report_values(
             caliper_id = measurement_for_caliper(raw_label) or "caliper.length"
         if caliper_val is None:
             continue
-        entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin)
+        entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin, parameter_id=parameter)
         if entry:
             values.append(entry)
 
@@ -1664,6 +1540,7 @@ def _append_vessel_report_values(values: list[ReportValue], snapshot: Measuremen
             values.append(
                 ReportValue(
                     label=row_label,
+                    parameter_id=f"{named_parameter('vessel', vessel.label)}.{measurement_id.removeprefix('vessel.')}",
                     value=format_measurement(measurement_id, vessel_val, unit),
                     unit=unit,
                     group=group_for_label(row_label) if site else GROUP_VESSELS,
@@ -1684,6 +1561,7 @@ def build_report_groups(
     sex: str = "",
     length_display_unit: str = "mm",
     include_inputs: bool = True,
+    value_order: Iterable[str] = (),
 ) -> tuple[ReportGroup, ...]:
     """Group every measurement of the study snapshot by anatomical structure.
 
@@ -1746,6 +1624,8 @@ def build_report_groups(
 
         calculation_notes = report_notes(calculations, include_inputs=include_inputs)
 
+    ranks = {key: index for index, key in enumerate(dict.fromkeys(value_order))}
+    repeats = {row: repeat for repeat in snapshot.report_repeats for row in repeat.parameter_ids}
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
         group_values = tuple(value for value in values if value.group == key)
@@ -1760,53 +1640,27 @@ def build_report_groups(
             ReportGroup(
                 title=tr(f"report.group.{key}"),
                 key=key,
-                values=_keyed_values(key, group_values),
+                values=_keyed_values(key, group_values, ranks, repeats),
                 notes=notes,
             )
         )
     return tuple(grouped)
 
 
-def _keyed_values(group_key: str, values: tuple[ReportValue, ...]) -> tuple[ReportValue, ...]:
-    """Give every row its stable ``group:label:ordinal`` key (item 9).
-
-    The ordinal counts same-labelled rows inside the group — two planimeter
-    contours of one frame stay apart — and it is computed over the *whole*
-    group, before any hiding, so restoring a row never renumbers the others.
-    """
+def _keyed_values(
+    group_key: str, values: tuple[ReportValue, ...], ranks: Mapping[str, int], repeats: Mapping[str, ReportRepeat]
+) -> tuple[ReportValue, ...]:
+    """Key before sorting/hiding; never derive a preference from translated prose."""
     counters: dict[str, int] = {}
-    keyed: list[ReportValue] = []
+    keyed = []
     for value in values:
-        ordinal = counters.get(value.label, 0)
-        counters[value.label] = ordinal + 1
-        keyed.append(value if value.key else replace(value, key=f"{group_key}:{value.label}:{ordinal}"))
+        parameter = value.parameter_id or value.label
+        ordinal = counters.get(parameter, 0)
+        counters[parameter] = ordinal + 1
+        keyed.append(replace(value, key=f"{group_key}:{parameter}:{ordinal}", repeat=repeats.get(parameter)))
+    if ranks:
+        keyed.sort(key=lambda value: ranks.get(value.key, len(ranks)))
     return tuple(keyed)
-
-
-def without_values(document: ReportDocument, hidden_keys: Iterable[str]) -> ReportDocument:
-    """Drop the rows the physician hid from the sheet (item 9).
-
-    The filter works on the built document, once, so the preview, the PDF, the
-    CSV and the JSON all lose the same rows; a group that becomes empty
-    disappears with its notes.  Unknown keys are ignored, which keeps a study
-    reload from resurrecting a row that no longer exists.
-    """
-    hidden = frozenset(key for key in hidden_keys if key)
-    if not hidden:
-        return document
-    groups: list[ReportGroup] = []
-    dropped = False
-    for group in document.groups:
-        values = tuple(value for value in group.values if value.key not in hidden)
-        if not values:
-            dropped = True
-            continue
-        if len(values) != len(group.values):
-            dropped = True
-            groups.append(replace(group, values=values))
-        else:
-            groups.append(group)
-    return replace(document, groups=tuple(groups)) if dropped else document
 
 
 def _calculator_inputs(
@@ -1854,6 +1708,7 @@ def _calculation_values(calculations: CalculationsSnapshot) -> list[ReportValue]
             rows.append(
                 ReportValue(
                     label=output.label,
+                    parameter_id=f"calc.{output.id}",
                     value=output.formatted(),
                     unit=output.unit,
                     group=GROUP_CALCULATIONS,
@@ -1897,6 +1752,7 @@ def build_report_document(
     profile_id: str = "",
     include_inputs: bool = True,
     hidden_keys: Iterable[str] = (),
+    value_order: Iterable[str] = (),
     study_profile_id: str = "",
     draft: bool = False,
 ) -> ReportDocument:
@@ -1928,47 +1784,20 @@ def build_report_document(
         snapshot = restrict_snapshot_to_profile(snapshot, study_profile(study_profile_id))
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
         info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
-    if not profile_id:
-        # No format asked for: keep the pre-item-7 document byte for byte, so
-        # the dialog and every older caller print what they printed before.
-        return _with_export_status(
-            without_values(
-                ReportDocument(
-                    patient=info,
-                    groups=build_report_groups(
-                        snapshot,
-                        sex=sex,
-                        length_display_unit=length_display_unit,
-                        include_inputs=include_inputs,
-                    ),
-                ),
-                hidden_keys,
-            ),
-            snapshot,
-            draft,
-        )
-    chosen = profile(profile_id)
-    groups = chosen.groups(
-        build_report_groups(
-            snapshot,
-            sex=sex,
-            length_display_unit=length_display_unit,
-            include_inputs=include_inputs,
-        )
-    )
-    return _with_export_status(
-        without_values(
-            ReportDocument(
-                patient=info,
-                groups=groups,
-                title=profile_title(chosen.id, tr),
-                profile_id=chosen.id,
-            ),
-            hidden_keys,
-        ),
+    groups = build_report_groups(
         snapshot,
-        draft,
+        sex=sex,
+        length_display_unit=length_display_unit,
+        include_inputs=include_inputs,
+        value_order=value_order,
     )
+    document = ReportDocument(patient=info, groups=groups)
+    if profile_id:
+        chosen = profile(profile_id)
+        document = replace(
+            document, groups=chosen.groups(groups), title=profile_title(chosen.id, tr), profile_id=chosen.id
+        )
+    return _with_export_status(without_values(document, hidden_keys), snapshot, draft)
 
 
 def with_extra_values(document: ReportDocument, rows: tuple[ReportValue, ...]) -> ReportDocument:

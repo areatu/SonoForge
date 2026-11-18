@@ -114,6 +114,7 @@ class ReportPreview(QWidget):
     #: the 2026-11-06 list).  ``(value_key, hidden)`` — the window owns the set
     #: and rebuilds the document from it, so hiding never edits the bytes.
     value_visibility_changed = Signal(str, bool)
+    edit_values_requested = Signal(str)  # optional row key to focus
     #: The physician renamed a planimetry row from its «откуда значение» card
     #: (item 10 of the 2026-11-06 list): ``(measurement_id, new_label)``.
     value_rename_requested = Signal(str, str)
@@ -164,6 +165,10 @@ class ReportPreview(QWidget):
         #: the owner asked for the format to be visible where the sheet is, not
         #: buried in the settings of the application.
         self._profile_buttons: dict[str, QToolButton] = {}
+        self._values_button = QToolButton()
+        self._values_button.setObjectName("reportEditValues")
+        self._values_button.setAutoRaise(True)
+        self._values_button.clicked.connect(lambda: self.edit_values_requested.emit(""))
         #: «Входные данные» switch of the header.  A checkable button rather than
         #: a checkbox: it belongs to the segmented row of the sheet controls and
         #: must read as part of it, not as a form field of the application.
@@ -197,6 +202,7 @@ class ReportPreview(QWidget):
         toolbar.setSpacing(8)
         toolbar.addWidget(self._profile_label)
         toolbar.addWidget(self._profile_row)
+        toolbar.addWidget(self._values_button)
         toolbar.addWidget(self._inputs_button)
         toolbar.addWidget(self._zoom_label)
         toolbar.addWidget(self._zoom)
@@ -708,6 +714,7 @@ class ReportPreview(QWidget):
         # The footnote belongs to the finished bytes too: toggling it would
         # contradict the sheet the version was frozen with.
         self._inputs_button.setEnabled(not locked)
+        self._values_button.setEnabled(not locked)
 
     def _build_value_menu(self, value: ReportValue) -> QMenu | None:
         """The «скрыть / вернуть» action of one row (item 9).
@@ -719,6 +726,9 @@ class ReportPreview(QWidget):
             return None
         action = QMenu(self)
         action.setObjectName("reportValueMenu")
+        if value.repeat is not None:
+            choose = action.addAction(tr("report.values.choose"))
+            choose.triggered.connect(lambda: self.edit_values_requested.emit(value.key))
         toggle = action.addAction(tr("report.hide_value"))
         toggle.triggered.connect(lambda _checked=False, key=value.key: self.value_visibility_changed.emit(key, True))
         return action
@@ -741,6 +751,9 @@ class ReportPreview(QWidget):
             button.setToolTip(tr("report.profile.locked") if self._frozen else tr("report.profile.tooltip"))
         # The pressed button is the state, so it survives a re-localisation.
         self.set_profile(self._profile_id)
+        self._values_button.setText(tr("report.values.button"))
+        self._values_button.setToolTip(tr("report.values.title"))
+        self._values_button.setAccessibleName(tr("report.values.title"))
         self._inputs_button.setText(tr("report.inputs_toggle"))
         self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
         self._zoom_label.setText(tr("report_mode.zoom"))

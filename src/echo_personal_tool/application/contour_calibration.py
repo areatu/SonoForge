@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from functools import partial
 from typing import Any
 
@@ -147,12 +148,20 @@ def express_contours_on_grid(
             output.append(contour)
             continue
         row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
-        output.append(
-            contour.__class__(
-                **{
-                    **contour.__dict__,
-                    "points": [(x * col, y * row) for x, y in contour.points],
-                }
-            )
-        )
+        output.append(_rescale_contour(contour, row, col))
     return tuple(output)
+
+
+def _rescale_contour(contour: Contour, row: float, col: float) -> Contour:
+    # An open Simpson contour includes its annulus chord and apex. Scaling
+    # only the arc measures a different cavity when choosing a different clip.
+    def point(p: tuple[float, float]) -> tuple[float, float]:
+        return p[0] * col, p[1] * row
+
+    annulus = contour.mitral_annulus
+    return replace(
+        contour,
+        points=[point(p) for p in contour.points],
+        mitral_annulus=(point(annulus[0]), point(annulus[1])) if annulus is not None else None,
+        apex_landmark=point(contour.apex_landmark) if contour.apex_landmark is not None else None,
+    )

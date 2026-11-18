@@ -24,6 +24,7 @@ from echo_personal_tool.domain.services.report_builder import (
     GROUP_MITRAL_VALVE,
     GROUP_PLANIMETRY,
     GROUP_PRECEREBRAL,
+    GROUP_RIGHT_ATRIUM,
     GROUP_THYROID,
     GROUP_TRICUSPID_VALVE,
     GROUP_VESSELS,
@@ -289,12 +290,12 @@ class TestBuildReportGroups:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_4c_index_ml_m2=40.0))
         groups = build_report_groups(snapshot, sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
-        assert "LVMI" in lv
+        assert "иММЛЖ" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
         assert "иОЛП · 4-кам." in lavi
         assert not any("Биплан" in label for label in lavi)
         flagged = {value.label for group in groups for value in group.values if value.pathological}
-        assert {"LVMI", "иОЛП · 4-кам."} <= flagged
+        assert {"иММЛЖ", "иОЛП · 4-кам."} <= flagged
 
     def test_unconfirmed_biplane_index_is_not_reported(self) -> None:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lav_bi_index_ml_m2=40.0))
@@ -331,6 +332,17 @@ class TestBuildReportGroups:
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
         assert _values(mm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "62"
         assert _values(cm, GROUP_LEFT_VENTRICLE)["КДР ЛЖ"] == "6.2"
+
+    def test_custom_caliper_name_travels_to_the_report(self) -> None:
+        """An invented point-menu name keeps its value in the sheet (item 1)."""
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="сепарация перикарда", pixel_length=41.0, millimeter_length=24.0),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        row = next(value for group in groups for value in group.values if value.label == "сепарация перикарда")
+        assert row.value == "24"
 
     @pytest.mark.parametrize("label", ["%D", "%S", "%D стеноз", "%S стеноз"])
     def test_percent_calipers_are_reported_in_percent(self, label: str) -> None:
@@ -572,3 +584,46 @@ def test_confirmed_biplane_result_is_reported_as_biplane() -> None:
     values = {value.label: value for group in build_report_groups(snapshot, sex="M") for value in group.values}
     assert values["ОЛП Биплан"].value == "61"
     assert values["иОЛП Биплан"].value == "34"
+
+
+class TestRapFromIvcPair:
+    """The M-mode IVC pair (IVC-EXP / IVC-INSP) feeds the derived RAP rows."""
+
+    def test_pair_adds_rap_and_collapse_rows(self) -> None:
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),
+                LinearMeasurement(label="IVC-INSP", pixel_length=24.0, millimeter_length=12.0),
+            ),
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        ra = next(group for group in groups if group.key == GROUP_RIGHT_ATRIUM)
+        rows = {(value.value, value.unit) for value in ra.values}
+        # 24 mm > 21 mm at 50 % collapse → intermediate RAP 8 mmHg; collapse 50 %.
+        assert ("8", "mmHg") in rows
+        assert ("50", "%") in rows
+
+    def test_incomplete_pair_adds_no_rap_rows(self) -> None:
+        snapshot = _snapshot(
+            linear_measurements=(LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),),
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        units = {value.unit for group in groups for value in group.values}
+        assert "mmHg" not in units
+
+    def test_newest_caliper_of_each_label_wins(self) -> None:
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="IVC-EXP", pixel_length=48.0, millimeter_length=24.0),
+                LinearMeasurement(label="IVC-INSP", pixel_length=32.0, millimeter_length=16.0),
+                LinearMeasurement(label="ivc-insp", pixel_length=0.0, millimeter_length=None),
+                LinearMeasurement(label="IVC-INSP", pixel_length=24.0, millimeter_length=12.0),
+            ),
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        ra = next(group for group in groups if group.key == GROUP_RIGHT_ATRIUM)
+        rows = {(value.value, value.unit) for value in ra.values}
+        # Newest IVC-INSP is 12 mm (the None-length entry is skipped) → 8 mmHg;
+        # the stale 16 mm reading would have yielded 15 mmHg.
+        assert ("8", "mmHg") in rows
+        assert ("15", "mmHg") not in rows

@@ -519,6 +519,7 @@ class LabelPicker(QFrame):
 
         self._context: str = "2d"
         self._value_text: str = ""
+        self._allow_free_text: bool = False
         self._options: tuple[LabelOption, ...] = ()
         self._selected_index: int = 0
         self._applying_theme: bool = False
@@ -620,10 +621,17 @@ class LabelPicker(QFrame):
         context: str = "2d",
         anchor: QPoint | None = None,
         bounds: QRect | None = None,
+        allow_free_text: bool = False,
     ) -> None:
-        """Открыть окошко для только что завершённого свободного измерения."""
+        """Открыть окошко для только что завершённого свободного измерения.
+
+        ``allow_free_text`` — the point-menu naming of a general-tools
+        caliper/contour (item 1): the physician may type a word of its own in
+        any context, not only in planimetry.
+        """
         self._context = normalize_context(context)
         self._value_text = value_text.strip()
+        self._allow_free_text = bool(allow_free_text)
         self.retranslate_ui()
         self._search.blockSignals(True)
         self._search.clear()
@@ -730,7 +738,7 @@ class LabelPicker(QFrame):
 
     def custom_label_text(self) -> str:
         """The typed query when it can become a free label, else ``""``."""
-        if self._context != PICKER_CONTEXT_PLANIMETER:
+        if self._context != PICKER_CONTEXT_PLANIMETER and not self._allow_free_text:
             return ""
         text = self._search.text().strip()
         if not text or len(text) > 64:
