@@ -33,6 +33,7 @@ import psutil
 
 from echo_personal_tool.application.analysis_jobs import AnalysisJobs
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore
+from echo_personal_tool.application.ctmr_slice_requests import CtMrSliceRequests
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.key_images import KeyImageService
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
@@ -62,6 +63,14 @@ from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
+
+
+def make_ctmr_slice_requests() -> CtMrSliceRequests:
+    """Compose the opt-in CT/MR lazy reader; caller owns its lifecycle."""
+    from echo_personal_tool.infrastructure.ctmr_slice_reader import read_ctmr_slice, source_is_current
+
+    return CtMrSliceRequests(read_ctmr_slice, source_is_current)
+
 
 PROFILE_FULL = "full"
 PROFILE_PRESENTER = "presenter"
@@ -673,6 +682,7 @@ __all__ = [
     "compute_frame_cache_budget",
     "display_name_for_profile",
     "in_memory_app_services",
+    "make_ctmr_slice_requests",
     "normalize_profile_name",
     "resolve_window_dependencies",
     "services_of",
