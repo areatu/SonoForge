@@ -4,7 +4,7 @@ These helpers answer one question: *which clip and which contour* did a value
 come from?  ``report_builder`` uses them to fill the ``origin`` of a derived
 row, so the printed sheet cites the real acquisition instead of «происхождение
 не записано».  They live here, next to nothing else, because ``report_builder``
-is at its module-size ceiling (#474) and they are a self-contained group: the
+is at its module-size ceiling (issue 474) and they are a self-contained group: the
 domain models they read are the only dependency.
 
 Pure domain: no Qt, no I/O.

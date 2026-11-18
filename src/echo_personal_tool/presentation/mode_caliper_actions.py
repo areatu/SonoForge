@@ -6,7 +6,7 @@ interactive panel), then the caliper is armed with its fixed label so the
 measurement lands in the report under the right row.
 
 The window keeps its status bar and hint strip; this module owns the sequence,
-which keeps ``MainWindow`` at its method/line ceiling (#474) and makes the rule
+which keeps ``MainWindow`` at its method/line ceiling (issue 474) and makes the rule
 testable without a window.  No Qt import on purpose.
 """
 

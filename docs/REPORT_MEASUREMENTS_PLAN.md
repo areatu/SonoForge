@@ -143,7 +143,7 @@ Vmax ВТЛЖ и др.). Пользователь убирает/добавля�
 
 ---
 
-## PR-A: `feat(measurements):命名 точки + НПВ`
+## PR-A: `feat(measurements): point naming + НПВ`
 
 Ветка `arena/pr-a-measurements`, от `main`. Коммиты:
 

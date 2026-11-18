@@ -11,7 +11,7 @@ The hit is searched in screen pixels, so the grab radius does not stretch with
 zoom, and the nearest point wins between the two kinds: a crowded overlay
 answers with one menu only.  The window owns the widget state and the popup;
 this module owns the rule, which keeps ``ViewerWidget`` at its size ceiling
-(#474) and makes the rule testable without a drawing.
+(issue 474) and makes the rule testable without a drawing.
 """
 
 from __future__ import annotations
