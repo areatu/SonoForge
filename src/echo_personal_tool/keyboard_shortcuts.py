@@ -263,6 +263,16 @@ SHORTCUTS: tuple[ShortcutSpec, ...] = (
         "main-window",
         main_window_shortcut=True,
     ),
+    # Stage 1 (#623): quick workstation session lock for shared echo cabinets.
+    # No-op in single-user mode; locks active clinician session in multi-user mode.
+    ShortcutSpec(
+        "lock_session",
+        ("Ctrl+L",),
+        "shortcuts.action.lock_session",
+        "shortcuts.group.main",
+        "main-window",
+        main_window_shortcut=True,
+    ),
     # (spec §4.10): Ctrl+F focuses the study-browser search on the start
     # page.  The other Ctrl+F bindings live in independent window contexts
     # («orthanc-dialog», «reference-constructor»); the main-window handler

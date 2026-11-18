@@ -1050,6 +1050,7 @@ Registered on the main window or routed from the main viewer. Text fields and mo
 | `F10` | Toggle Presenter view on the audience display (Presenter profile only). |
 | `Ctrl+R` | Switch the tab mode: images ↔ report |
 | `F` | Single-file focus view: no study panels, F returns to the normal view |
+| `Ctrl+L` | Lock active user session |
 | `Ctrl+F` | Search recent studies |
 
 ### 18.2 Main-viewer keys

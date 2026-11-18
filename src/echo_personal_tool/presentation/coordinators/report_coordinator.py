@@ -241,6 +241,10 @@ class ReportCoordinator(QObject):
         # The permanent header values (Settings → Report) win over the DICOM
         # header when configured: the physician filled them once instead of
         # per study.  Session edits in the report header still win last.
+        from echo_personal_tool.application.composition import user_session_of
+
+        session = user_session_of(self._controller)
+        session_physician = session.default_report_physician() if session is not None else ""
         prefs = self._port.preferences()
         patient = PatientInfo(
             name=demographics.name if demographics else "",
@@ -254,7 +258,11 @@ class ReportCoordinator(QObject):
             bsa_m2=indexed.bsa_m2 if indexed is not None else None,
             institution=prefs.report_institution or (demographics.institution if demographics else ""),
             equipment=prefs.report_equipment or (demographics.equipment if demographics else ""),
-            physician=prefs.report_physician or (demographics.referring_physician if demographics else ""),
+            physician=(
+                prefs.report_physician
+                or session_physician
+                or (demographics.referring_physician if demographics else "")
+            ),
         )
 
         tab = self._active_tab()
@@ -820,6 +828,13 @@ class ReportCoordinator(QObject):
     # ── Export, print, finish (PR-5) ────────────────────────────────────
 
     def _exportable_document(self) -> tuple[ReportModePage, ReportDocument] | None:
+        from echo_personal_tool.application.composition import user_session_of
+        from echo_personal_tool.domain.models.user import Permission
+
+        session = user_session_of(self._controller)
+        if session is not None and not session.can(Permission.EXPORT_DATA):
+            self._port.show_status(tr("auth.status.permission_denied"))
+            return None
         page = self._page
         if page is None:
             return None
@@ -973,3 +988,62 @@ class ReportCoordinator(QObject):
         # The format buttons of the header follow the frozen state of the sheet
         # (item 7): a finished version keeps its format until «Новый черновик».
         page.preview.set_profile_locked(finished)
+
+
+def build_window_report_coordinator(window: Any) -> ReportCoordinator:
+    """Create a :class:`ReportCoordinator` backed by late-bound window callbacks.
+
+    Every entry binds late through ``window`` so tests that replace
+    ``_show_status`` or viewer methods after construction are observed, and
+    widgets created later during startup are resolved on first report use.
+    """
+    from PySide6.QtWidgets import QMessageBox
+
+    from echo_personal_tool.application.user_preferences import save_user_preferences
+
+    def store_preferences(preferences: UserPreferences) -> None:
+        window._user_preferences = preferences
+        save_user_preferences(preferences)
+
+    def focus_images() -> None:
+        if window._viewer_stack.currentWidget() is window._viewer:
+            window._viewer.setFocus()
+
+    def open_instance(instance: InstanceMetadata) -> None:
+        window._gallery.select_instance(instance)
+        window._on_instance_selected(instance)
+
+    def mirror_report_mode(report: bool) -> None:
+        system_bar = getattr(window, "_system_bar", None)
+        if system_bar is not None:
+            system_bar.set_report_mode(report)
+
+    def ask_save_path(title: str, default_name: str, file_filter: str) -> str:
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        path, _ = styled_save_file(window, title, default_name, file_filter)
+        return str(path or "")
+
+    def warn_dialog(title: str, text: str) -> None:
+        QMessageBox.warning(window, title, text)
+
+    port = ReportWindowPort(
+        active_tab=lambda: window._tabs.active,
+        preferences=lambda: window._user_preferences,
+        store_preferences=store_preferences,
+        page_stack=lambda: window._main_stack,
+        dialog_parent=lambda: window,
+        show_status=lambda message: window._show_status(message),
+        show_active_surface=lambda: window._update_main_stack(),
+        focus_images=focus_images,
+        focus_viewer=lambda: window._viewer.setFocus(),
+        open_instance=open_instance,
+        protocol_session=lambda: window.protocol.ensure_session(),
+        activate_tool=lambda tool_id: window._tool_panel.activate_tool(tool_id),
+        rename_contour=lambda measurement_id, label: window._viewer.rename_contour_measurement(measurement_id, label),
+        mirror_report_mode=mirror_report_mode,
+        ask_save_path=ask_save_path,
+        warn=warn_dialog,
+        ask_printer=lambda: ask_report_printer(window),
+    )
+    return ReportCoordinator(window._controller, port, parent=window)

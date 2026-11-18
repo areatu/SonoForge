@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -16,10 +17,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
+from echo_personal_tool.application.composition import user_session_of
 from echo_personal_tool.application.localization import tr, tr_plural
+from echo_personal_tool.application.saved_records import filter_saved_records
 from echo_personal_tool.application.user_preferences import load_user_preferences, save_user_preferences
+from echo_personal_tool.domain.models.user import Permission
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.display_formats import format_storage_unit_value
 
@@ -29,6 +34,8 @@ class MeasurementStorageDialog(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.persistence = controller.measurement_persistence
+        self._user_session = user_session_of(controller)
+        self._last_listing = None
         self._alive = True
         # Set when the dialog itself rewrites the stored autosave preference
         # (delete-all disables it «now and next launch»); the settings dialog
@@ -40,10 +47,26 @@ class MeasurementStorageDialog(QDialog):
         info = QLabel(tr("persistence.privacy") + "\n" + str(self.persistence.repository.root))
         info.setWordWrap(True)
         layout.addWidget(info)
+
+        self._filter_bar = QWidget(self)
+        filter_row = QHBoxLayout(self._filter_bar)
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.addWidget(QLabel(tr("persistence.filter_label"), self._filter_bar))
+        self.filter_combo = QComboBox(self._filter_bar)
+        self.filter_combo.setObjectName("savedRecordsScopeCombo")
+        self.filter_combo.addItem(tr("persistence.filter_all"), "all")
+        self.filter_combo.addItem(tr("persistence.filter_mine"), "mine")
+        self.filter_combo.currentIndexChanged.connect(self._on_scope_changed)
+        filter_row.addWidget(self.filter_combo)
+        filter_row.addStretch(1)
+        self._filter_bar.setVisible(bool(self._user_session and self._user_session.is_multi_user_enabled()))
+        layout.addWidget(self._filter_bar)
+
         self.summary = QLabel()
         layout.addWidget(self.summary)
         self.records = QListWidget()
         layout.addWidget(self.records)
+        self._action_buttons: dict[str, QPushButton] = {}
         buttons = QHBoxLayout()
         layout.addLayout(buttons)
         for key, action in (
@@ -54,6 +77,7 @@ class MeasurementStorageDialog(QDialog):
         ):
             button = QPushButton(tr("persistence." + key))
             button.clicked.connect(action)
+            self._action_buttons[key] = button
             buttons.addWidget(button)
         extras = QHBoxLayout()
         layout.addLayout(extras)
@@ -64,7 +88,9 @@ class MeasurementStorageDialog(QDialog):
         ):
             button = QPushButton(tr("persistence." + key))
             button.clicked.connect(action)
+            self._action_buttons[key] = button
             extras.addWidget(button)
+        self._apply_role_permissions()
         close = QPushButton(tr("persistence.close"))
         close.clicked.connect(self.accept)
         layout.addWidget(close)
@@ -85,24 +111,69 @@ class MeasurementStorageDialog(QDialog):
         text = tr(key)
         return str(code) if text == key else text
 
+    def _apply_role_permissions(self) -> None:
+        session = self._user_session
+        if session is None:
+            return
+        can_edit = session.can(Permission.EDIT_MEASUREMENTS)
+        can_delete = session.can(Permission.DELETE_MEASUREMENTS)
+        can_export = session.can(Permission.EXPORT_DATA)
+        for key in ("retry", "import", "discard", "dicom_metrics"):
+            if key in self._action_buttons:
+                self._action_buttons[key].setEnabled(can_edit)
+        for key in ("delete_all", "delete_selected"):
+            if key in self._action_buttons:
+                self._action_buttons[key].setEnabled(can_delete)
+        if "export" in self._action_buttons:
+            self._action_buttons["export"].setEnabled(can_export)
+
+    def set_filter_scope(self, scope: str) -> None:
+        """Select ``'all'`` (all workstation studies) or ``'mine'`` (authored by active user)."""
+        idx = self.filter_combo.findData(scope)
+        if idx >= 0:
+            self.filter_combo.setCurrentIndex(idx)
+
+    def _on_scope_changed(self) -> None:
+        if self._last_listing is not None:
+            self._render(self._last_listing)
+
     @staticmethod
-    def _row_text(record) -> str:
+    def _author_suffix(record: object, user_names: dict[str, str]) -> str:
+        created_by = getattr(record, "created_by", "")
+        updated_by = getattr(record, "updated_by", "")
+        if not created_by and not updated_by:
+            return ""
+        author_id = created_by or updated_by
+        author_name = user_names.get(author_id, author_id[:8])
+        if updated_by and created_by and updated_by != created_by:
+            editor_name = user_names.get(updated_by, updated_by[:8])
+            return tr("persistence.author_edited_suffix", author=author_name, editor=editor_name)
+        return tr("persistence.author_suffix", author=author_name)
+
+    @staticmethod
+    def _row_text(record: object, user_names: dict[str, str] | None = None) -> str:
         """One list row: date/counts for readable records, status for the rest."""
-        if record.status == "readable":
-            measurements = tr_plural("persistence.record_measurements", record.measurement_count)
-            return tr(
+        status_val = str(getattr(record, "status", ""))
+        key_val = str(getattr(record, "key", ""))
+        size_val = int(getattr(record, "size_bytes", 0))
+        if status_val == "readable":
+            measurements = tr_plural("persistence.record_measurements", int(getattr(record, "measurement_count", 0)))
+            base = tr(
                 "persistence.record_row",
-                name=record.key[:12],
-                size=format_storage_unit_value(record.size_bytes / 1024),
+                name=key_val[:12],
+                size=format_storage_unit_value(size_val / 1024),
                 measurements=measurements,
             )
-        status_key = "persistence.record_status." + str(record.status)
+            if user_names is not None:
+                return base + MeasurementStorageDialog._author_suffix(record, user_names)
+            return base
+        status_key = "persistence.record_status." + status_val
         status = tr(status_key)
         return tr(
             "persistence.record_row_unreadable",
-            name=record.key[:12],
-            size=format_storage_unit_value(record.size_bytes / 1024),
-            status=str(record.status) if status == status_key else status,
+            name=key_val[:12],
+            size=format_storage_unit_value(size_val / 1024),
+            status=status_val if status == status_key else status,
         )
 
     def refresh(self, on_done=None):
@@ -124,23 +195,33 @@ class MeasurementStorageDialog(QDialog):
         self.persistence.list_saved_records(apply)
 
     def _render(self, listing) -> None:
+        self._last_listing = listing
         self.records.clear()
         if listing.failed:
             # Never present "could not read" as "nothing stored" (S-07).
             self.summary.setText(tr("persistence.records_failed"))
             self.message(listing.error or "io")
             return
-        for record in listing.records:
-            item = QListWidgetItem(self._row_text(record))
+        scope = str(self.filter_combo.currentData() or "all")
+        active_uid = self._user_session.active_user_id if self._user_session is not None else ""
+        visible_records = filter_saved_records(listing.records, scope=scope, user_id=active_uid)
+        user_names = (
+            self._user_session.user_display_map()
+            if (self._user_session is not None and self._user_session.has_users())
+            else None
+        )
+        for record in visible_records:
+            item = QListWidgetItem(self._row_text(record, user_names))
             item.setData(Qt.ItemDataRole.UserRole, record.key)
             if not record.readable:
                 item.setForeground(QColor(get_theme_tokens()["text.2"]))
                 item.setToolTip(tr("persistence.record_unreadable_tip"))
             self.records.addItem(item)
+        total_bytes = sum(record.size_bytes for record in visible_records)
         text = tr_plural(
             "persistence.stats",
-            len(listing.records),
-            size=format_storage_unit_value(listing.size_bytes / 1024**2),
+            len(visible_records),
+            size=format_storage_unit_value(total_bytes / 1024**2),
         )
         if listing.unreadable:
             text += " · " + tr_plural("persistence.stats_unreadable", listing.unreadable)

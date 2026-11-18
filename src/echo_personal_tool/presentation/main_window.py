@@ -68,6 +68,7 @@ from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
+from echo_personal_tool.domain.models.user import Permission
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.protocol_definitions import PROTOCOLS
 from echo_personal_tool.domain.services.measurement_results_formatter import (
@@ -95,12 +96,21 @@ from echo_personal_tool.presentation.comparison_coordinator import ComparisonCoo
 from echo_personal_tool.presentation.coordinators.protocol_coordinator import ProtocolCoordinator, ProtocolWindowPort
 from echo_personal_tool.presentation.coordinators.report_coordinator import (
     ReportCoordinator,
-    ReportWindowPort,
-    ask_report_printer,
+    build_window_report_coordinator,
     study_profile_id,
 )
 from echo_personal_tool.presentation.coordinators.report_coordinator import (
     instance_label as _loaded_file_label,
+)
+from echo_personal_tool.presentation.coordinators.user_session_coordinator import (
+    bind_main_window_user_session,
+    check_window_permission,
+    lock_window_session,
+    open_window_users,
+    populate_window_user_menu,
+    shutdown_window_user_session,
+    switch_window_user,
+    sync_window_user_session_ui,
 )
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.display_formats import format_confidence_pct, format_fps, format_whole_pct
@@ -597,7 +607,7 @@ class MainWindow(QMainWindow):
 
         self._install_shortcuts()
         self._rebuild_layout()
-        # The first tab exists from the start; the startup load fills it (D-29).
+        bind_main_window_user_session(self, self)
         self._tab_coordinator.open_empty_tab()
         self._refresh_tab_strip()
         self._update_main_stack()
@@ -659,6 +669,7 @@ class MainWindow(QMainWindow):
             "presenter_toggle": self._presenter.toggle,
             "toggle_report_mode": self.report_coordinator.toggle_mode,
             "toggle_focus_mode": self.toggle_focus_mode,
+            "lock_session": lambda: lock_window_session(self),
             "start_page_search": self._focus_start_page_search,
         }
         # the row and the rail dispatch mode buttons through the same
@@ -1628,6 +1639,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.setObjectName("appMenu")
         menu.addAction(tr("app_menu.settings")).triggered.connect(self._show_user_preferences)
+        populate_window_user_menu(self, menu)
         layout_menu = self._build_layout_menu(menu)
         layout_menu.setObjectName("appMenuLayout")
         layout_menu.setTitle(tr("app_menu.layout"))
@@ -1725,6 +1737,9 @@ class MainWindow(QMainWindow):
             "reset": self._on_reset_measurements_requested,
             "multiview": self._on_multiview_button,
             "focus": self.toggle_focus_mode,
+            "users": lambda: open_window_users(self),
+            "switch_user": lambda: switch_window_user(self),
+            "lock_session": lambda: lock_window_session(self),
             "presenter": self._presenter.toggle,
             "quit": self.close,
         }
@@ -3291,6 +3306,7 @@ class MainWindow(QMainWindow):
         self._system_bar.reload_text()
         self._title_bar.reload_text()
         self._title_bar.set_app_menu(self._build_app_menu())
+        sync_window_user_session_ui(self)
         self._sync_command_choices()
         for widget in (self._tool_row, self._tool_rail):
             if widget is not None:
@@ -3904,6 +3920,8 @@ class MainWindow(QMainWindow):
         return dialog.frame_range()
 
     def _on_export_mp4_requested(self, instance: object) -> None:
+        if not check_window_permission(self, Permission.EXPORT_DATA):
+            return
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
             return
         frame_range = self._ask_frame_range(instance)
@@ -3966,6 +3984,8 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.mp4_export_failed"))
 
     def _on_export_dcm_requested(self, instance: object) -> None:
+        if not check_window_permission(self, Permission.EXPORT_DATA):
+            return
         from echo_personal_tool.presentation.dicom_export import request_dicom_export
 
         request_dicom_export(self, instance, self._ask_frame_range, self._show_status, self._on_dcm_export_failed)
@@ -4034,6 +4054,7 @@ class MainWindow(QMainWindow):
             # gallery-only tab after persistence has already been closed.
             self._tab_coordinator.comparison_origin_tab_id = None
             self._on_multiview_button()
+        shutdown_window_user_session(self)
         self._multiview.shutdown()
         self._viewer.disconnect_display_controls()
         # Wait briefly for pending workers to finish so signals don't fire
@@ -5022,57 +5043,7 @@ class MainWindow(QMainWindow):
         self._sync_doppler_tool_availability()
 
     def _build_report_coordinator(self) -> ReportCoordinator:
-        """The report mode (issue 478): the window lends it a narrow port, not itself.
-
-        Every entry binds late — through ``self`` at call time — so a test that
-        replaces ``_show_status`` or a viewer method after construction is seen,
-        and widgets built after the coordinator (stack, viewer, system bar) are
-        only looked up when the report mode first needs them.
-        """
-
-        def store_preferences(preferences: UserPreferences) -> None:
-            self._user_preferences = preferences
-            save_user_preferences(preferences)
-
-        def focus_images() -> None:
-            if self._viewer_stack.currentWidget() is self._viewer:
-                self._viewer.setFocus()
-
-        def open_instance(instance: InstanceMetadata) -> None:
-            self._gallery.select_instance(instance)
-            self._on_instance_selected(instance)
-
-        def mirror_report_mode(report: bool) -> None:
-            system_bar = getattr(self, "_system_bar", None)
-            if system_bar is not None:
-                system_bar.set_report_mode(report)
-
-        def ask_save_path(title: str, default_name: str, file_filter: str) -> str:
-            from echo_personal_tool.presentation.styled_dialogs import styled_save_file
-
-            path, _ = styled_save_file(self, title, default_name, file_filter)
-            return str(path or "")
-
-        port = ReportWindowPort(
-            active_tab=lambda: self._tabs.active,
-            preferences=lambda: self._user_preferences,
-            store_preferences=store_preferences,
-            page_stack=lambda: self._main_stack,
-            dialog_parent=lambda: self,
-            show_status=lambda message: self._show_status(message),
-            show_active_surface=lambda: self._update_main_stack(),
-            focus_images=focus_images,
-            focus_viewer=lambda: self._viewer.setFocus(),
-            open_instance=open_instance,
-            protocol_session=lambda: self.protocol.ensure_session(),
-            activate_tool=lambda tool_id: self._tool_panel.activate_tool(tool_id),
-            rename_contour=lambda measurement_id, label: self._viewer.rename_contour_measurement(measurement_id, label),
-            mirror_report_mode=mirror_report_mode,
-            ask_save_path=ask_save_path,
-            warn=lambda title, text: QMessageBox.warning(self, title, text),
-            ask_printer=lambda: ask_report_printer(self),
-        )
-        return ReportCoordinator(self._controller, port, parent=self)
+        return build_window_report_coordinator(self)
 
     def _apply_current_theme(self) -> None:
         apply_clinical_theme(
@@ -5378,6 +5349,8 @@ class MainWindow(QMainWindow):
                 action = MeasurementAction(action)
             except ValueError:
                 return
+        if not check_window_permission(self, Permission.EDIT_MEASUREMENTS):
+            return
         if self._multiview_tool_blocked(f"measure:{action}"):
             return
         self._prepared_draw.cancel()
@@ -5649,6 +5622,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_reset_measurements_requested(self) -> None:
+        if not check_window_permission(self, Permission.EDIT_MEASUREMENTS):
+            return
         if self._user_preferences.confirm_reset:
             answer = QMessageBox.question(
                 self,
@@ -5694,6 +5669,8 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.measurements_reset"))
 
     def _on_calibration_requested(self) -> None:
+        if not check_window_permission(self, Permission.EDIT_MEASUREMENTS):
+            return
         if self._multiview_tool_blocked("calibration"):
             return
         if self._viewer._current_frame is None:
@@ -6054,6 +6031,8 @@ class MainWindow(QMainWindow):
         return mapping.get(preset_name, preset_name)
 
     def _on_doppler_calibration_requested(self) -> None:
+        if not check_window_permission(self, Permission.EDIT_MEASUREMENTS):
+            return
         if self._multiview_tool_blocked("doppler_calibration"):
             return
         if self._viewer._current_frame is None:

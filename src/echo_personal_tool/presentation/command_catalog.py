@@ -61,6 +61,9 @@ COMMANDS: tuple[Command, ...] = (
     Command("reset", "system_bar.reset", "reset"),
     Command("multiview", "layout.multiview_mode", "multiview"),
     Command("focus", "focus.badge", "focus", "toggle_focus_mode"),
+    Command("users", "app_menu.users", "users"),
+    Command("switch_user", "app_menu.switch_user", "switch_user"),
+    Command("lock_session", "app_menu.lock_session", "lock_session", "lock_session"),
     Command(
         "presenter",
         "presenter.button",

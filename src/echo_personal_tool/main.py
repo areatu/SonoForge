@@ -410,6 +410,25 @@ def _run_application(app: QApplication, services: AppServices) -> int:
 
     set_language(preferences.language)
     app.setFont(ui_font(pixel_size=preferences.ui_font_size))
+    user_session = services.user_session
+    if user_session is not None and user_session.is_multi_user_enabled() and user_session.current_user is None:
+        from dataclasses import replace
+
+        from PySide6.QtWidgets import QDialog
+
+        from echo_personal_tool.application.composition import clamp_preferences_for_capabilities
+        from echo_personal_tool.presentation.user_login_dialog import UserLoginDialog
+
+        login_dialog = UserLoginDialog(user_session, base_preferences=preferences)
+        if login_dialog.exec() != QDialog.DialogCode.Accepted:
+            return 0
+        preferences = clamp_preferences_for_capabilities(services.io.load_preferences(), capabilities)
+        services = replace(services, preferences=preferences)
+        set_language(preferences.language)
+        app.setFont(ui_font(pixel_size=preferences.ui_font_size))
+        services.persistence.enabled = bool(
+            getattr(preferences, "measurement_persistence_enabled", capabilities.measurement_storage_default)
+        )
     controller = AppController(services)
     window = MainWindow(
         controller=controller,
