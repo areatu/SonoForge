@@ -41,6 +41,7 @@ from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
     METHOD_LINEAR_DERIVED,
+    METHOD_PLANIMETER,
     METHOD_SIMPSON_BIPLANE,
     METHOD_SIMPSON_MONOPLANE,
     METHOD_TEICHHOLZ,
@@ -90,6 +91,7 @@ from echo_personal_tool.domain.services.report_provenance import (
     LVEDD_ALIASES,
     LVESD_ALIASES,
     caliper_pair_origin,
+    ivc_pair_origin,
     linear_caliper_origin,
     planimeter_origin,
     simpson_origin,
@@ -136,9 +138,22 @@ _LABEL_TO_PARAM_ID = {
     "фв лж": "lvef",
     "edvi": "lvedvi",
     "esvi": "lvesvi",
+    # Lang 2015 volumes: absolute (mL) and indexed (mL/m²), sex-specific. The
+    # rows look these up by their norm label ("LVEDV" / "LVEDVi"…).
+    "lvedv": "lvedv",
+    "lvesv": "lvesv",
+    "lvedvi": "lvedvi",
+    "lvesvi": "lvesvi",
     "lav": "lav",
     "lavi": "lavi",
+    "la area": "la_area",
+    "площадь лп": "la_area",
+    "s лп": "la_area",
+    "ra area": "ra_area",
+    "площадь пп": "ra_area",
     "rav": "ra_volume",
+    "ravi": "ra_vol_index",
+    "иопп": "ra_vol_index",
     "s ra": "ra_area",
     "s pp": "ra_area",
     "rv basal": "rvd1",
@@ -178,6 +193,12 @@ _LABEL_TO_PARAM_ID = {
     # rows look up norms by their localized display label.
     "нпв": "ivc_diameter",
     "ivc": "ivc_diameter",
+    # Aorta segments (item 6 of the 2026-11-18 list): the sex-specific
+    # 2022 ACC/AHA ranges of the handbook instead of the sex-agnostic
+    # fallback constants.
+    "ao sinus": "asc_aorta",
+    "ao junction": "sinotubular",
+    "prox ao": "ascending_aorta",
     # Organ measurements (item 2) — the same catalog labels in both display languages.
     "квр печени": "liver_size",
     "liver kvr": "liver_size",
@@ -486,7 +507,7 @@ def group_for_label(label: str) -> str:
         return GROUP_RIGHT_VENTRICLE
     if tokens & {"av", "ar", "ava", "annulus", "lvot", "lvotd", "vti", "vmax", "pgmax", "vmean", "pgmean"}:
         return GROUP_AORTIC_VALVE
-    if text.startswith(("ao ", "ao_")) or "аорт" in text or "aort" in text:
+    if text.startswith(("ao ", "ao_")) or "аорт" in text or "aort" in text or "prox ao" in text:
         return GROUP_AORTIC_VALVE
 
     if any(keyword in text for keyword in ("psv", "edv", "ri", "s/d", "стен", "sten", "carot", "сонн", " vertebr")):
@@ -604,6 +625,48 @@ def _text_value(label: str, text: str, *, group: str | None = None) -> ReportVal
     return ReportValue(label=label, value=text, parameter_id="lv.diastology", group=group or group_for_label(label))
 
 
+#: Aorta labels whose above-range diameter gets a BSA-indexed twin row
+#: (item 8 of the 2026-11-18 list): the annulus, the sinuses of Valsalva,
+#: the sinotubular junction and the proximal ascending aorta.
+_AORTA_INDEX_LABELS = frozenset({"annulus", "av", "ao sinus", "ao junction", "prox ao"})
+
+
+def _aorta_index_entry(
+    absolute: ReportValue,
+    *,
+    raw_label: str,
+    millimeters: float | None,
+    bsa_m2: float | None,
+    sex: str,
+    origin: ValueOrigin | None,
+    parameter: str,
+) -> ReportValue | None:
+    """Indexed twin (mm/m²) of an aorta diameter above its range (2026-11-18).
+
+    Пункт 8: «Для патологически повышенных показателей аорты добавлять
+    индексированные значения с нормами».  Only a dilated diameter is re-read
+    as diameter/BSA against the indexed limits (см. ase_reference_norms) —
+    a normal one keeps the sheet clean.  Without a BSA there is no index and
+    no row.
+    """
+    if not absolute.pathological:
+        return None
+    key = raw_label.casefold().strip()
+    if key not in _AORTA_INDEX_LABELS or bsa_m2 is None or millimeters is None:
+        return None
+    return _value(
+        tr("domain.report.indexed_linear", label=absolute.label),
+        "indexed.linear",
+        millimeters / bsa_m2,
+        "mm/m²",
+        sex=sex,
+        group=absolute.group,
+        norm_label=f"{key} index",
+        origin=origin,
+        parameter_id=f"{parameter}.i",
+    )
+
+
 _STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
 
 
@@ -694,6 +757,7 @@ def _append_left_ventricle_report_values(
                     volume_unit,
                     sex=sex,
                     group=GROUP_LEFT_VENTRICLE,
+                    norm_label="LVEDV" if kind == "kdo" else "LVESV",
                     origin=origin,
                 )
                 if item:
@@ -709,6 +773,7 @@ def _append_left_ventricle_report_values(
                 volume_unit,
                 sex=sex,
                 group=GROUP_LEFT_VENTRICLE,
+                norm_label="LVEDV" if measurement_id == "lv.edv_bp" else "LVESV",
                 origin=origin,
             )
             if item:
@@ -746,8 +811,8 @@ def _append_left_ventricle_report_values(
         teich_es_origin = linear_caliper_origin(snapshot, LVESD_ALIASES, METHOD_TEICHHOLZ)
         teich_both_origin = caliper_pair_origin(snapshot, METHOD_TEICHHOLZ)
         rows: tuple[tuple[str, str, float | None, str, str | None, ValueOrigin | None], ...] = (
-            (_label_catalog("lv.edv_teich"), "lv.edv_teich", teichholz.edv_ml, "mL", None, teich_ed_origin),
-            (_label_catalog("lv.esv_teich"), "lv.esv_teich", teichholz.esv_ml, "mL", None, teich_es_origin),
+            (_label_catalog("lv.edv_teich"), "lv.edv_teich", teichholz.edv_ml, "mL", "LVEDV", teich_ed_origin),
+            (_label_catalog("lv.esv_teich"), "lv.esv_teich", teichholz.esv_ml, "mL", "LVESV", teich_es_origin),
             (_label_catalog("lv.ef_teich"), "lv.ef_teich", teichholz.lvef_percent, "%", "LVEF", teich_both_origin),
             (tr("result.lv_sv_teich"), "lv.sv", teichholz.sv_ml, "mL", None, teich_both_origin),
         )
@@ -840,13 +905,18 @@ def _append_chamber_report_values(
             es_volume_from_view,
         )
 
-        volumes = [("la.lav_a4c", es_volume_from_view(la.a4c))]
+        # Item 5 (2026-11-18): every measured row cites its contours — the
+        # atrial volumes used to print without any provenance at all.
+        mono_origin = simpson_origin(la, method_id=METHOD_SIMPSON_MONOPLANE, views=("a4c",), phase="es")
+        volumes = [("la.lav_a4c", es_volume_from_view(la.a4c), mono_origin)]
         # The averaged monoplane value is not promoted to the «LAV (biplane)»
         # row; only a confirmed coupled-disk result can fill it (F08).
         biplane_volume = confirmed_biplane_es_volume_ml(la)
         if biplane_volume is not None:
-            volumes.append(("la.lav_bp", biplane_volume))
-        for measurement_id, volume in volumes:
+            volumes.append(
+                ("la.lav_bp", biplane_volume, simpson_origin(la, method_id=METHOD_SIMPSON_BIPLANE, phase="es"))
+            )
+        for measurement_id, volume, row_origin in volumes:
             item = _value(
                 _label_catalog(measurement_id),
                 measurement_id,
@@ -855,16 +925,34 @@ def _append_chamber_report_values(
                 sex=sex,
                 group=GROUP_LEFT_ATRIUM,
                 norm_label="LAV",
+                origin=row_origin,
             )
             if item:
                 values.append(item)
         item = _value(
-            _label_catalog("la.area"), "la.area", display_area(la.area_cm2), area_unit, sex=sex, group=GROUP_LEFT_ATRIUM
+            _label_catalog("la.area"),
+            "la.area",
+            display_area(la.area_cm2),
+            area_unit,
+            sex=sex,
+            group=GROUP_LEFT_ATRIUM,
+            norm_label="LA Area",
+            # The area is a traced contour of the apical view (same lineage).
+            origin=simpson_origin(la, method_id=METHOD_PLANIMETER, views=("a4c",), phase="es"),
         )
         if item:
             values.append(item)
     elif snapshot.la_volume is not None and snapshot.la_volume.volume_ml is not None:
-        item = _value("LAV", "la.lav_al", snapshot.la_volume.volume_ml, "mL", sex=sex, group=GROUP_LEFT_ATRIUM)
+        item = _value(
+            "LAV",
+            "la.lav_al",
+            snapshot.la_volume.volume_ml,
+            "mL",
+            sex=sex,
+            group=GROUP_LEFT_ATRIUM,
+            # The area-length record stores no contour lineage (honest gap).
+            origin=derived_origin(METHOD_PLANIMETER),
+        )
         if item:
             values.append(item)
 
@@ -879,6 +967,8 @@ def _append_chamber_report_values(
             area_unit,
             sex=sex,
             group=GROUP_RIGHT_ATRIUM,
+            norm_label="RA Area",
+            origin=simpson_origin(ra, method_id=METHOD_PLANIMETER, views=("a4c",), phase="es"),
         )
         if item:
             values.append(item)
@@ -891,6 +981,7 @@ def _append_chamber_report_values(
             sex=sex,
             group=GROUP_RIGHT_ATRIUM,
             norm_label="RAV",
+            origin=simpson_origin(ra, method_id=METHOD_SIMPSON_MONOPLANE, views=("a4c",), phase="es"),
         )
         if item:
             values.append(item)
@@ -900,6 +991,7 @@ def _append_chamber_report_values(
     exp_mm, insp_mm = _ivc_pair_mm(snapshot.linear_measurements)
     if exp_mm is not None and insp_mm is not None:
         collapse, rap = rap_from_ivc_pair(exp_mm, insp_mm)
+        ivc_origin = ivc_pair_origin(snapshot, METHOD_LINEAR_DERIVED)
         if rap is not None:
             item = _value(
                 _label("result.rap_by_ivc"),
@@ -909,8 +1001,8 @@ def _append_chamber_report_values(
                 sex=sex,
                 group=GROUP_RIGHT_ATRIUM,
                 norm_label="RAP",
-                # Derived from two calipers, no single clip origin to cite.
-                origin=None,
+                # Derived from the two IVC calipers — both clips are cited.
+                origin=ivc_origin,
             )
             if item:
                 values.append(item)
@@ -925,6 +1017,7 @@ def _append_chamber_report_values(
                 "%",
                 sex=sex,
                 group=GROUP_RIGHT_ATRIUM,
+                origin=ivc_origin,
             )
             if item:
                 values.append(item)
@@ -1129,11 +1222,41 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
         lav_bi_index = (
             indexed.lav_bi_index_ml_m2 if confirmed_biplane_es_volume_ml(snapshot.la_simpson) is not None else None
         )
+        # Item 5 (2026-11-18): an index is its source measurement divided by
+        # the BSA — the row cites exactly that measurement's lineage.
+        basis = indexed.bsa_basis
+        bsa_inputs: list[OriginInput] = []
+        if basis is not None:
+            if basis.height_cm is not None:
+                bsa_inputs.append(OriginInput("height_cm", f"{basis.height_cm:g}"))
+            if basis.weight_kg is not None:
+                bsa_inputs.append(OriginInput("weight_kg", f"{basis.weight_kg:g}"))
+            if basis.source:
+                bsa_inputs.append(OriginInput("bsa_source", basis.source))
+        bsa_origin = calculator_origin("bsa", inputs=tuple(bsa_inputs))
+        lvef = snapshot.lvef
+        simpson_method = METHOD_SIMPSON_BIPLANE if getattr(lvef, "method", "") == "simpson_biplan" else METHOD_SIMPSON_MONOPLANE
+        la = snapshot.la_simpson
+        ra = snapshot.ra_simpson
+        row_origins: dict[str, ValueOrigin] = {
+            "patient.bsa": bsa_origin,
+            "lv.mass_i": linear_caliper_origin(snapshot, LVEDD_ALIASES | LVESD_ALIASES, METHOD_LINEAR_DERIVED),
+            "lv.edvi": simpson_origin(lvef, method_id=simpson_method, phase="ed"),
+            "lv.esvi": simpson_origin(lvef, method_id=simpson_method, phase="es"),
+            "lv.edvi_a4c": simpson_origin(lvef, method_id=simpson_method, views=("a4c",), phase="ed"),
+            "lv.esvi_a4c": simpson_origin(lvef, method_id=simpson_method, views=("a4c",), phase="es"),
+            "lv.edvi_a2c": simpson_origin(lvef, method_id=simpson_method, views=("a2c",), phase="ed"),
+            "lv.esvi_a2c": simpson_origin(lvef, method_id=simpson_method, views=("a2c",), phase="es"),
+            "la.lavi_a4c": simpson_origin(la, method_id=METHOD_SIMPSON_MONOPLANE, views=("a4c",), phase="es"),
+            "la.lavi_bp": simpson_origin(la, method_id=METHOD_SIMPSON_BIPLANE, phase="es"),
+            "ra.ravi": simpson_origin(ra, method_id=METHOD_SIMPSON_MONOPLANE, views=("a4c",), phase="es"),
+        }
         source_row = ReportValue(
             label=tr("domain.report.bsa_source"),
             value=bsa_source_label(indexed.bsa_basis),
             parameter_id="patient.bsa_source",
             group=GROUP_OTHER,
+            origin=bsa_origin,
         )
         indexed_values = (
             ("BSA", "patient.bsa", indexed.bsa_m2, "m²", GROUP_OTHER, None),
@@ -1174,7 +1297,10 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
             ),
             (_label_index("lavi", "4C"), "la.lavi_a4c", indexed.lav_4c_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
             (_label_index("lavi", "BP"), "la.lavi_bp", lav_bi_index, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
-            (_label_index("ravi"), "ra.ravi", indexed.rav_index_ml_m2, "mL/m²", GROUP_RIGHT_ATRIUM, "RAV"),
+            # Item 6 of the 2026-11-18 list: иОПП has its own reference
+            # (RAVi ≤34 муж. / ≤27 жен. мл/м²); it must not borrow the
+            # absolute RAV norm («≤39 как для ОПП»).
+            (_label_index("ravi"), "ra.ravi", indexed.rav_index_ml_m2, "mL/m²", GROUP_RIGHT_ATRIUM, "RAVi"),
         )
         for label, measurement_id, indexed_val, unit, group, norm_label in indexed_values:
             if indexed_val is None:
@@ -1187,6 +1313,7 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
                 sex=sex,
                 group=group,
                 norm_label=norm_label,
+                origin=row_origins.get(measurement_id),
             )
             if item:
                 values.append(item)
@@ -1368,6 +1495,17 @@ def _append_linear_report_values(
         entry = _value(label, caliper_id, caliper_val, unit, sex=sex, origin=origin, parameter_id=parameter)
         if entry:
             values.append(entry)
+            index_entry = _aorta_index_entry(
+                entry,
+                raw_label=raw_label,
+                millimeters=measurement.millimeter_length,
+                bsa_m2=snapshot.indexed.bsa_m2 if snapshot.indexed is not None else None,
+                sex=sex,
+                origin=origin,
+                parameter=parameter,
+            )
+            if index_entry is not None:
+                values.append(index_entry)
 
 
 def _volume_origin(measurements: Iterable[object]) -> ValueOrigin:
@@ -1625,7 +1763,11 @@ def build_report_groups(
         calculation_notes = report_notes(calculations, include_inputs=include_inputs)
 
     ranks = {key: index for index, key in enumerate(dict.fromkeys(value_order))}
-    repeats = {row: repeat for repeat in snapshot.report_repeats for row in repeat.parameter_ids}
+    repeats: dict[str, ReportRepeat] = {}
+    for repeat in snapshot.report_repeats:
+        judged = _judged_repeat(repeat, sex)
+        for row in repeat.parameter_ids:
+            repeats[row] = judged
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
         group_values = tuple(value for value in values if value.group == key)
@@ -1645,6 +1787,34 @@ def build_report_groups(
             )
         )
     return tuple(grouped)
+
+
+def _readings_verdict(readings: tuple[tuple[str, float], ...], sex: str) -> bool | None:
+    """``True``/``False`` from the norms of every known reading, else ``None``."""
+    outside = False
+    known = False
+    for label, value in readings:
+        flagged, norm_text = is_pathological(label, value, sex)
+        if not norm_text:
+            continue
+        known = True
+        outside = outside or flagged
+    return outside if known else None
+
+
+def _judged_repeat(repeat: ReportRepeat, sex: str) -> ReportRepeat:
+    """Stamp each source candidate with its norm verdict (2026-11-18, item 1).
+
+    Selection records the readings but never judges them: only the builder
+    knows the patient's sex, so the hover card's green/red comes from here.
+    """
+    judged = tuple(
+        replace(candidate, pathological=_readings_verdict(tuple(pair for part in candidate.readings for pair in part), sex))
+        if candidate.readings
+        else candidate
+        for candidate in repeat.candidates
+    )
+    return replace(repeat, candidates=judged) if judged != repeat.candidates else repeat
 
 
 def _keyed_values(

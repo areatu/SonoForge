@@ -24,7 +24,16 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import BalancedColumns, Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    BalancedColumns,
+    Flowable,
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
 from echo_personal_tool.domain.services.report_template import (
@@ -180,18 +189,87 @@ def _report_story(
                     anchors=anchors,
                     group_index=group_index,
                     show_notes=show_notes,
+                    gap_before=0.0 if group_index == 0 else _GROUP_GAP,
                 )
             )
 
     conclusion = (document.patient.conclusion or "").strip()
     if conclusion and (template is None or template.show_conclusion):
-        story.append(Paragraph(_xml_escape(tr("report.conclusion")), styles["group"]))
-        story.append(Paragraph(_xml_escape(conclusion).replace("\n", "<br/>"), styles["body"]))
+        # Item 10 of the 2026-11-18 list: the «Заключение» heading used to hug
+        # the last table.  A deliberate gap separates it from the measurements,
+        # and the heading stays with the first lines of its text instead of
+        # being stranded at the bottom of a page.
+        story.append(Spacer(1, 8 * mm))
+        story.append(
+            KeepTogether(
+                [
+                    Paragraph(_xml_escape(tr("report.conclusion")), styles["group"]),
+                    Paragraph(_xml_escape(conclusion).replace("\n", "<br/>"), styles["body"]),
+                ]
+            )
+        )
 
     if template is None or template.show_signature:
         story.append(Spacer(1, 8 * mm))
         story.append(_signature_block(document, styles))
     return story
+
+
+class _GroupBlock(Flowable):  # type: ignore[misc]  # reportlab ships no type stubs, so its base class is Any
+    """The group heading and its table, moved as one block (2026-11-18, п. 2).
+
+    Пункт 2 списка: «Названия таблиц и сами таблицы должны переноситься одним
+    блоком при 1–2 колонках».  As separate flowables the heading could land in
+    one two-column column (or at the foot of a page) while the table travelled
+    on alone.  The block measures and paints the pair as a unit; it only splits
+    in the degenerate case of a table taller than a whole column/page, and even
+    then the heading stays glued to the first part of the table.
+    """
+
+    def __init__(self, title: Paragraph, table: Table, *, gap_before: float = 0.0) -> None:
+        super().__init__()
+        self._title = title
+        self._table = table
+        self._gap_before = gap_before
+        # Kept as a sequence so generic text extraction can walk the children.
+        self._content = (title, table)
+
+    def getSpaceBefore(self) -> float:
+        # The inter-group gap hangs off the block, not off a loose spacer after
+        # it: a trailing spacer could be split off and open the next column
+        # lower than its partner (2026-11-18, item 11).  At the top of a frame
+        # (a column or a page) reportlab suppresses spaceBefore, so the first
+        # block of every column starts flush and the headings line up.
+        return self._title.getSpaceBefore() + self._gap_before
+
+    def getSpaceAfter(self) -> float:
+        return self._table.getSpaceAfter()
+
+    def wrap(self, aW: float, aH: float) -> tuple[float, float]:
+        _title_width, title_height = self._title.wrapOn(self.canv, aW, aH)
+        table_width, table_height = self._table.wrapOn(self.canv, aW, aH)
+        self._title_height = title_height
+        self._table_height = table_height
+        self.width = table_width
+        self.height = title_height + table_height
+        return self.width, self.height
+
+    def draw(self) -> None:
+        # ``Flowable.drawOn`` puts (0, 0) at the bottom-left of the block: the
+        # table sits there, the heading right above it.
+        self._title.drawOn(self.canv, 0, self._table_height)
+        self._table.drawOn(self.canv, 0, 0)
+
+    def split(self, aW: float, aH: float) -> list:
+        title_height = self._title.wrapOn(self.canv, aW, aH)[1]
+        parts = self._table.split(aW, max(aH - title_height, 0.0))
+        if not parts:
+            return []
+        return [_GroupBlock(self._title, parts[0], gap_before=self._gap_before), *parts[1:]]
+
+
+#: Breathing room between two group blocks of the report body.
+_GROUP_GAP = 4 * mm
 
 
 def _group_flowables(
@@ -203,14 +281,23 @@ def _group_flowables(
     group_index: int,
     show_notes: bool,
     table_width: float | None = None,
+    gap_before: float = 0.0,
 ) -> list:
-    """Title, table and footnotes of one group."""
-    flowables: list = [Paragraph(_xml_escape(group.title), styles["group"])]
-    flowables.append(_group_table(group, styles, size, anchors=anchors, group_index=group_index, width=table_width))
+    """Title, table and footnotes of one group.
+
+    The heading and the table are one :class:`_GroupBlock` — a column or page
+    break falls before or after them, never between (item 2 of the list).  The
+    footnotes stay loose flowables after the block: they may wrap to the next
+    column, the heading/table may not.  No trailing spacer: the gap between
+    groups is the next block's ``spaceBefore`` (item 11), so a column can never
+    begin with a leftover gap instead of content.
+    """
+    title = Paragraph(_xml_escape(group.title), styles["group"])
+    table = _group_table(group, styles, size, anchors=anchors, group_index=group_index, width=table_width)
+    flowables: list = [_GroupBlock(title, table, gap_before=gap_before)]
     if show_notes:
         for note in group.notes:
             flowables.append(Paragraph(_xml_escape(note), styles["note"]))
-    flowables.append(Spacer(1, 4 * mm))
     return flowables
 
 
@@ -268,6 +355,7 @@ def _two_column_groups(
                 group_index=group_index,
                 show_notes=show_notes,
                 table_width=table_width,
+                gap_before=0.0 if group_index == 0 else _GROUP_GAP,
             )
         )
     return BalancedColumns(

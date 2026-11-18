@@ -611,7 +611,11 @@ def test_row_dialog_persists_layout_but_only_pins_the_sample_in_its_tab(
         return ReportValuesDialog.DialogCode.Accepted
 
     monkeypatch.setattr(ReportValuesDialog, "exec", edit)
-    page.preview._build_value_menu(rows["Alpha"]).actions()[0].trigger()
+    # Item 1 of the 2026-11-18 list: the row dialog is no longer behind the
+    # context menu — the menu is only «скрыть», the choice moved to the card.
+    menu = page.preview._build_value_menu(rows["Alpha"])
+    assert [action.text() for action in menu.actions()] == [tr("report.hide_value")]
+    coordinator.edit_values(rows["Alpha"].key)
     doc_rows = [v for g in page.document.groups for v in g.values]
     assert [v.label for v in doc_rows] == ["Alpha", "Beta"]
     assert float(doc_rows[0].value) == 61 and doc_rows[0].origin.clips[0].frame_index == 8
@@ -641,6 +645,38 @@ def test_row_dialog_persists_layout_but_only_pins_the_sample_in_its_tab(
     assert page.preview.version() == frozen and coordinator.current_document() == frozen.document
     assert not page.sections.hidden_values
     assert page.preview._build_value_menu(rows["Alpha"]) is None
+
+
+@pytest.mark.gui
+def test_all_measurements_mode_edits_rows_the_study_never_measured(qapp):
+    """2026-11-18 list, item 3: the layout of future reports is editable here."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidget
+
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
+
+    dialog = ReportValuesDialog((), (), clip_label=lambda uid: "")
+    assert dialog.findChild(QTreeWidget, "reportValuesTree").topLevelItemCount() == 0
+    dialog._mode.setCurrentIndex(1)
+    tree = dialog.findChild(QTreeWidget, "reportValuesTree")
+    rows = {}
+    for i in range(tree.topLevelItemCount()):
+        section = tree.topLevelItem(i)
+        for j in range(section.childCount()):
+            row = section.child(j)
+            rows[row.data(0, Qt.ItemDataRole.UserRole)] = row
+    assert "av:linear.ao.sinus:0" in rows and "ra:ra.ravi:0" in rows
+    assert rows["av:linear.ao.sinus:0"].text(0) == "Ao Sinus"
+
+    rows["av:linear.ao.sinus:0"].setCheckState(0, Qt.CheckState.Unchecked)
+    edits = dialog.edits()
+    assert "av:linear.ao.sinus:0" in edits.excluded
+    # The choice is remembered when the mode toggles back and forth.
+    dialog._mode.setCurrentIndex(0)
+    assert dialog._mode.currentData() == "study"
+    edits = dialog.edits()
+    assert "av:linear.ao.sinus:0" in edits.excluded
+    dialog.deleteLater()
 
 
 def _check_exports(coordinator, window, monkeypatch, tmp_path):
@@ -692,7 +728,7 @@ def test_automatic_choice_cancel_and_quick_hide_do_not_leak_between_tabs(
     coordinator.set_value_hidden(beta, True)
 
     def select(dialog, index):
-        dialog.findChild(QComboBox).setCurrentIndex(index)
+        dialog.findChild(QComboBox, "reportMeasurementSource").setCurrentIndex(index)
         return ReportValuesDialog.DialogCode.Accepted
 
     monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: select(dialog, 1))
@@ -707,7 +743,7 @@ def test_automatic_choice_cancel_and_quick_hide_do_not_leak_between_tabs(
     def cancel(dialog):
         tree = dialog.findChild(QTreeWidget)
         tree.currentItem().setCheckState(0, Qt.CheckState.Unchecked)
-        dialog.findChild(QComboBox).setCurrentIndex(1)
+        dialog.findChild(QComboBox, "reportMeasurementSource").setCurrentIndex(1)
         return ReportValuesDialog.DialogCode.Rejected
 
     before = page.document

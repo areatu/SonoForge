@@ -216,31 +216,22 @@ class TestExperimentalCheckboxes:
         assert dlg._show_heart_rate_tools.isChecked()
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_draft_notice_default_off(self, mock_load):
-        """The draft warning stays by default: it is a clinical guardrail."""
+    def test_draft_notice_checkbox_is_gone(self, mock_load):
+        """Item 1 of the 2026-11-18 list: the draft/edited-block auto-text was
+        removed from the conclusion entirely, so its suppression toggle went too."""
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog()
-        assert not dlg._hide_report_draft_notice.isChecked()
+        assert not hasattr(dlg, "_hide_report_draft_notice")
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_draft_notice_follows_the_stored_preference(self, mock_load):
-        prefs = _default_prefs()
-        prefs.hide_report_draft_notice = True
-        mock_load.return_value = prefs
-        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
-
-        dlg = UserPreferencesDialog()
-        assert dlg._hide_report_draft_notice.isChecked()
-
-    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_both_checkboxes_are_part_of_the_protocols_section_reset(self, mock_load):
+    def test_heart_rate_checkbox_is_part_of_the_protocols_section_reset(self, mock_load):
         from echo_personal_tool.presentation.user_preferences_dialog import _SECTION_FIELDS
 
         fields = _SECTION_FIELDS["settings_section_protocols"]
         assert "show_heart_rate_tools" in fields
-        assert "hide_report_draft_notice" in fields
+        assert "hide_report_draft_notice" not in fields
 
 
 class TestOnAccept:

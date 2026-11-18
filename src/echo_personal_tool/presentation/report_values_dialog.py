@@ -44,6 +44,15 @@ def _candidate_text(candidate: ReportCandidate, clip_label: Callable[[str], str]
     return " / ".join(parts)
 
 
+def _known_keys(groups: tuple[ReportGroup, ...]) -> set[str]:
+    """Every row key the dialog can address: the study's rows plus the catalogue."""
+    from echo_personal_tool.domain.services.report_value_layout import all_report_rows
+
+    keys = {value.key for group in groups for value in group.values if value.key}
+    keys.update(spec.key for spec in all_report_rows())
+    return keys
+
+
 class ReportValuesDialog(QDialog):
     """Only keyed measurements can be edited; checklist statements are not rows to hide."""
 
@@ -63,6 +72,11 @@ class ReportValuesDialog(QDialog):
         self._hidden = frozenset(hidden)
         self._repeats: dict[str, ReportRepeat] = {}
         self._choices: dict[str, str] = {}
+        # Hide/restore choices survive a mode switch (item 3 of the 2026-11-18
+        # list): the same key means the same future row in both trees.
+        self._state: dict[str, bool] = {key: key not in hidden for key in _known_keys(groups)}
+        self._moved_by_group: dict[str, tuple[str, ...]] = {}
+        self._group_ids: list[str] = []
         self._tree = QTreeWidget()
         self._tree.setObjectName("reportValuesTree")
         self._tree.setAccessibleName(tr("report.values.title"))
@@ -70,24 +84,14 @@ class ReportValuesDialog(QDialog):
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        focus: QTreeWidgetItem | None = None
-        for group in groups:
-            rows = [value for value in group.values if value.key]
-            if not rows:
-                continue
-            section = QTreeWidgetItem(self._tree, [group.title])
-            for value in rows:
-                shown = f"{value.display_value} {value.unit}".strip()
-                if value.repeat:
-                    self._repeats[value.key] = value.repeat
-                    shown = tr("report.values.repeated", value=shown, count=len(value.repeat.candidates))
-                row = QTreeWidgetItem(section, [value.label, shown])
-                row.setData(0, Qt.ItemDataRole.UserRole, value.key)
-                row.setCheckState(0, Qt.CheckState.Unchecked if value.key in hidden else Qt.CheckState.Checked)
-                if focus is None or focus_key == value.key:
-                    focus = row
-        self._initial_order = self._group_keys()
-        self._tree.expandAll()
+        self._mode = QComboBox()
+        self._mode.setObjectName("reportValuesMode")
+        self._mode.setAccessibleName(tr("report.values.mode"))
+        self._mode.addItem(tr("report.values.mode_study"), "study")
+        self._mode.addItem(tr("report.values.mode_all"), "all")
+        self._groups_input = groups
+        self._mode.currentIndexChanged.connect(self._switch_mode)
+        focus: QTreeWidgetItem | None = self._fill_tree(focus_key)
         self._up = QPushButton(tr("report.values.up"))
         self._down = QPushButton(tr("report.values.down"))
         self._up.clicked.connect(lambda: self._move(-1))
@@ -118,6 +122,10 @@ class ReportValuesDialog(QDialog):
         hint = QLabel(tr("report.values.hint") if focus is not None else tr("report.values.empty"))
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(self._mode)
+        mode_row.addStretch()
+        layout.addLayout(mode_row)
         layout.addWidget(self._tree, 1)
         layout.addLayout(move)
         layout.addLayout(form)
@@ -125,6 +133,78 @@ class ReportValuesDialog(QDialog):
         if focus is not None:
             self._tree.setCurrentItem(focus)
         self._sync_controls()
+
+    def _fill_tree(self, focus_key: str) -> QTreeWidgetItem | None:
+        """Fill the tree for the active mode; return the row to focus."""
+        self._repeats.clear()
+        self._tree.clear()
+        self._group_ids = []
+        focus: QTreeWidgetItem | None = None
+        if self._mode.currentData() == "all":
+            from echo_personal_tool.domain.services.report_groups import GROUP_ORDER
+            from echo_personal_tool.domain.services.report_value_layout import all_report_rows
+
+            by_group: dict[str, list] = {}
+            for spec in all_report_rows():
+                by_group.setdefault(spec.group, []).append(spec)
+            for group_key in GROUP_ORDER:
+                specs = by_group.get(group_key)
+                if not specs:
+                    continue
+                section = QTreeWidgetItem(self._tree, [tr(f"report.group.{group_key}")])
+                self._group_ids.append(group_key)
+                for spec in specs:
+                    row = QTreeWidgetItem(section, [spec.label, ""])
+                    row.setData(0, Qt.ItemDataRole.UserRole, spec.key)
+                    row.setCheckState(0, Qt.CheckState.Checked if self._state.get(spec.key, True) else Qt.CheckState.Unchecked)
+                    if focus is None or focus_key == spec.key:
+                        focus = row
+        else:
+            for group in self._groups_input:
+                rows = [value for value in group.values if value.key]
+                if not rows:
+                    continue
+                section = QTreeWidgetItem(self._tree, [group.title])
+                self._group_ids.append(group.key)
+                for value in rows:
+                    shown = f"{value.display_value} {value.unit}".strip()
+                    if value.repeat:
+                        self._repeats[value.key] = value.repeat
+                        shown = tr("report.values.repeated", value=shown, count=len(value.repeat.candidates))
+                    row = QTreeWidgetItem(section, [value.label, shown])
+                    row.setData(0, Qt.ItemDataRole.UserRole, value.key)
+                    row.setCheckState(
+                        0, Qt.CheckState.Checked if self._state.get(value.key, True) else Qt.CheckState.Unchecked
+                    )
+                    if focus is None or focus_key == value.key:
+                        focus = row
+        self._initial_order = self._group_keys()
+        self._tree.expandAll()
+        return focus
+
+    def _switch_mode(self) -> None:
+        """Keep hide/restore choices across modes; order edits stay per group."""
+        self._sync_state_from_tree()
+        self._moved_by_group.update(self._changed_groups())
+        focus = self._fill_tree("")
+        if focus is not None:
+            self._tree.setCurrentItem(focus)
+        self._sync_controls()
+
+    def _sync_state_from_tree(self) -> None:
+        """Read the visible checks back; ``itemChanged`` lies about the state."""
+        for rows in self._groups():
+            for row in rows:
+                key = row.data(0, Qt.ItemDataRole.UserRole)
+                if key:
+                    self._state[str(key)] = row.checkState(0) == Qt.CheckState.Checked
+
+    def _changed_groups(self) -> dict[str, tuple[str, ...]]:
+        changed = {}
+        for group_id, before, now in zip(self._group_ids, self._initial_order, self._group_keys()):
+            if before != now:
+                changed[group_id] = now
+        return changed
 
     def _repeat(self) -> ReportRepeat | None:
         row = self._tree.currentItem()
@@ -177,13 +257,14 @@ class ReportValuesDialog(QDialog):
         return [tuple(row.data(0, Qt.ItemDataRole.UserRole) for row in rows) for rows in self._groups()]
 
     def edits(self) -> ReportValueEdits:
-        included: set[str] = set()
-        excluded: set[str] = set()
-        for rows in self._groups():
-            for row in rows:
-                keys = included if row.checkState(0) == Qt.CheckState.Checked else excluded
-                keys.add(row.data(0, Qt.ItemDataRole.UserRole))
-        moved = tuple(now for before, now in zip(self._initial_order, self._group_keys()) if before != now)
+        self._sync_state_from_tree()
+        self._moved_by_group.update(self._changed_groups())
+        checked = {key for key, on in self._state.items() if on}
         # Choosing a source or moving a row must not promote a different
         # row's tab-only quick hide into a preference for every future study.
-        return ReportValueEdits(self._hidden & included, frozenset(excluded) - self._hidden, moved, dict(self._choices))
+        return ReportValueEdits(
+            self._hidden & checked,
+            frozenset((set(self._state) - checked) - set(self._hidden)),
+            tuple(self._moved_by_group.values()),
+            dict(self._choices),
+        )

@@ -366,9 +366,9 @@ class ReportCoordinator(QObject):
             page.preview.profile_changed.connect(self.choose_profile)
             page.preview.inputs_visibility_changed.connect(self.set_inputs_visible)
             page.preview.edit_values_requested.connect(self.edit_values)
+            page.preview.value_choice_changed.connect(self.choose_value_source)
             page.value_visibility_changed.connect(self.set_value_hidden)
             page.value_rename_requested.connect(self.rename_value)
-            page.set_clip_label_provider(self.clip_label)
             stack.addWidget(page)
             self._page = page
             page.set_checklist_profile(study_profile_id(self._port.preferences()))
@@ -511,9 +511,6 @@ class ReportCoordinator(QObject):
             language=get_language(),
             existing=page.conclusion,
             previous_generated=getattr(tab, "report_generated_conclusion", ""),
-            # Item 6 of the 2026-11-06 list: the physician may ask for a clean
-            # conclusion; the draft badge of the report mode stays on screen.
-            hide_draft_notice=bool(getattr(self._port.preferences(), "hide_report_draft_notice", False)),
         )
 
     def remember_generated_conclusion(self, block: str) -> None:
@@ -703,6 +700,23 @@ class ReportCoordinator(QObject):
                 tab.report_value_choices[key] = candidate
             else:
                 tab.report_value_choices.pop(key, None)
+        if self._page is not None:
+            self._page.preview.refresh_now()
+
+    def choose_value_source(self, repeat_key: str, candidate_id: str) -> None:
+        """Pin one acquisition of a repeat row from the hover card (item 1).
+
+        The choice lives in the tab like every other report edit: an empty
+        candidate id returns the row to following the latest acquisition, and
+        a finished version keeps its frozen bytes.
+        """
+        tab = self._active_tab()
+        if tab is None or self._finished(tab) or not repeat_key:
+            return
+        if candidate_id:
+            tab.report_value_choices[repeat_key] = candidate_id
+        else:
+            tab.report_value_choices.pop(repeat_key, None)
         if self._page is not None:
             self._page.preview.refresh_now()
 

@@ -123,7 +123,12 @@ def test_the_chosen_diastolic_sequence_drives_teichholz_mass_indexes_and_provena
     assert chosen.indexed.teichholz_edvi_ml_m2 == pytest.approx(volume_ml(48) / 2)
     assert chosen.calculations.input("lvedd").value == pytest.approx(4.8)
     rows = {v.parameter_id: v for group in build_report_document(chosen).groups for v in group.values}
-    assert rows["linear.lv.lvesd"].repeat == rows["linear.lv.ivsd"].repeat == chosen.report_repeats[0]
+    row_repeat = rows["linear.lv.lvesd"].repeat
+    assert row_repeat == rows["linear.lv.ivsd"].repeat
+    assert row_repeat.key == chosen.report_repeats[0].key
+    assert [c.id for c in row_repeat.candidates] == [c.id for c in chosen.report_repeats[0].candidates]
+    # The document stamps every candidate with its norm verdict (item 1, 2026-11-18).
+    assert all(candidate.pathological is not None for candidate in row_repeat.candidates)
     assert [clip.frame_index for clip in rows["lv.ef_teich"].origin.clips] == [18, 23]
     assert controller.compute_study_snapshot().linear_measurements == measurements
 

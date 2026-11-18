@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `feat(report)`: UI-батч из 15 пунктов кардиолога: половые нормы guidelines и индексы аорты, режим «Все измерения» в «Показателях отчёта», выбор измерения в карточке происхождения по наведению, компоновка таблиц и заключения ([полностью](changelog.d/014-feat-report-batch-15-items.md))
 - `feat(report)`: формализованный черновик заключения и врачебный выбор при неоднозначных клапанных критериях (PR-C) ([полностью](changelog.d/013-feat-report-formal-conclusion.md))
 - `feat(report)`: выбор замера или пары на вкладке и сохранение состава и порядка строк для следующих исследований ([полностью](changelog.d/012-feat-report-measurements-pr-b.md))
 - `fix(segmentation)`: ticket публикации LV/LA auto-segmentation и защита поздних результатов (#552) ([полностью](changelog.d/011-fix-segmentation-publication-552.md))

@@ -29,7 +29,6 @@ from echo_personal_tool.presentation.report_mode.export import ReportExportPanel
 from echo_personal_tool.presentation.report_mode.patient import ReportPatientEditor
 from echo_personal_tool.presentation.report_mode.phrases import PANEL_WIDTH, ReportPhrasesPanel
 from echo_personal_tool.presentation.report_mode.preview import ReportPreview
-from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider
 from echo_personal_tool.presentation.report_mode.sections import ReportSectionsPanel
 
 
@@ -206,10 +205,6 @@ class ReportModePage(QWidget):
     def set_conclusion(self, text: str) -> None:
         """Show the draft of the active tab without emitting an edit."""
         self._phrases.set_conclusion(text)
-
-    def set_clip_label_provider(self, provider: ClipLabelProvider | None) -> None:
-        """Name clips the way the gallery does inside the hover card."""
-        self._preview.set_clip_label_provider(provider)
 
     def set_finished(self, finished: bool) -> None:
         """Freeze or unfreeze the whole page (UQ-07).
