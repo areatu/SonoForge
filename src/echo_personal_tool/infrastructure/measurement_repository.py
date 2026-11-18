@@ -89,14 +89,22 @@ class MeasurementRepository:
             raise MeasurementStorageError("identity")
         return record
 
-    def save(self, uid: str, data: object, sources: dict[str, Any], expected_revision: int) -> dict[str, Any]:
+    def save(
+        self,
+        uid: str,
+        data: object,
+        sources: dict[str, Any],
+        expected_revision: int,
+        *,
+        author_id: str = "",
+    ) -> dict[str, Any]:
         self.acquire()
         path = self._path(uid)
         previous = self.load(uid)  # corrupt/future records block writes, never auto-replaced
         revision = previous["revision"] if previous else 0
         if revision != expected_revision:
             raise MeasurementStorageError("conflict")
-        record = dict(
+        record: dict[str, Any] = dict(
             format=FORMAT,
             schema_version=VERSION,
             measurement_semantics_version=SEMANTICS_VERSION,
@@ -106,6 +114,14 @@ class MeasurementRepository:
             sources=sources,
             data=data,
         )
+        previous_creator = str(previous.get("created_by", "")) if previous else ""
+        previous_updater = str(previous.get("updated_by", "")) if previous else ""
+        creator = previous_creator or author_id
+        updater = author_id or previous_updater
+        if creator:
+            record["created_by"] = creator
+        if updater:
+            record["updated_by"] = updater
         payload = dumps(record)
         old_size = path.stat().st_size if path.exists() else 0
         if self.size_bytes() - old_size + len(payload) > self.max_bytes:

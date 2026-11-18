@@ -2158,6 +2158,7 @@ wheels = [
 name = "sonoforge"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "httpx" },
     { name = "jsonschema" },
     { name = "keyring" },
@@ -2211,6 +2212,7 @@ presenter = [
 requires-dist = [
     { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.7" },
     { name = "coveralls", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "cryptography", specifier = ">=44,<51" },
     { name = "cryptography", marker = "extra == 'presenter'", specifier = ">=44,<51" },
     { name = "cyclonedx-bom", marker = "extra == 'build'", specifier = "==8.0.1" },
     { name = "hatchling", marker = "extra == 'build'", specifier = ">=1.25" },

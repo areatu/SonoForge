@@ -98,6 +98,8 @@ _OPERATIONS = frozenset(
         "crash.thread",
         "logging.qt_message",
         "logging.cleanup",
+        "auth.startup",
+        "audit.append",
     }
 )
 _CODES = frozenset(
@@ -114,6 +116,12 @@ _CODES = frozenset(
         "quota",
         "unsafe_path",
         "blocked",
+        "permission",
+        "corrupt_store",
+        "corrupt_tail",
+        "short_write",
+        "io_error",
+        "storage_error",
         "inference",
         "timeout",
         "cleanup",

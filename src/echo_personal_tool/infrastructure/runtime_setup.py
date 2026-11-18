@@ -74,6 +74,7 @@ LATE_REQUIRED_MODULES = [
     "jsonschema",
     "openpyxl",
     "keyring",
+    "cryptography",
 ]
 _REQUIRED_MODULES = WINDOW_REQUIRED_MODULES + LATE_REQUIRED_MODULES
 #: Required modules whose import name is not the distribution that ships them;

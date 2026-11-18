@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import Container
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSettings
@@ -245,7 +246,22 @@ class UserPreferences:
     presenter_audience_render: str = "raster"
 
 
+def _ini_store(ini_path: Path) -> QSettings:
+    try:
+        ini_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return QSettings(str(ini_path), QSettings.Format.IniFormat)
+
+
 def _settings_store() -> QSettings:
+    # When a local multi-user account is signed in, route personal preferences
+    # (and RecentStore) to that account's isolated INI inside users/profiles/.
+    from echo_personal_tool.infrastructure.paths import active_user_preferences_ini
+
+    user_ini = active_user_preferences_ini()
+    if user_ini is not None:
+        return _ini_store(user_ini)
     # Presenter defaults to portable; Full may opt in with SONOFORGE_PORTABLE=1.
     # Both cases keep an INI next to the executable instead of using host QSettings.
     from echo_personal_tool.infrastructure.profile import qsettings_for

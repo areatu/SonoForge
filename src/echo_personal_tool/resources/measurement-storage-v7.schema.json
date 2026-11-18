@@ -78,6 +78,16 @@
       "type": "integer",
       "minimum": 1,
       "description": "Meaning of Doppler labels/units; 2 = repeated measurements of one parameter are a list (D-23)."
+    },
+    "created_by": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$",
+      "description": "Optional opaque local user_id that first saved this study record."
+    },
+    "updated_by": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$",
+      "description": "Optional opaque local user_id that wrote this revision."
     }
   },
   "additionalProperties": false,
