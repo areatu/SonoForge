@@ -384,11 +384,12 @@ class TestSharedCabinetStudyAuthorsAndRbac:
         assert mine_sidorov == ()
 
     def test_measurement_persistence_stamps_author_enforces_rbac_and_audits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qapp
     ) -> None:
-        from PySide6.QtCore import QCoreApplication
-
-        app = QCoreApplication.instance() or QCoreApplication([])
+        # Use the shared QApplication fixture: creating a bare QCoreApplication
+        # here would poison QApplication.instance() for every later test in
+        # this xdist worker (no styleSheet(), breaking GUI hygiene fixtures).
+        app = qapp
 
         dcm = tmp_path / "clip.dcm"
         dcm.write_bytes(b"synthetic-dicom-bytes")
