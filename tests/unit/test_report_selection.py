@@ -52,6 +52,50 @@ def test_area_volume_and_named_vessel_sites_remain_distinct():
     assert select_report_sources((r, l, new), {repeat.key: repeat.candidates[0].id})[0] == (r, l)
 
 
+def test_a_named_area_keeps_its_report_key_but_cites_the_selected_contour():
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
+
+    first = Contour(
+        "GEN",
+        chamber="AREA",
+        measurement_label="Lesion",
+        points=[(0, 0), (20, 0), (0, 20)],
+        sop_instance_uid="1.2.4",
+        frame_index=8,
+        measurement_id="first",
+        revision=3,
+    )
+    last = replace(
+        first,
+        sop_instance_uid="1.2.5",
+        frame_index=2,
+        measurement_id="last",
+        revision=1,
+        points=[(0, 0), (10, 0), (0, 10)],
+    )
+
+    def report_row(choices):
+        contours, repeats = select_report_sources((first, last), choices)
+        results = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
+        snapshot = MeasurementSnapshot(planimeter=results, report_repeats=repeats, spacing_calibrated=True)
+        (group,) = build_report_document(snapshot).groups
+        (row,) = group.values
+        return row
+
+    automatic = report_row({})
+    repeat = automatic.repeat
+    assert repeat is not None and len(repeat.candidates) == 2
+    pinned = report_row({repeat.key: repeat.candidates[0].id})
+    assert pinned.key == automatic.key == f"{automatic.group}:{repeat.key}:0"
+    assert (float(automatic.value), float(pinned.value)) == (0.5, 2.0)
+    for row, contour in ((automatic, last), (pinned, first)):
+        origin = row.origin
+        assert origin is not None
+        assert (origin.measurement_id, origin.revision) == (contour.measurement_id, contour.revision)
+        assert origin.clips == (ClipSource(contour.sop_instance_uid, contour.frame_index),)
+
+
 @pytest.mark.gui
 def test_the_chosen_diastolic_sequence_drives_teichholz_mass_indexes_and_provenance(qapp):
     from echo_personal_tool.application.app_controller import AppController

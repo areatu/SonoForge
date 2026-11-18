@@ -86,7 +86,6 @@ from echo_personal_tool.domain.services.report_document import ReportDocument as
 from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
 from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
 from echo_personal_tool.domain.services.report_document import without_values as without_values
-from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
 from echo_personal_tool.domain.services.report_provenance import (
     LVEDD_ALIASES,
     LVESD_ALIASES,
@@ -95,6 +94,7 @@ from echo_personal_tool.domain.services.report_provenance import (
     planimeter_origin,
     simpson_origin,
 )
+from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
 from echo_personal_tool.domain.translation import tr, tr_plural
 
 logger = logging.getLogger(__name__)
@@ -1239,9 +1239,8 @@ def _append_planimeter_report_values(values: list[ReportValue], snapshot: Measur
             planimeter_item.unit,
             sex=sex,
             default_group=GROUP_PLANIMETRY,
-            origin=_planimeter_origin(planimeter_item),
-            parameter_id=named_parameter(measurement_id, planimeter_item.label),
             origin=planimeter_origin(planimeter_item),
+            parameter_id=named_parameter(measurement_id, planimeter_item.label),
         )
         if entry:
             values.append(entry)
