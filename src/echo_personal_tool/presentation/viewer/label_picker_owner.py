@@ -96,6 +96,7 @@ class ViewerLabelPicker:
         context: str,
         anchor: QPoint | None = None,
         bounds: QRect | None = None,
+        allow_free_text: bool = False,
     ) -> bool:
         """Open the popup for *target*; a disabled picker stays closed."""
         if not self._enabled:
@@ -106,6 +107,7 @@ class ViewerLabelPicker:
             context=self._context_override or context,
             anchor=anchor,
             bounds=bounds,
+            allow_free_text=allow_free_text,
         )
         return True
 

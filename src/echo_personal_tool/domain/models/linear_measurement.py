@@ -30,6 +30,9 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "AR Jet %D": "measure.ar_jet_d_ratio",
     "AR Jet %S": "measure.ar_jet_s_ratio",
     "LA": "menu.la_lavir",
+    "IVC": "menu.ivc",
+    "IVC-EXP": "menu.ivc_exp",
+    "IVC-INSP": "menu.ivc_insp",
     "%D": "result.percent_d",
     "%S": "result.percent_s",
     "%D стеноз": "result.percent_d_stenosis",
@@ -104,6 +107,38 @@ AREA_LABELS = frozenset({"S1", "S2", "AR Jet S1", "LVOT S"})
 #: One constant for the viewer that creates the label and the report that must
 #: not print it (2026-11-17 list, item 7).
 GENERIC_DIST_LABEL_PREFIX = "Dist"
+
+#: Anatomical labels the measurement tools assign outside the two registries
+#: («TAPSE», «Ao Sinus», …).  They are fixed parameter names: the point-menu
+#: never offers to rename them (2026-11-17 list, item 1).
+ANATOMICAL_CALIPER_LABELS = frozenset(
+    {
+        "AV",
+        "Annulus",
+        "Ao Junction",
+        "Ao Sinus",
+        "IVC",
+        "IVC-EXP",
+        "IVC-INSP",
+        "IVS",
+        "LA",
+        "LVIDd",
+        "LVESD",
+        "M-mode",
+        "MVd",
+        "PISA AR",
+        "PISA MR",
+        "PISA MS",
+        "Prox Ao",
+        "RA",
+        "RV basal",
+        "RV mid",
+        "RVOT",
+        "RVOTd",
+        "TAPSE",
+        "Time",
+    }
+)
 
 
 def is_unnamed_caliper_label(label: str) -> bool:

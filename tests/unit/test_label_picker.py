@@ -27,6 +27,7 @@ from echo_personal_tool.presentation.label_picker import (
     option_for_tool_id,
     search_label_options,
 )
+from echo_personal_tool.presentation.viewer.point_label_menu import offer_at_image_point
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 _FRAME = 200
@@ -553,3 +554,95 @@ class TestViewerLabelPickerIntegration:
         assert w.label_picker().search_query() == "кдр"
         assert w.label_picker().selected_option() is not None
         assert w.label_picker().selected_option().tool_id == "lv.lvedd"
+
+
+# ── Point naming menu (2026-11-17 list, item 1) ────────────────────
+
+
+class TestRenamableCaliperLabel:
+    def test_generic_and_custom_names_are_renameable(self) -> None:
+        from echo_personal_tool.domain.services.nomenclature import is_renamable_caliper_label
+
+        assert is_renamable_caliper_label("Dist1") is True
+        assert is_renamable_caliper_label("сепарация перикарда") is True
+
+    def test_fixed_tool_labels_are_not_renameable(self) -> None:
+        from echo_personal_tool.domain.services.nomenclature import is_renamable_caliper_label
+
+        for label in ("LVEDD", "TAPSE", "Ao Sinus", "%D стеноз", "S1", "ORGAN-VOL-1", ""):
+            assert is_renamable_caliper_label(label) is False, label
+
+
+class TestFreeTextInAnyContext:
+    def test_plain_open_still_refuses_free_text(self, qtbot) -> None:
+        picker = LabelPicker()
+        qtbot.addWidget(picker)
+        picker.open_for(context="2d")
+        picker.set_search_query("сепарация перикарда")
+        assert picker.custom_label_text() == ""
+
+    def test_point_menu_allows_a_word_of_its_own(self, qtbot) -> None:
+        picker = LabelPicker()
+        qtbot.addWidget(picker)
+        picker.open_for(context="2d", allow_free_text=True)
+        picker.set_search_query("сепарация перикарда")
+        assert picker.custom_label_text() == "сепарация перикарда"
+
+
+@pytest.mark.gui
+class TestRightClickPointNaming:
+    def _make_viewer(self, qtbot) -> ViewerWidget:
+        w = ViewerWidget()
+        qtbot.addWidget(w)
+        w.resize(640, 480)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        w.set_state(_make_state())
+        return w
+
+    def _right_press(self, w: ViewerWidget, x: float, y: float) -> bool:
+        return offer_at_image_point(w, (x, y))
+
+    def test_right_click_on_free_caliper_point_reopens_the_menu(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (10.0, 10.0), (51.0, 10.0))
+        assert w.is_label_picker_visible()
+        w.dismiss_label_picker()
+
+        assert self._right_press(w, 51.0, 10.0) is True
+        assert w.is_label_picker_visible()
+
+    def test_right_click_on_a_fixed_label_opens_nothing(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        w.start_linear_caliper_for("LVEDD")
+        _place_caliper(w, (10.0, 10.0), (51.0, 10.0))
+        assert not w.is_label_picker_visible()
+
+        assert self._right_press(w, 51.0, 10.0) is False
+        assert not w.is_label_picker_visible()
+
+    def test_the_menu_accepts_an_arbitrary_name(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (10.0, 10.0), (51.0, 10.0))
+        w.dismiss_label_picker()
+        assert self._right_press(w, 51.0, 10.0) is True
+
+        w.label_picker().set_search_query("сепарация перикарда")
+        assert w.accept_label_picker() is True
+        assert _stored_labels(w) == ["сепарация перикарда"]
+
+    def test_right_click_names_a_generic_contour_point(self, qtbot) -> None:
+        w = self._make_viewer(qtbot)
+        assert w.start_generic_area_contour() is True
+        for x, y in ((10.0, 10.0), (40.0, 10.0), (40.0, 40.0)):
+            w.handle_contour_click((x, y))
+        assert w.finish_contour() is True
+        w.dismiss_label_picker()
+
+        assert self._right_press(w, 40.0, 40.0) is True
+        assert w.is_label_picker_visible()
+
+        w.label_picker().set_search_query("размер образования")
+        assert w.accept_label_picker() is True
+        assert [c.measurement_label for c in w.contours()] == ["размер образования"]

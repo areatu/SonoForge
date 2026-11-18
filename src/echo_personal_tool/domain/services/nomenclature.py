@@ -17,8 +17,19 @@ from __future__ import annotations
 import re
 from types import MappingProxyType
 
-from echo_personal_tool.domain.measurement_catalog import LINEAR_UNIT_CM, LINEAR_UNIT_MM, MEASUREMENTS
-from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY
+from echo_personal_tool.domain.measurement_catalog import (
+    CALIPER_TO_MEASUREMENT,
+    LINEAR_UNIT_CM,
+    LINEAR_UNIT_MM,
+    MEASUREMENTS,
+)
+from echo_personal_tool.domain.models.linear_measurement import (
+    _LABEL_I18N_KEY,
+    ANATOMICAL_CALIPER_LABELS,
+    AREA_LABELS,
+    PERCENT_LABELS,
+    is_unnamed_caliper_label,
+)
 from echo_personal_tool.domain.translation import get_language, tr
 
 #: Overlay locale key (``result.*`` / ``panel.*``) → catalog measurement id.
@@ -313,3 +324,21 @@ def caliper_label(raw: str) -> str:
     """
     key = _LABEL_I18N_KEY.get(raw)
     return tr(key) if key else raw
+
+
+def is_renamable_caliper_label(raw: str) -> bool:
+    """True when a caliper label may be renamed by the point menu (item 1).
+
+    The generic «Dist» placeholder and a name the physician already invented
+    are renameable; every fixed label of the two registries («LVEDD»,
+    «%D стеноз»…) and every anatomical tool label («TAPSE», «Ao Sinus»…) keeps
+    its meaning and its report row.
+    """
+    label = (raw or "").strip()
+    if not label:
+        return False
+    if is_unnamed_caliper_label(label):
+        return True
+    if label in ANATOMICAL_CALIPER_LABELS or label in PERCENT_LABELS or label in AREA_LABELS:
+        return False
+    return label not in _LABEL_I18N_KEY and label not in CALIPER_TO_MEASUREMENT
