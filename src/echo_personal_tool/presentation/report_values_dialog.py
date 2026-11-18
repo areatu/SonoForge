@@ -156,7 +156,9 @@ class ReportValuesDialog(QDialog):
                 for spec in specs:
                     row = QTreeWidgetItem(section, [spec.label, ""])
                     row.setData(0, Qt.ItemDataRole.UserRole, spec.key)
-                    row.setCheckState(0, Qt.CheckState.Checked if self._state.get(spec.key, True) else Qt.CheckState.Unchecked)
+                    row.setCheckState(
+                        0, Qt.CheckState.Checked if self._state.get(spec.key, True) else Qt.CheckState.Unchecked
+                    )
                     if focus is None or focus_key == spec.key:
                         focus = row
         else:

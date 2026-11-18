@@ -176,9 +176,9 @@ def _bsa_source_label() -> str:
 
 
 def _aorta_index_rows() -> tuple[tuple[str, str], ...]:
-    from echo_personal_tool.domain.translation import tr
     from echo_personal_tool.domain.measurement_catalog import CALIPER_TO_MEASUREMENT
     from echo_personal_tool.domain.services.nomenclature import caliper_label
+    from echo_personal_tool.domain.translation import tr
 
     rows = []
     for raw in ("Annulus", "Ao Sinus", "Ao Junction", "Prox Ao"):

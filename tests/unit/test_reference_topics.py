@@ -72,7 +72,16 @@ class TestTopicView:
         view = build_topic_view(ru_store, "left_ventricle")
         assert view.pathology_names[0] == "Размеры левого желудочка"
         rows = [row for row in view.rows if row.pathology_name == view.pathology_names[0]]
-        assert {row.param_id for row in rows} == {"lvedd", "lvesd", "lvedv", "lvedvi", "lvesv", "lvesvi", "lvpwd", "ivsd"}
+        assert {row.param_id for row in rows} == {
+            "lvedd",
+            "lvesd",
+            "lvedv",
+            "lvedvi",
+            "lvesv",
+            "lvesvi",
+            "lvpwd",
+            "ivsd",
+        }
 
 
 class TestSex:

@@ -94,6 +94,4 @@ def test_a_pathological_aorta_adds_indexed_values_with_norms() -> None:
 
     # An in-norm aorta stays a single line: no speculative index rows.
     clean = build_report_document(snapshot(35.0), sex="M")
-    assert "av:linear.ao.sinus.i:0" not in [
-        value.key for group in clean.groups for value in group.values
-    ]
+    assert "av:linear.ao.sinus.i:0" not in [value.key for group in clean.groups for value in group.values]

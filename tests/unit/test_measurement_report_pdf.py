@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.report_builder import ReportDocument
 
 _FAKE_FONT = Path("/fake/font.ttf")
 
@@ -270,7 +274,7 @@ def test_two_column_template_rebuilds_the_sheet(tmp_path: Path) -> None:
 # ── Layout: title/table blocks, column alignment, conclusion spacing ──────────
 
 
-def _four_group_document(conclusion: str = "Дилатация ЛП. ФВ ЛЖ сохранена.") -> "ReportDocument":
+def _four_group_document(conclusion: str = "Дилатация ЛП. ФВ ЛЖ сохранена.") -> ReportDocument:
     from echo_personal_tool.domain.services.report_builder import (
         PatientInfo,
         ReportDocument,
@@ -282,11 +286,16 @@ def _four_group_document(conclusion: str = "Дилатация ЛП. ФВ ЛЖ �
         return ReportGroup(
             title=title,
             key=key,
-            values=tuple(ReportValue(label=label, value=value, unit=unit, norm=norm, group=key) for label, value, unit, norm in rows),
+            values=tuple(
+                ReportValue(label=label, value=value, unit=unit, norm=norm, group=key)
+                for label, value, unit, norm in rows
+            ),
         )
 
     return ReportDocument(
-        patient=PatientInfo(name="Иванов И.И.", patient_id="1", sex="M", study_date="17.05.2024", conclusion=conclusion),
+        patient=PatientInfo(
+            name="Иванов И.И.", patient_id="1", sex="M", study_date="17.05.2024", conclusion=conclusion
+        ),
         groups=(
             group("Левый желудочек", "lv", [("КДО ЛЖ", "120", "мл", "62–150"), ("ФВ ЛЖ", "60", "%", "52–72")]),
             group("Левое предсердие", "la", [("КДР ЛП", "42", "мм", "30–40")]),
@@ -373,13 +382,10 @@ def test_conclusion_heading_is_spaced_and_kept_with_its_text() -> None:
     for template in (ReportTemplate(columns=1), ReportTemplate(columns=COLUMNS_TWO)):
         rendered = render_report(_four_group_document(), template=template)
         blocks = _text_blocks(rendered.pdf)
-        conclusion = next(
-            block for block in blocks if "Заключение" in block[4] or "Conclusion" in block[4]
-        )
+        conclusion = next(block for block in blocks if "Заключение" in block[4] or "Conclusion" in block[4])
         # The heading keeps a deliberate gap (>= 5 mm) from the last table …
         above = max(block[3] for block in blocks if block[3] <= conclusion[1] + 0.5)
         gap = conclusion[1] - above
         assert gap >= 5 * 2.83, f"conclusion heading hugs the table (gap {gap:.1f} pt)"
         # … and it is one block together with its text (no widow heading).
         assert "Дилатация ЛП." in conclusion[4]
-

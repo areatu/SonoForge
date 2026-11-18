@@ -1235,10 +1235,12 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
                 bsa_inputs.append(OriginInput("bsa_source", basis.source))
         bsa_origin = calculator_origin("bsa", inputs=tuple(bsa_inputs))
         lvef = snapshot.lvef
-        simpson_method = METHOD_SIMPSON_BIPLANE if getattr(lvef, "method", "") == "simpson_biplan" else METHOD_SIMPSON_MONOPLANE
+        simpson_method = (
+            METHOD_SIMPSON_BIPLANE if getattr(lvef, "method", "") == "simpson_biplan" else METHOD_SIMPSON_MONOPLANE
+        )
         la = snapshot.la_simpson
         ra = snapshot.ra_simpson
-        row_origins: dict[str, ValueOrigin] = {
+        row_origins: dict[str, ValueOrigin | None] = {
             "patient.bsa": bsa_origin,
             "lv.mass_i": linear_caliper_origin(snapshot, LVEDD_ALIASES | LVESD_ALIASES, METHOD_LINEAR_DERIVED),
             "lv.edvi": simpson_origin(lvef, method_id=simpson_method, phase="ed"),
@@ -1809,7 +1811,9 @@ def _judged_repeat(repeat: ReportRepeat, sex: str) -> ReportRepeat:
     knows the patient's sex, so the hover card's green/red comes from here.
     """
     judged = tuple(
-        replace(candidate, pathological=_readings_verdict(tuple(pair for part in candidate.readings for pair in part), sex))
+        replace(
+            candidate, pathological=_readings_verdict(tuple(pair for part in candidate.readings for pair in part), sex)
+        )
         if candidate.readings
         else candidate
         for candidate in repeat.candidates

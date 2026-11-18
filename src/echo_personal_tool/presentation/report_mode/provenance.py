@@ -83,6 +83,7 @@ _SOURCE_KEYS: dict[str, str] = {
     "manual": "report.origin.source_manual",
 }
 
+
 def method_text(origin: ValueOrigin) -> str:
     """Localized method line of one origin (stable id when unknown)."""
     key = _METHOD_KEYS.get(origin.method_id)
@@ -322,7 +323,7 @@ class ReportValueCard(QFrame):
         self._chosen = repeat.override if repeat is not None else ""
         candidates = repeat.candidates if repeat is not None else ()
         active = self._chosen or (repeat.default_id if repeat is not None else "")
-        self._variant_buttons: list[tuple[str, QPushButton]] = []
+        self._variant_buttons = []
         for candidate in candidates:
             texts = [description for description, _source in candidate.parts]
             button = QPushButton("\n".join(texts))
@@ -358,7 +359,6 @@ class ReportValueCard(QFrame):
     def _repeat_active_id(self) -> str:
         repeat = self._value.repeat if self._value is not None else None
         return repeat.default_id if repeat is not None else ""
-
 
     def _fill_inputs(self, origin: ValueOrigin | None) -> None:
         _clear_boxes(self._inputs)

@@ -240,10 +240,10 @@ class _GroupBlock(Flowable):  # type: ignore[misc]  # reportlab ships no type st
         # lower than its partner (2026-11-18, item 11).  At the top of a frame
         # (a column or a page) reportlab suppresses spaceBefore, so the first
         # block of every column starts flush and the headings line up.
-        return self._title.getSpaceBefore() + self._gap_before
+        return float(self._title.getSpaceBefore()) + self._gap_before
 
     def getSpaceAfter(self) -> float:
-        return self._table.getSpaceAfter()
+        return float(self._table.getSpaceAfter())
 
     def wrap(self, aW: float, aH: float) -> tuple[float, float]:
         _title_width, title_height = self._title.wrapOn(self.canv, aW, aH)

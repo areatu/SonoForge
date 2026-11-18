@@ -95,13 +95,20 @@ def test_every_row_key_the_builder_prints_is_in_the_catalogue():
         parameter = key.split(":")[1]
         # Free-text rows hash their name and spectral calipers carry their mode:
         # both are per-study and stay out of the catalogue by design.
-        return bool(re.fullmatch(r"[a-z]+\.[0-9a-f]{64}.*", parameter)) or parameter.startswith(("spectral.", "vessel."))
+        return bool(re.fullmatch(r"[a-z]+\.[0-9a-f]{64}.*", parameter)) or parameter.startswith(
+            ("spectral.", "vessel.")
+        )
 
     snapshot = MeasurementSnapshot(
         lvef=LvefResult(a4c=LvViewMetrics(length_ed_mm=87, edv_ml=120, esv_ml=55), sv_ml=65, lvef_percent=52),
         teichholz=TeichholzResult(135, 60, 55.5, 75),
         doppler=DopplerResults(
-            e_cm_s=80, a_cm_s=55, dt_ms=180, e_prime_sept_cm_s=7, e_prime_lat_cm_s=9, tr_vmax_cm_s=24,
+            e_cm_s=80,
+            a_cm_s=55,
+            dt_ms=180,
+            e_prime_sept_cm_s=7,
+            e_prime_lat_cm_s=9,
+            tr_vmax_cm_s=24,
             flow_results=(DopplerFlowResult("MV", 120, vti_cm=22),),
         ),
         linear_measurements=(
@@ -116,4 +123,6 @@ def test_every_row_key_the_builder_prints_is_in_the_catalogue():
     for group in build_report_document(snapshot, sex="M").groups:
         for value in group.values:
             if value.key:
-                assert value.key in catalogue or dynamic(value.key), f"row {value.label!r} key {value.key!r} is not catalogued"
+                assert value.key in catalogue or dynamic(value.key), (
+                    f"row {value.label!r} key {value.key!r} is not catalogued"
+                )
