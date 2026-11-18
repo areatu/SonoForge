@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import RepeatStatistics
@@ -354,3 +355,5 @@ class MeasurementSnapshot:
     simpson_record_status: object | None = None
     doppler_record_status: object | None = None
     derived_record_status: object | None = None
+    #: Alternatives offered on the report only, never written to the study document.
+    report_repeats: tuple[ReportRepeat, ...] = ()

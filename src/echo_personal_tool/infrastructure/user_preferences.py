@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Container
 from dataclasses import dataclass
@@ -56,6 +57,7 @@ from echo_personal_tool.application.preferences_contract import (
     normalize_ui_scale,
     resolve_wl_values,  # noqa: F401 - re-exported for tests and older callers
 )
+from echo_personal_tool.domain.services.report_value_layout import DEFAULT_REPORT_VALUE_EXCLUDED
 
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "preferences"
@@ -206,6 +208,8 @@ class UserPreferences:
     #: Empty means «the full standard form», so an old settings file prints
     #: exactly what it printed before.
     report_template_json: str = ""
+    report_value_excluded: tuple[str, ...] = DEFAULT_REPORT_VALUE_EXCLUDED
+    report_value_order: tuple[str, ...] = ()
     # Item 10 of the 2026-11-09 list: the permanent header values of the
     # report («учреждение», «аппарат», «врач»). Empty means «take the study /
     # DICOM header», so a fresh profile behaves exactly as before.
@@ -570,9 +574,23 @@ def _read_privacy_preferences(store: Any) -> dict[str, Any]:
     )
 
 
+def _read_report_keys(raw: object, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    if not isinstance(raw, str):
+        return default
+    try:
+        keys = json.loads(raw)
+    except (ValueError, RecursionError):
+        return default
+    if not isinstance(keys, list) or not all(isinstance(key, str) and key for key in keys):
+        return default
+    return tuple(dict.fromkeys(keys))  # [] explicitly includes every parameter
+
+
 def _read_report_preferences(store: Any) -> dict[str, Any]:
     """Permanent report fields (institution / equipment / physician)."""
     return dict(
+        report_value_excluded=_read_report_keys(store.value("report_value_excluded"), DEFAULT_REPORT_VALUE_EXCLUDED),
+        report_value_order=_read_report_keys(store.value("report_value_order")),
         report_institution=_read_str(store.value("report_institution"), ""),
         report_equipment=_read_str(store.value("report_equipment"), ""),
         report_physician=_read_str(store.value("report_physician"), ""),
@@ -631,6 +649,8 @@ def save_user_preferences(preferences: UserPreferences) -> None:
 
     capabilities = capabilities_for()
     values = dict(preferences.__dict__)
+    for key in ("report_value_excluded", "report_value_order"):
+        values[key] = json.dumps(values[key], ensure_ascii=False)
     if not capabilities.continue_last_session:
         for key in (
             "startup_mode",

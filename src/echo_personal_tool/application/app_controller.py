@@ -7,7 +7,7 @@ import logging
 import math
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -40,6 +40,7 @@ from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
     contours_for_instance,
+    report_measurement_sources,
 )
 from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory, adopt_loaded_bsa
 from echo_personal_tool.application.thumbnail_scheduler import (
@@ -85,6 +86,7 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.measurements import DopplerResults, LvefResult, MeasurementSnapshot
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
 from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
 from echo_personal_tool.domain.models.ste_analysis import (
@@ -1958,19 +1960,11 @@ class AppController(QObject):
             vessel_measurements=instance_vessel,
         )
 
-    def compute_study_snapshot(self) -> MeasurementSnapshot | None:
-        """Study-wide snapshot for the report window.
-
-        The on-image overlay is deliberately scoped to the clip being shown, but
-        a protocol describes the whole study: LVEDD from the parasternal clip,
-        the Simpson volumes from A4C/A2C, the Doppler from the PW clips. This
-        therefore uses every caliper, contour and vessel measurement stored in
-        the session instead of the current clip's subset.
-        """
+    def compute_study_snapshot(self, *, report_choices: Mapping[str, str] | None = None) -> MeasurementSnapshot | None:
+        """All clips of the study. For a report, resolve repeats before deriving any values."""
         state = self._state_manager.snapshot
-        study_uid = self._resolve_study_uid()
-        session = self._measurement_session.get(study_uid)
-        if state.instance is None and not session.linear_measurements and not session.contours:
+        session = self._measurement_session.get(self._resolve_study_uid())
+        if state.instance is None and not session.has_measurements:
             return None
         return self._build_measurement_snapshot(
             contours=session.contours,
@@ -1980,6 +1974,7 @@ class AppController(QObject):
             state=state,
             session=session,
             vessel_measurements=session.vessel_measurements,
+            report_choices=report_choices,
         )
 
     def study_projection(
@@ -2080,6 +2075,7 @@ class AppController(QObject):
         state: ViewerState,
         session: StudyMeasurementData,
         vessel_measurements: tuple[VesselMeasurement, ...] = (),
+        report_choices: Mapping[str, str] | None = None,
     ) -> MeasurementSnapshot:
         doppler = compute(doppler_dto) if doppler_dto is not None else None
         display_doppler = compute(display_doppler_dto) if display_doppler_dto is not None else None
@@ -2092,8 +2088,18 @@ class AppController(QObject):
             state, session, self._instance_metadata, self.measurement_persistence.sources
         )
         contours = express_contours_on_grid(contours, pixel_spacing, spacing_for_contour)
+        repeats: tuple[ReportRepeat, ...] = ()
+        if report_choices is not None:
+            session, repeats = report_measurement_sources(
+                dataclasses.replace(session, contours=contours), report_choices, pixel_spacing, spacing_calibrated
+            )
+            contours, linear_measurements, vessel_measurements = (
+                session.contours,
+                session.linear_measurements,
+                session.vessel_measurements,
+            )
         lvef = calculate(contours, pixel_spacing)
-        if lvef is not None and lvef.method != "simpson_biplan":
+        if report_choices is None and lvef is not None and lvef.method != "simpson_biplan":
             # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
             # Contours from the whole study let BP volumes appear on the overlay even
             # when the current instance holds only a single view.
@@ -2177,6 +2183,7 @@ class AppController(QObject):
         return MeasurementSnapshot(
             doppler=doppler,
             display_doppler=display_doppler,
+            report_repeats=repeats,
             lvef=lvef,
             teichholz=teichholz,
             la_volume=la_volume,

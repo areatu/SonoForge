@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
@@ -26,6 +26,7 @@ from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.imt import ImtDraft, ImtRefusal
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
@@ -33,6 +34,7 @@ from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 from echo_personal_tool.domain.services.imt_validation import MAX_IMT_MEASUREMENTS, imt_key, validate_imt
 from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
+from echo_personal_tool.domain.services.report_selection import contour_candidate_text, select_report_sources
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases
@@ -238,14 +240,13 @@ def merge_linear_measurements(
     """
     if not incoming:
         return existing
-    by_key: dict[tuple[str, int, str], LinearMeasurement] = {}
-    for measurement in existing:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
-    for measurement in incoming:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
+    by_key = {_linear_key(m): m for m in existing}
+    by_key.update((_linear_key(m), m) for m in incoming)
     return tuple(by_key.values())
+
+
+def _linear_key(item: LinearMeasurement) -> tuple[str, int | None, str]:
+    return item.label, item.frame_index, item.sop_instance_uid
 
 
 def replace_linear_measurements_for_instance(
@@ -260,16 +261,12 @@ def replace_linear_measurements_for_instance(
     disappear from the study too (otherwise they come back after a clip switch
     and stay in the report). Other clips are untouched.
     """
-    kept = tuple(m for m in existing if m.sop_instance_uid != instance_uid)
-    if not incoming:
-        return kept
-    by_key: dict[tuple[str, int, str], LinearMeasurement] = {
-        (m.label, m.frame_index if m.frame_index is not None else -1, m.sop_instance_uid): m for m in kept
-    }
-    for measurement in incoming:
-        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
-        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
-    return tuple(by_key.values())
+    # Updating or revisiting a clip must not make *all* its old calipers
+    # newer than those of other clips. Remove only the deleted slots, then
+    # replace survivors in place and append genuinely new acquisitions.
+    present = {_linear_key(m) for m in incoming}
+    kept = tuple(m for m in existing if m.sop_instance_uid != instance_uid or _linear_key(m) in present)
+    return merge_linear_measurements(kept, incoming)
 
 
 def linear_measurements_for_instance(
@@ -405,6 +402,19 @@ class StudyMeasurementData:
         for _uid, _frame, dto in self.doppler_by_instance_frame:
             aggregated = merge_doppler_dtos(aggregated, dto)
         return aggregated
+
+
+def report_measurement_sources(
+    data: StudyMeasurementData, choices: Mapping[str, str], pixel_spacing: tuple[float, float], calibrated: bool
+) -> tuple[StudyMeasurementData, tuple[ReportRepeat, ...]]:
+    """Project a transient session on the resolved grid; never change the saved study."""
+    linear, linear_choices = select_report_sources(data.linear_measurements, choices)
+    contours, contour_choices = select_report_sources(
+        data.contours, choices, describe=lambda c: contour_candidate_text(c, pixel_spacing, calibrated)
+    )
+    vessels, vessel_choices = select_report_sources(data.vessel_measurements, choices)
+    projected = replace(data, linear_measurements=linear, contours=contours, vessel_measurements=vessels)
+    return projected, linear_choices + contour_choices + vessel_choices
 
 
 class StudyMeasurementSessionStore:

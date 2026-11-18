@@ -554,3 +554,194 @@ class TestFormatAndFinish:
         template = coordinator.page.preview.template
         assert template is not None
         assert template.normalized_columns == COLUMNS_TWO
+
+
+@pytest.fixture
+def repeated_rows(controller):
+    from echo_personal_tool.domain.models import LinearMeasurement
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.report_selection import select_report_sources
+
+    raw = tuple(
+        LinearMeasurement(label, mm, mm, frame, sop_instance_uid="1.2.9")
+        for label, mm, frame in [("Alpha", 61, 8), ("Beta", 34, 10), ("Gamma", 45, 3), ("Alpha", 53, 2)]
+    )
+
+    def snapshot(*, report_choices=None):
+        selected, repeats = select_report_sources(raw, report_choices or {})
+        return MeasurementSnapshot(linear_measurements=selected, report_repeats=repeats, spacing_calibrated=True)
+
+    controller.compute_study_snapshot.side_effect = snapshot
+    controller.studies = _studies(_instance("1.2.9", "scan.dcm"))
+
+
+@pytest.mark.gui
+def test_row_dialog_persists_layout_but_only_pins_the_sample_in_its_tab(
+    coordinator, repeated_rows, window, monkeypatch, tmp_path
+):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QComboBox, QPushButton, QTreeWidget
+
+    from echo_personal_tool.application.localization import tr
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
+
+    window.preferences.report_value_order = ("thyroid:absent:0",)
+    window.preferences.report_value_excluded = ("kidney:absent:0",)
+    coordinator.set_mode(True)
+    page = coordinator.page
+    rows = {v.label: v for g in page.document.groups for v in g.values}
+    assert list(rows) == ["Beta", "Gamma", "Alpha"]
+    assert float(rows["Alpha"].value) == 53
+
+    def edit(dialog):
+        tree = dialog.findChild(QTreeWidget, "reportValuesTree")
+        assert tree.currentItem().text(0) == "Alpha"  # entered from the repeated row
+        source = dialog.findChild(QComboBox, "reportMeasurementSource")
+        assert source.count() == 3 and source.currentData() == ""
+        assert "61" in source.itemText(1) and tr(
+            "report.origin.clip_frame", name="scan.dcm", frame=9
+        ) in source.itemText(1)
+        source.setCurrentIndex(1)
+        group = tree.currentItem().parent()
+        group.child(1).setCheckState(0, Qt.CheckState.Unchecked)
+        up = next(b for b in dialog.findChildren(QPushButton) if b.text() == tr("report.values.up"))
+        up.click()
+        up.click()
+        assert not up.isEnabled()
+        return ReportValuesDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ReportValuesDialog, "exec", edit)
+    page.preview._build_value_menu(rows["Alpha"]).actions()[0].trigger()
+    doc_rows = [v for g in page.document.groups for v in g.values]
+    assert [v.label for v in doc_rows] == ["Alpha", "Beta"]
+    assert float(doc_rows[0].value) == 61 and doc_rows[0].origin.clips[0].frame_index == 8
+    assert window.preferences.report_value_excluded == tuple(sorted((rows["Gamma"].key, "kidney:absent:0")))
+    assert window.preferences.report_value_order == (
+        "thyroid:absent:0",
+        rows["Alpha"].key,
+        rows["Beta"].key,
+        rows["Gamma"].key,
+    )
+    assert [key for key, _ in page.sections.hidden_values] == [rows["Gamma"].key]
+    _check_exports(coordinator, window, monkeypatch, tmp_path)
+
+    first = window.tab
+    frozen = page.preview.version()
+    coordinator.set_finished(True)
+    window.tab = _tab()
+    window.tab.tab_id = "another"
+    window.tab.report_mode = True
+    coordinator.mode_page()  # switch through the real tab-surface hook
+    assert [(v.label, float(v.value)) for g in page.document.groups for v in g.values] == [("Alpha", 53), ("Beta", 34)]
+    coordinator.set_value_hidden(rows["Gamma"].key, False)
+    assert rows["Gamma"].key not in window.preferences.report_value_excluded
+    assert page.document.groups[0].values[-1].label == "Gamma"
+    window.tab = first
+    coordinator.mode_page()
+    assert page.preview.version() == frozen and coordinator.current_document() == frozen.document
+    assert not page.sections.hidden_values
+    assert page.preview._build_value_menu(rows["Alpha"]) is None
+
+
+def _check_exports(coordinator, window, monkeypatch, tmp_path):
+    import csv
+    import json
+
+    import pymupdf
+
+    from echo_personal_tool.presentation.coordinators import report_coordinator as module
+
+    # Exercise the actual PDF worker/export, not just the builder. Printing
+    # rasterises the preview PDF: intercept the bytes handed to the printer.
+    preview = coordinator.page.pdf_bytes
+    window.save_path = str(tmp_path / "report.pdf")
+    coordinator.export_pdf()
+    for contents in (preview, Path(window.save_path).read_bytes()):
+        with pymupdf.open(stream=contents, filetype="pdf") as pdf:
+            text = "\n".join(sheet.get_text() for sheet in pdf)
+            assert "Gamma" not in text and text.index("Alpha") < text.index("Beta")
+            assert "61" in text[text.index("Alpha") : text.index("Beta")]
+    print_job = MagicMock(return_value=True)
+    monkeypatch.setattr(module, "print_report_pdf", print_job)
+    window.printer = object()
+    coordinator.print_sheet()
+    print_job.assert_called_once_with(preview, window.printer)
+    window.save_path = str(tmp_path / "report.json")
+    coordinator.export_json()
+    exported = json.loads(Path(window.save_path).read_text(encoding="utf-8"))["groups"][0]["values"]
+    assert [(row["label"], float(row["value"])) for row in exported] == [("Alpha", 61), ("Beta", 34)]
+    window.save_path = str(tmp_path / "report.csv")
+    coordinator.export_csv()
+    with Path(window.save_path).open(encoding="utf-8") as f:
+        assert [(r["label"], float(r["value"])) for r in csv.DictReader(f)] == [("Alpha", 61), ("Beta", 34)]
+
+
+@pytest.mark.gui
+def test_automatic_choice_cancel_and_quick_hide_do_not_leak_between_tabs(
+    coordinator, window, repeated_rows, monkeypatch
+):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QComboBox, QToolButton, QTreeWidget
+
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
+
+    coordinator.set_mode(True)
+    page = coordinator.page
+    rows = {v.label: v for g in page.document.groups for v in g.values}
+    alpha, beta = rows["Alpha"].key, rows["Beta"].key
+    coordinator.set_value_hidden(beta, True)
+
+    def select(dialog, index):
+        dialog.findChild(QComboBox).setCurrentIndex(index)
+        return ReportValuesDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: select(dialog, 1))
+    coordinator.edit_values(alpha)
+    assert window.tab.report_value_choices and beta in window.tab.report_hidden_values
+    assert beta not in window.preferences.report_value_excluded and not window.saved_preferences
+    monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: select(dialog, 0))
+    coordinator.edit_values(alpha)
+    assert window.tab.report_value_choices == {}
+    assert [float(v.value) for g in page.document.groups for v in g.values if v.key == alpha] == [53]
+
+    def cancel(dialog):
+        tree = dialog.findChild(QTreeWidget)
+        tree.currentItem().setCheckState(0, Qt.CheckState.Unchecked)
+        dialog.findChild(QComboBox).setCurrentIndex(1)
+        return ReportValuesDialog.DialogCode.Rejected
+
+    before = page.document
+    monkeypatch.setattr(ReportValuesDialog, "exec", cancel)
+    button = page.preview.findChild(QToolButton, "reportEditValues")
+    button.click()
+    assert page.document == before and not window.tab.report_value_choices and not window.saved_preferences
+    coordinator.set_finished(True)
+    assert not button.isEnabled() and page.preview._build_value_menu(rows["Alpha"]) is None
+    coordinator.edit_values(rows["Alpha"].key)
+    assert page.document == before and not window.tab.report_value_choices
+
+
+@pytest.mark.gui
+def test_last_hidden_row_can_be_restored_from_an_empty_section(coordinator, repeated_rows, window, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTreeWidget
+
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
+
+    coordinator.set_mode(True)
+    page = coordinator.page
+    before = page.document.groups
+
+    def check_rows(dialog, state):
+        tree = dialog.findChild(QTreeWidget)
+        section = tree.topLevelItem(0)
+        for i in range(section.childCount()):
+            section.child(i).setCheckState(0, state)
+        return ReportValuesDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: check_rows(dialog, Qt.CheckState.Unchecked))
+    coordinator.edit_values()
+    assert not page.document.groups and len(page.sections.hidden_values) == 3
+    monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: check_rows(dialog, Qt.CheckState.Checked))
+    coordinator.edit_values()
+    assert page.document.groups == before and not page.sections.hidden_values
