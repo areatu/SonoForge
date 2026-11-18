@@ -476,6 +476,8 @@ class ReportCoordinator(QObject):
     def provide_conclusion(self) -> ConclusionAutofillResult:
         """Fresh study snapshot + patient context for the conclusion button."""
         from echo_personal_tool.application.report_conclusion import age_years_from_text
+        from echo_personal_tool.domain.services.report_conclusion import build_conclusion
+        from echo_personal_tool.presentation.report_mode.conclusion_decision import ConclusionDecisionDialog
 
         tab = self._active_tab()
         page = self.ensure_page()
@@ -489,10 +491,23 @@ class ReportCoordinator(QObject):
             )
         snapshot = self._report_snapshot()
         patient = self.patient_info(snapshot)
+        age = age_years_from_text(patient.age)
+        draft = build_conclusion(snapshot, sex=patient.sex, age_years=age)
+        choices = {}
+        for finding in draft.findings:
+            if not finding.candidates:
+                continue
+            stored = tab.report_conclusion_choices.get(finding.id)
+            current = stored[1] if stored and stored[0] == finding.candidate_evidence else None
+            selected = ConclusionDecisionDialog.ask(page, finding, current=current)
+            if selected is not None:
+                choices[finding.id] = (finding.candidate_evidence, selected)
+        tab.report_conclusion_choices = choices
         return autofill_conclusion(
             snapshot,
             sex=patient.sex,
-            age_years=age_years_from_text(patient.age),
+            age_years=age,
+            choices=choices,
             language=get_language(),
             existing=page.conclusion,
             previous_generated=getattr(tab, "report_generated_conclusion", ""),
