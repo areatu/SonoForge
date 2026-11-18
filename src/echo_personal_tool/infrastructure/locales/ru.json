@@ -3473,5 +3473,18 @@
   "imt.save": "Сохранить в документ исследования",
   "imt.refused": "Отказ",
   "persistence.import_category.imt": "КИМ (research)",
-  "imt.summary": "{decision}\nСреднее {mean} / максимум {maximum} / SD {sd} мм\nПокрытие {coverage}, длина {length} мм, ревизия {revision}"
+  "imt.summary": "{decision}\nСреднее {mean} / максимум {maximum} / SD {sd} мм\nПокрытие {coverage}, длина {length} мм, ревизия {revision}",
+  "caliper.av": "AV",
+  "caliper.ao_annulus": "Annulus",
+  "caliper.ao_sinus": "Ao Sinus",
+  "caliper.ao_junction": "Ao Junction",
+  "caliper.prox_ao": "Prox Ao",
+  "caliper.mvd": "MVd",
+  "caliper.rv_basal": "RV basal",
+  "caliper.rv_mid": "RV mid",
+  "caliper.rvot": "RVOT",
+  "caliper.rvotd": "RVOTd",
+  "caliper.pisa_ms": "PISA MS",
+  "caliper.pisa_mr": "PISA MR",
+  "caliper.pisa_ar": "PISA AR"
 }

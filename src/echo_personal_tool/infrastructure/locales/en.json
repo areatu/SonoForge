@@ -3473,5 +3473,18 @@
   "imt.save": "Save to study document",
   "imt.refused": "Refused",
   "persistence.import_category.imt": "IMT (research)",
-  "imt.summary": "{decision}\nMean {mean} / maximum {maximum} / SD {sd} mm\nCoverage {coverage}, length {length} mm, revision {revision}"
+  "imt.summary": "{decision}\nMean {mean} / maximum {maximum} / SD {sd} mm\nCoverage {coverage}, length {length} mm, revision {revision}",
+  "caliper.av": "AV",
+  "caliper.ao_annulus": "Annulus",
+  "caliper.ao_sinus": "Ao Sinus",
+  "caliper.ao_junction": "Ao Junction",
+  "caliper.prox_ao": "Prox Ao",
+  "caliper.mvd": "MVd",
+  "caliper.rv_basal": "RV basal",
+  "caliper.rv_mid": "RV mid",
+  "caliper.rvot": "RVOT",
+  "caliper.rvotd": "RVOTd",
+  "caliper.pisa_ms": "PISA MS",
+  "caliper.pisa_mr": "PISA MR",
+  "caliper.pisa_ar": "PISA AR"
 }
