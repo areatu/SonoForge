@@ -12,7 +12,8 @@ from collections.abc import Callable
 from typing import Protocol
 from weakref import WeakKeyDictionary
 
-from PySide6.QtCore import QEvent, QObject, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, QTimer
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QWidget
 
 from echo_personal_tool.application.composition import user_session_of
@@ -33,10 +34,12 @@ _INACTIVITY_POLL_MS = 15_000
 _ACTIVITY_EVENTS = frozenset(
     {
         QEvent.Type.KeyPress,
+        QEvent.Type.ShortcutOverride,
         QEvent.Type.MouseButtonPress,
         QEvent.Type.MouseButtonDblClick,
         QEvent.Type.Wheel,
         QEvent.Type.TouchBegin,
+        QEvent.Type.WindowActivate,
     }
 )
 
@@ -72,16 +75,24 @@ class UserSessionCoordinator(QObject):
         self._service = service
         self._port = port
         self._last_activity = time.monotonic()
+        self._last_cursor_pos: QPoint | None = None
         self._lock_dialog_open = False
+        self._focus_connected = False
         self._unsubscribe = service.subscribe(self._on_session_changed) if service is not None else (lambda: None)
 
         self._idle_timer = QTimer(self)
         self._idle_timer.setInterval(_INACTIVITY_POLL_MS)
         self._idle_timer.timeout.connect(self._check_inactivity)
 
+        # Scope the event filter to the host window (never QApplication: PySide6
+        # + QtWebEngine can crash wrapping internal RenderWidgetHost delegates).
+        self._watched_window: QWidget | None = self._port.parent_widget()
+        if self._watched_window is not None:
+            self._watched_window.installEventFilter(self)
         app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
+        if isinstance(app, QApplication):
+            app.focusChanged.connect(self._on_focus_changed)
+            self._focus_connected = True
         self.sync_ui()
 
     @property
@@ -89,12 +100,23 @@ class UserSessionCoordinator(QObject):
         return self._service
 
     def shutdown(self) -> None:
-        """Stop timers and detach global event filter on window close."""
+        """Stop timers and detach window activity hooks on close."""
         self._idle_timer.stop()
         self._unsubscribe()
-        app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
+        if self._watched_window is not None:
+            self._watched_window.removeEventFilter(self)
+            self._watched_window = None
+        if self._focus_connected:
+            self._focus_connected = False
+            app = QApplication.instance()
+            if isinstance(app, QApplication):
+                try:
+                    app.focusChanged.disconnect(self._on_focus_changed)
+                except (RuntimeError, TypeError):
+                    pass
+
+    def _on_focus_changed(self, _old: QWidget | None, _new: QWidget | None) -> None:
+        self._last_activity = time.monotonic()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() in _ACTIVITY_EVENTS:
@@ -114,6 +136,11 @@ class UserSessionCoordinator(QObject):
             return
         if not service.is_multi_user_enabled() or service.is_locked():
             return
+        if QApplication.activeWindow() is not None:
+            cursor_pos = QCursor.pos()
+            if self._last_cursor_pos is not None and cursor_pos != self._last_cursor_pos:
+                self._last_activity = time.monotonic()
+            self._last_cursor_pos = cursor_pos
         minutes = service.auto_lock_minutes()
         if minutes <= 0:
             return
