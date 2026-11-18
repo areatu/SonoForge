@@ -50,48 +50,72 @@ topics:
       - name: Severe
         range_male: {low: 52}
         range_female: {low: 46}
+    - id: lvedv
+      name: LVEDV
+      full_name: Left Ventricular End-Diastolic Volume (biplane Simpson)
+      unit: mL
+      norm_male: {low: 62, high: 150}
+      norm_female: {low: 46, high: 106}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
+        by Echocardiography in Adults (biplane Simpson)
+      gradations:
+      - name: Normal
+        range_male: {low: 62, high: 150}
+        range_female: {low: 46, high: 106}
     - id: lvedvi
       name: LVEDVi
       full_name: Left Ventricular End-Diastolic Volume Index
       unit: mL/m²
-      norm_male: {low: 37, high: 97}
-      norm_female: {low: 32, high: 87}
+      norm_male: {low: 34, high: 74}
+      norm_female: {low: 29, high: 61}
       source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+        by Echocardiography in Adults (biplane Simpson)
       gradations:
       - name: Normal
-        range_male: {low: 37, high: 97}
-        range_female: {low: 32, high: 87}
+        range_male: {low: 34, high: 74}
+        range_female: {low: 29, high: 61}
       - name: Mild
-        range_male: {low: 98, high: 110}
-        range_female: {low: 88, high: 99}
+        range_male: {low: 75, high: 84}
+        range_female: {low: 62, high: 69}
       - name: Moderate
-        range_male: {low: 111, high: 124}
-        range_female: {low: 100, high: 112}
+        range_male: {low: 85, high: 95}
+        range_female: {low: 70, high: 78}
       - name: Severe
-        range_male: {low: 125}
-        range_female: {low: 113}
+        range_male: {low: 96}
+        range_female: {low: 79}
+    - id: lvesv
+      name: LVESV
+      full_name: Left Ventricular End-Systolic Volume (biplane Simpson)
+      unit: mL
+      norm_male: {low: 21, high: 61}
+      norm_female: {low: 14, high: 42}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
+        by Echocardiography in Adults (biplane Simpson)
+      gradations:
+      - name: Normal
+        range_male: {low: 21, high: 61}
+        range_female: {low: 14, high: 42}
     - id: lvesvi
       name: LVESVi
       full_name: Left Ventricular End-Systolic Volume Index
       unit: mL/m²
-      norm_male: {low: 12, high: 38}
-      norm_female: {low: 9, high: 32}
+      norm_male: {low: 11, high: 31}
+      norm_female: {low: 8, high: 24}
       source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+        by Echocardiography in Adults (biplane Simpson)
       gradations:
       - name: Normal
-        range_male: {low: 12, high: 38}
-        range_female: {low: 9, high: 32}
+        range_male: {low: 11, high: 31}
+        range_female: {low: 8, high: 24}
       - name: Mild
-        range_male: {low: 39, high: 43}
-        range_female: {low: 33, high: 37}
+        range_male: {low: 32, high: 35}
+        range_female: {low: 25, high: 27}
       - name: Moderate
-        range_male: {low: 44, high: 49}
-        range_female: {low: 38, high: 42}
+        range_male: {low: 36, high: 40}
+        range_female: {low: 28, high: 31}
       - name: Severe
-        range_male: {low: 50}
-        range_female: {low: 43}
+        range_male: {low: 41}
+        range_female: {low: 32}
     - id: lvpwd
       name: LVPWd
       full_name: LV Posterior Wall Thickness
@@ -497,6 +521,26 @@ topics:
       - name: Severe
         range_male: {low: 49}
         range_female: {low: 49}
+    - id: la_area
+      name: LA Area
+      unit: cm²
+      norm_male: {high: 20}
+      norm_female: {high: 20}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
+        by Echocardiography in Adults (LA area in the apical 4-chamber view)
+      gradations:
+      - name: Normal
+        range_male: {high: 20}
+        range_female: {high: 20}
+      - name: Mild
+        range_male: {low: 21, high: 30}
+        range_female: {low: 21, high: 30}
+      - name: Moderate
+        range_male: {low: 31, high: 40}
+        range_female: {low: 31, high: 40}
+      - name: Severe
+        range_male: {low: 41}
+        range_female: {low: 41}
     - id: la_antpost
       name: Anteroposterior dimension (PLAX)
       unit: mm
@@ -1002,6 +1046,19 @@ topics:
       - name: Severe
         range_male: {low: 57}
         range_female: {low: 49}
+    - id: ra_vol_index
+      name: RAVi
+      full_name: Right Atrial Volume Index
+      unit: mL/m²
+      norm_male: {high: 34}
+      norm_female: {high: 27}
+      source: Reference limits of RAVi from the echocardiographic assessment of
+        pulmonary hypertension (BJCardio SOP; RAVi >34 men / >27 women is abnormal).
+        Alternatives — Lang 2015 (25±7/21±6), ASE 2025 (<30, disk method)
+      gradations:
+      - name: Normal
+        range_male: {high: 34}
+        range_female: {high: 27}
     - id: ra_lax
       name: RA Length (SAG)
       unit: mm

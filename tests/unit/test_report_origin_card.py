@@ -1,9 +1,11 @@
 """GUI tests for the «откуда значение» card (UI-4 PR-4, spec §4.6).
 
 The card is the screen side of the provenance contract: it shows the method,
-the source clip with its frame, the measurement identity and the inputs of a
-calculator output, and it says «происхождение не записано» where nothing was
-recorded.  Its only action jumps back to the images on the recorded frame.
+the measurement identity and the inputs of a calculator output, and it says
+«происхождение не записано» where nothing was recorded.  Its actions jump back
+to the images on the recorded frame and pin one of the row's repeated
+acquisitions (2026-11-18 list, item 1) — values only, coloured by their norms,
+with no file names or frame numbers in the list.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ def _english():
 
     set_language("en")
     yield
-    set_language("en")
+    set_language("ru")
 
 
 def _caliper_row():
@@ -64,7 +66,9 @@ def _labels(card, name: str):
     return [label for label in card.findChildren(QLabel) if label.objectName() == name]
 
 
-def test_the_card_shows_the_method_clip_and_frame() -> None:
+def test_the_card_shows_the_method_but_never_names_the_clips() -> None:
+    from PySide6.QtWidgets import QLabel
+
     card = _card()
     card.show_value(_caliper_row())
 
@@ -72,25 +76,63 @@ def test_the_card_shows_the_method_clip_and_frame() -> None:
     assert "LVIDd" in _labels(card, "reportValueCardTitle")[0].text()
     assert "48" in _labels(card, "reportValueCardTitle")[0].text()
     assert "Linear caliper" in _labels(card, "reportValueCardMethod")[0].text()
-    sources = _labels(card, "reportValueCardSource")
-    assert len(sources) == 1
-    assert "frame 8" in sources[0].text()  # frame_index is zero-based on disk
+    # Item 3 of the 2026-11-18 list: server clip names are too long for the
+    # card.  «Открыть кадры» remains the way to confirm the source.
+    assert _labels(card, "reportValueCardSource") == []
+    assert UID not in " ".join(label.text() for label in card.findChildren(QLabel))
+    assert card.open_button.isVisible() is True
 
 
-def test_the_clip_is_named_the_way_the_gallery_names_it() -> None:
+def _repeated_row():
+    from echo_personal_tool.domain.models.report_repeat import ReportCandidate, ReportRepeat
+    from echo_personal_tool.domain.models.value_origin import ClipSource
+    from echo_personal_tool.domain.services.report_builder import ReportValue
+
+    repeat = ReportRepeat(
+        "linear.lv.lvedd",
+        ("linear.lv.lvedd",),
+        (
+            ReportCandidate("cand-1", (("LVIDd: 41.0 mm", ClipSource("1.2.3", 2)),), ((("LVEDD", 41.0),),), False),
+            ReportCandidate("cand-2", (("LVIDd: 58.0 mm", ClipSource("1.2.3", 9)),), ((("LVEDD", 58.0),),), True),
+        ),
+        "",
+        "cand-2",
+    )
+    return ReportValue(label="LVIDd", value="58", unit="mm", repeat=repeat)
+
+
+def test_the_card_offers_every_reading_without_file_names() -> None:
+    from PySide6.QtWidgets import QPushButton
+
     card = _card()
-    card.set_clip_label_provider(lambda uid: "clip_01.dcm" if uid == UID else "")
-    card.show_value(_caliper_row())
+    card.show_value(_repeated_row())
 
-    assert "clip_01.dcm" in _labels(card, "reportValueCardSource")[0].text()
+    variants = [b for b in card.findChildren(QPushButton) if b.objectName() == "reportValueCardVariant"]
+    assert [b.text() for b in variants] == ["LVIDd: 41.0 mm", "✓ LVIDd: 58.0 mm"]
+    assert [b.property("pathology") for b in variants] == ["false", "true"]
+    assert all(UID not in b.text() and "1.2.3" not in b.text() for b in variants)
+    # The pinned/„latest“ reading is marked; «Авто» follows the latest one.
+    assert variants[1].isChecked() is True
+    assert variants[0].isChecked() is False
 
 
-def test_a_clip_without_a_name_falls_back_to_the_uid_tail() -> None:
+def test_clicking_a_reading_pins_it_and_auto_returns_to_the_latest() -> None:
+    from PySide6.QtWidgets import QPushButton
+
     card = _card()
-    card.show_value(_caliper_row())
+    card.show_value(_repeated_row())
+    seen: list[tuple[str, str]] = []
+    card.choice_selected.connect(lambda key, cid: seen.append((key, cid)))
 
-    text = _labels(card, "reportValueCardSource")[0].text()
-    assert UID[-8:] in text
+    variants = [b for b in card.findChildren(QPushButton) if b.objectName() == "reportValueCardVariant"]
+    variants[0].click()
+    assert seen[-1] == ("linear.lv.lvedd", "cand-1")
+    assert variants[0].isChecked() is True
+
+    auto = next(b for b in card.findChildren(QPushButton) if b.objectName() == "reportValueCardAuto")
+    auto.click()
+    assert seen[-1] == ("linear.lv.lvedd", "")
+    assert variants[1].isChecked() is True  # back to the latest acquisition
 
 
 def test_the_measurement_identity_is_shown() -> None:
@@ -234,6 +276,38 @@ def test_the_card_jump_is_forwarded_out_of_the_preview(qtbot, monkeypatch) -> No
     preview.card.open_button.click()
 
     assert seen == [(UID, 7)]
+
+
+def test_the_card_appears_just_above_and_right_of_the_cursor(qtbot, monkeypatch) -> None:
+    """2026-11-18 list, item 2: reaching the card must not touch the next row."""
+    from PySide6.QtCore import QPoint
+
+    preview = _preview(qtbot)
+    monkeypatch.setattr(preview, "value_at", lambda x, y: (0, 0))
+
+    preview._on_hover(QPoint(120, 140))
+
+    anchor = preview._view.viewport().mapTo(preview, QPoint(120, 140))
+    top_left = preview.card.pos()
+    assert top_left.x() == anchor.x() + 12
+    assert top_left.y() == anchor.y() - 8
+
+
+def test_the_card_forwards_a_pinned_reading(qtbot, monkeypatch) -> None:
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QPushButton
+
+    preview = _preview(qtbot)
+    monkeypatch.setattr(preview, "value_at", lambda x, y: (0, 0))
+    seen: list[tuple[str, str]] = []
+    preview.value_choice_changed.connect(lambda key, cid: seen.append((key, cid)))
+    preview._on_hover(QPoint(120, 140))
+    preview.card.show_value(_repeated_row())
+
+    variants = [b for b in preview.card.findChildren(QPushButton) if b.objectName() == "reportValueCardVariant"]
+    variants[0].click()
+
+    assert seen == [("linear.lv.lvedd", "cand-1")]
 
 
 def test_value_record_maps_an_anchor_to_the_document_row(qtbot) -> None:

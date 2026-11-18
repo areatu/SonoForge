@@ -555,7 +555,7 @@ class TestPulmonaryHypertension:
 
 
 class TestRenderingAndMerge:
-    def test_both_languages_are_qualitative_and_carry_review_notice(self) -> None:
+    def test_both_languages_are_qualitative_and_carry_only_study_notices(self) -> None:
         snapshot = _snap(lvef=LvefResult(lvef_percent=25, method="simpson_biplan"))
         draft = build_conclusion(snapshot, sex="M")
         for language in ("ru", "en"):
@@ -563,7 +563,9 @@ class TestRenderingAndMerge:
             assert text.startswith("• ")
             assert re.search(r"\d", text) is None
             assert "report.conclusion." not in text
-        assert "report.conclusion.notice.review" in draft.notices
+        # Item 1 of the 2026-11-18 list: the «draft — verify» boilerplate is
+        # gone from the auto-inserted conclusion entirely.
+        assert "report.conclusion.notice.review" not in draft.notices
 
     def test_append_update_idempotence_and_edited_block_protection(self) -> None:
         first = merge_conclusion("Ручной текст.", "• A")
@@ -586,7 +588,7 @@ class TestRenderingAndMerge:
         assert merged.changed is False
         assert merged.status_key.endswith("no_data")
 
-    def test_application_adds_edited_block_notice_and_uses_ui_language(self) -> None:
+    def test_application_preserves_the_edited_block_without_boilerplate(self) -> None:
         snapshot = _snap(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
         result = autofill_conclusion(
             snapshot,
@@ -597,8 +599,10 @@ class TestRenderingAndMerge:
         )
         assert result.changed is True
         assert "Manual text.\n\n• old edited" in result.text
-        assert "no longer managed" in result.text
-        assert result.status_key.endswith("appended_after_edit")
+        # Item 1 of the 2026-11-18 list: no auto-text around the conclusion —
+        # neither «this is a draft» nor «the earlier text is no longer managed».
+        assert "no longer managed" not in result.text
+        assert "requires physician review" not in result.text
 
 
 class TestAgeParsing:
@@ -625,47 +629,39 @@ class TestAgeParsing:
             assert value == pytest.approx(expected)
 
 
-class TestDraftNoticeSuppression:
-    """Item 6 of the 2026-11-06 list: «Убрать предупреждение о черновике в отчете».
+class TestStudyNotices:
+    """Item 1 of the 2026-11-18 list: the conclusion carries no boilerplate.
 
-    The suppression is a render-time choice of the autofill facade.  The domain
-    keeps the notice for every other consumer, and only the exact draft line
-    goes — the BSA staleness, the «edited block» warning and the findings stay.
+    The «draft — verify» line and the «the earlier auto-text is no longer
+    managed» line were removed together with their preference toggle.  What
+    stays are study notices the physician asked for (stale BSA, strain method)
+    and the untouched preservation of an edited earlier block.
     """
-
-    _DRAFT = "report.conclusion.notice.review"
 
     def _snapshot(self) -> MeasurementSnapshot:
         return _snap(lvef=LvefResult(lvef_percent=60, method="simpson_biplan"))
 
-    def test_the_domain_still_produces_the_notice(self) -> None:
-        from echo_personal_tool.domain.services.report_conclusion import build_conclusion
-
-        draft = build_conclusion(self._snapshot(), sex="M")
-        assert self._DRAFT in draft.notices, "the domain must keep telling its consumers"
-
-    def test_the_facade_drops_only_the_draft_line_when_asked(self) -> None:
+    def test_the_removed_notices_never_appear(self) -> None:
         from echo_personal_tool.domain.translation import tr_for_language
 
         snapshot = self._snapshot()
-        draft_line = tr_for_language(self._DRAFT, "ru")
+        result = autofill_conclusion(
+            snapshot,
+            sex="M",
+            language="ru",
+            existing="Ручной текст.\n\n• старый блок изменён",
+            previous_generated="• старый блок",
+        )
+        for key in ("report.conclusion.notice.review", "report.conclusion.notice.edited_block"):
+            assert tr_for_language(key, "ru") not in result.text
+            assert tr_for_language(key, "en") not in autofill_conclusion(snapshot, sex="M", language="en").text
 
-        with_notice_result = autofill_conclusion(snapshot, sex="M", language="ru")
-        assert draft_line in with_notice_result.text
-
-        clean = autofill_conclusion(snapshot, sex="M", language="ru", hide_draft_notice=True)
-        assert draft_line not in clean.text
-        # Nothing else changed: same bullet count, same status, same findings.
-        assert clean.finding_count == with_notice_result.finding_count
-        assert clean.status_key == with_notice_result.status_key
-        assert len(clean.text.splitlines()) == len(with_notice_result.text.splitlines()) - 1
-
-    def test_an_unrelated_notice_survives_the_suppression(self) -> None:
-        """A stale BSA stays a review item even when the draft line goes."""
+    def test_the_stale_bsa_notice_stays(self) -> None:
+        """A stale BSA stays a review item in the auto-inserted conclusion."""
         from echo_personal_tool.domain.translation import tr_for_language
 
         # The study says 180 cm / 65 kg, the stored index came from 170 cm —
-        # the BSA is stale and the notice must survive the draft suppression.
+        # the BSA is stale and the notice must be rendered.
         basis = resolve_bsa_basis(height_cm=170, weight_kg=65)
         snapshot = replace(
             self._snapshot(),
@@ -677,11 +673,10 @@ class TestDraftNoticeSuppression:
                 simpson_edvi_ml_m2=80,
             ),
         )
-        clean = autofill_conclusion(snapshot, sex="M", language="ru", hide_draft_notice=True)
-        assert tr_for_language("report.conclusion.notice.review", "ru") not in clean.text
-        assert tr_for_language("report.conclusion.notice.bsa", "ru") in clean.text
+        result = autofill_conclusion(snapshot, sex="M", language="ru")
+        assert tr_for_language("report.conclusion.notice.bsa", "ru") in result.text
 
-    def test_a_manual_edit_is_still_preserved_under_the_flag(self) -> None:
+    def test_a_manual_edit_is_still_preserved(self) -> None:
         snapshot = self._snapshot()
         result = autofill_conclusion(
             snapshot,
@@ -689,33 +684,8 @@ class TestDraftNoticeSuppression:
             language="en",
             existing="Manual text.\n\n• old edited",
             previous_generated="• old",
-            hide_draft_notice=True,
         )
         assert "Manual text.\n\n• old edited" in result.text
-        assert "no longer managed" in result.text
-
-    def test_the_helper_is_a_no_op_when_the_notice_is_absent(self) -> None:
-        from echo_personal_tool.domain.services.report_conclusion import (
-            ConclusionDraft,
-            without_notice,
-        )
-
-        draft = ConclusionDraft(findings=(), notices=("report.conclusion.notice.bsa",))
-        assert without_notice(draft, self._DRAFT) == draft
-        assert without_notice(draft, "report.conclusion.notice.bsa").notices == ()
-
-    def test_the_preference_round_trips(self) -> None:
-        from echo_personal_tool.infrastructure.user_preferences import (
-            UserPreferences,
-            load_user_preferences,
-            save_user_preferences,
-        )
-
-        assert UserPreferences().hide_report_draft_notice is False
-        save_user_preferences(UserPreferences(hide_report_draft_notice=True))
-        assert load_user_preferences().hide_report_draft_notice is True
-        save_user_preferences(UserPreferences(hide_report_draft_notice=False))
-        assert load_user_preferences().hide_report_draft_notice is False
 
 
 class TestFormalConclusionAdditions:

@@ -305,7 +305,8 @@ CARD_GOLDENS: Final[dict[str, dict[str, str]]] = {
         "title": "КДР ЛЖ · 48 mm",
         "method": "Метод: Линейный калипер",
         "identity": "ID измерения …m-0001 · ревизия 3",
-        "source": "клип …67890.77 · кадр 8",
+        "variants": "Варианты измерений",
+        "auto": "Авто",
         "status": "Происхождение записано",
         "open": "Открыть кадры",
         "not_recorded": "Происхождение не записано",
@@ -314,7 +315,8 @@ CARD_GOLDENS: Final[dict[str, dict[str, str]]] = {
         "title": "LVIDd · 48 mm",
         "method": "Method: Linear caliper",
         "identity": "Measurement ID …m-0001 · revision 3",
-        "source": "clip …67890.77 · frame 8",
+        "variants": "Measurement variants",
+        "auto": "Auto",
         "status": "Provenance recorded",
         "open": "Open frames",
         "not_recorded": "Provenance not recorded",
@@ -362,9 +364,13 @@ def test_the_value_card_matches_its_golden(language, qapp) -> None:
     assert [label.text() for label in _card_texts(card, "reportValueCardTitle")] == [goldens["title"]]
     assert [label.text() for label in _card_texts(card, "reportValueCardMethod")] == [goldens["method"]]
     assert [label.text() for label in _card_texts(card, "reportValueCardIdentity")] == [goldens["identity"]]
-    assert [label.text() for label in _card_texts(card, "reportValueCardSource")] == [goldens["source"]]
+    assert [label.text() for label in _card_texts(card, "reportValueCardVariants")] == [goldens["variants"]]
     assert [label.text() for label in _card_texts(card, "reportValueCardStatus")] == [goldens["status"]]
     assert card.open_button.text() == goldens["open"]
+    from PySide6.QtWidgets import QPushButton
+
+    auto = next(b for b in card.findChildren(QPushButton) if b.objectName() == "reportValueCardAuto")
+    assert auto.text() == goldens["auto"]
     card.deleteLater()
 
 
@@ -378,10 +384,12 @@ def test_a_value_without_provenance_says_so_and_offers_nothing(language, qapp) -
     card.show_value(_card_row(recorded=False))
 
     assert [label.text() for label in _card_texts(card, "reportValueCardStatus")] == [goldens["not_recorded"]]
-    # No method, no clip, no action: nothing is inferred where nothing was
+    # No method, no variants, no action: nothing is inferred where nothing was
     # recorded, and «Открыть кадры» cannot jump anywhere.
+    from PySide6.QtWidgets import QPushButton
+
     assert _card_texts(card, "reportValueCardMethod")[0].isVisible() is False
-    assert _card_texts(card, "reportValueCardSource") == []
+    assert [b for b in card.findChildren(QPushButton) if b.objectName() == "reportValueCardVariant"] == []
     assert card.open_button.isVisible() is False
     card.deleteLater()
 

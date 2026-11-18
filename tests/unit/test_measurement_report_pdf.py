@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.report_builder import ReportDocument
 
 _FAKE_FONT = Path("/fake/font.ttf")
 
@@ -181,6 +185,9 @@ def _flowable_text(flowable) -> str:
         return flowable.getPlainText()
     if isinstance(flowable, Table):
         return "\n".join(_flowable_text(cell) for row in flowable._cellvalues for cell in row if cell is not None)
+    children = getattr(flowable, "_content", None)
+    if children:
+        return "\n".join(_flowable_text(child) for child in children if child is not None)
     return ""
 
 
@@ -262,3 +269,123 @@ def test_two_column_template_rebuilds_the_sheet(tmp_path: Path) -> None:
     assert "Левый желудочек" in flat
     assert "Левое предсердие" in flat
     assert "120.0" in flat and "42.0" in flat
+
+
+# ── Layout: title/table blocks, column alignment, conclusion spacing ──────────
+
+
+def _four_group_document(conclusion: str = "Дилатация ЛП. ФВ ЛЖ сохранена.") -> ReportDocument:
+    from echo_personal_tool.domain.services.report_builder import (
+        PatientInfo,
+        ReportDocument,
+        ReportGroup,
+        ReportValue,
+    )
+
+    def group(title: str, key: str, rows):
+        return ReportGroup(
+            title=title,
+            key=key,
+            values=tuple(
+                ReportValue(label=label, value=value, unit=unit, norm=norm, group=key)
+                for label, value, unit, norm in rows
+            ),
+        )
+
+    return ReportDocument(
+        patient=PatientInfo(
+            name="Иванов И.И.", patient_id="1", sex="M", study_date="17.05.2024", conclusion=conclusion
+        ),
+        groups=(
+            group("Левый желудочек", "lv", [("КДО ЛЖ", "120", "мл", "62–150"), ("ФВ ЛЖ", "60", "%", "52–72")]),
+            group("Левое предсердие", "la", [("КДР ЛП", "42", "мм", "30–40")]),
+            group("Правый желудочек", "rv", [("Базальный РЖ", "32", "мм", "25–41")]),
+            group("Правое предсердие", "ra", [("Площадь ПП", "18", "см²", "≤19")]),
+        ),
+    )
+
+
+def _text_blocks(pdf_bytes: bytes) -> list[tuple[float, float, float, float, str]]:
+    """(x0, y0, x1, y1, text) of every text block of the first PDF page."""
+    import fitz
+
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf:
+        return [(x0, y0, x1, y1, " ".join(text.split())) for x0, y0, x1, y1, text, *_ in pdf[0].get_text("blocks")]
+
+
+def _block_containing(blocks, needle: str):
+    for block in blocks:
+        if needle in block[4]:
+            return block
+    raise AssertionError(f"no text block contains {needle!r}")
+
+
+def test_two_column_headings_stay_with_their_tables_and_line_up() -> None:
+    """П. 2 + 11 (2026-11-18): «Названия таблиц и сами таблицы переносятся одним
+    блоком», а верхние заголовки колонок стоят на одной линии.
+
+    The two-column sheet once could leave a heading in one column while its
+    table sat in the other, and the columns could start at different heights
+    (a leftover spacer opened the second column lower than the first).
+    """
+    from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
+    from echo_personal_tool.infrastructure.measurement_report_pdf import render_report
+
+    rendered = render_report(_four_group_document(), template=ReportTemplate(columns=COLUMNS_TWO))
+    blocks = _text_blocks(rendered.pdf)
+
+    for title, first_row in (
+        ("Левый желудочек", "КДО ЛЖ"),
+        ("Левое предсердие", "КДР ЛП"),
+        ("Правый желудочек", "Базальный РЖ"),
+        ("Правое предсердие", "Площадь ПП"),
+    ):
+        title_block = _block_containing(blocks, title)
+        row_block = _block_containing(blocks, first_row)
+        # Same column means the two blocks start within one column width of
+        # each other horizontally — the columns sit tens of points apart.
+        assert abs(title_block[0] - row_block[0]) < 30, f"{title}: heading and table are in different columns"
+        assert row_block[1] > title_block[1], f"{title}: the table must be below its heading"
+
+    # The columns' top headings share one baseline (same y, ± 2 pt).
+    left_top = _block_containing(blocks, "Левый желудочек")
+    right_top = _block_containing(blocks, "Правый желудочек")
+    assert abs(left_top[1] - right_top[1]) < 2.0
+
+
+def test_single_column_headings_stay_with_their_tables() -> None:
+    """П. 2: even in the one-column layout the heading never separates."""
+    from echo_personal_tool.domain.services.report_template import ReportTemplate
+    from echo_personal_tool.infrastructure.measurement_report_pdf import render_report
+
+    rendered = render_report(_four_group_document(), template=ReportTemplate(columns=1))
+    blocks = _text_blocks(rendered.pdf)
+
+    for title, first_row in (
+        ("Левый желудочек", "КДО ЛЖ"),
+        ("Левое предсердие", "КДР ЛП"),
+        ("Правый желудочек", "Базальный РЖ"),
+        ("Правое предсердие", "Площадь ПП"),
+    ):
+        title_block = _block_containing(blocks, title)
+        row_block = _block_containing(blocks, first_row)
+        # Table starts right under its heading — a gap of one heading height,
+        # never a foreign block in between.
+        assert 0 < row_block[1] - title_block[1] < 40, f"{title}: table drifted away from its heading"
+
+
+def test_conclusion_heading_is_spaced_and_kept_with_its_text() -> None:
+    """П. 10 (2026-11-18): «Заключение» не прилипает к таблице и не сиротеет."""
+    from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, ReportTemplate
+    from echo_personal_tool.infrastructure.measurement_report_pdf import render_report
+
+    for template in (ReportTemplate(columns=1), ReportTemplate(columns=COLUMNS_TWO)):
+        rendered = render_report(_four_group_document(), template=template)
+        blocks = _text_blocks(rendered.pdf)
+        conclusion = next(block for block in blocks if "Заключение" in block[4] or "Conclusion" in block[4])
+        # The heading keeps a deliberate gap (>= 5 mm) from the last table …
+        above = max(block[3] for block in blocks if block[3] <= conclusion[1] + 0.5)
+        gap = conclusion[1] - above
+        assert gap >= 5 * 2.83, f"conclusion heading hugs the table (gap {gap:.1f} pt)"
+        # … and it is one block together with its text (no widow heading).
+        assert "Дилатация ЛП." in conclusion[4]
