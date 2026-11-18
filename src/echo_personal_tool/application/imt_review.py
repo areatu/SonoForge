@@ -25,11 +25,9 @@ class ImtReview:
         """Explicit operator action after reload/context change, never automatic."""
         self.invalidate()
         old = self.draft.source
-        if (old.study_uid, old.instance_uid, old.frame_index) != (
-            current.study_uid,
-            current.instance_uid,
-            current.frame_index,
-        ):
+        # A new generation and scale may be explicitly rechecked; the anatomical
+        # side, ROI, frame and other acquisition context must not be relabelled.
+        if replace(current, generation=old.generation, calibration=old.calibration) != old:
             raise ImtRefusal("stale_draft")
         candidate = replace(self.draft, source=current, confirmed=False)
         self.draft = correct_imt(
@@ -41,11 +39,18 @@ class ImtReview:
     def edit(self, current: ImtSource, image: np.ndarray, li: Boundary, ma: Boundary) -> ImtDraft:
         if not self.live:
             raise ImtRefusal("review_required")
-        self.draft = correct_imt(self.draft, current, image, lumen_intima=li, media_adventitia=ma)
+        try:
+            self.draft = correct_imt(self.draft, current, image, lumen_intima=li, media_adventitia=ma)
+        except (ImtRefusal, ValueError, TypeError):
+            self.invalidate()
+            raise
         return self.draft
 
     def confirm(self, current: ImtSource) -> ImtDraft:
         if not self.live:
             raise ImtRefusal("review_required")
+        if self.draft.source != current:
+            self.invalidate()
+            raise ImtRefusal("stale_draft")
         self.draft = self.draft.confirm(current)
         return self.draft

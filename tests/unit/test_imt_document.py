@@ -185,3 +185,126 @@ def test_v6_document_has_empty_imt_and_unknown_nested_fields_refuse(sample):
     wire["data"]["imt_measurements"][0]["source"]["clinical_override"] = True
     with pytest.raises(MeasurementStorageError):
         loads(json.dumps(wire).encode())
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"study_uid": "1.2.4"},
+        {"instance_uid": "other"},
+        {"frame_index": 3},
+        {"frame_count": 11},
+        {"side": "L"},
+        {"phase": "other"},
+        {"roi": (1, 0, 96, 64)},
+    ],
+)
+def test_loaded_draft_cannot_be_relabelled_during_revalidation(sample, change):
+    image, draft = sample
+    loaded = loads(dumps(record(draft.confirm(draft.source))))["data"].imt_measurements[0]
+    review = ImtReview(loaded)
+    changed = replace(loaded.source, **change)
+    with pytest.raises(ImtRefusal, match="stale_draft"):
+        review.revalidate(changed, image)
+    assert not review.live and not review.draft.confirmed
+    assert review.draft.source == draft.source
+    with pytest.raises(ImtRefusal, match="review_required"):
+        review.confirm(draft.source)
+
+
+def test_loaded_draft_revalidates_new_calibration_against_raw_image(sample):
+    image, draft = sample
+    loaded = loads(dumps(record(draft.confirm(draft.source))))["data"].imt_measurements[0]
+    new_calibration = replace(loaded.source.calibration, spacing=(0.11, 0.2), revision=1)
+    current = replace(loaded.source, generation=7, calibration=new_calibration)
+    review = ImtReview(loaded)
+    checked = review.revalidate(current, image)
+    assert checked.source == current and checked.revision == loaded.revision + 1
+    assert checked.mean_mm == pytest.approx(loaded.mean_mm * 1.1, rel=0.02)
+    assert not checked.confirmed and review.live
+    assert review.confirm(current).confirmed
+
+
+@pytest.mark.parametrize("failure", ["flat", "nan", "colour", "cropped"])
+def test_revalidation_bad_image_clears_live_and_confirmation(sample, failure):
+    image, draft = sample
+    review = ImtReview(draft.confirm(draft.source), live=True)
+    bad = image.copy()
+    if failure == "flat":
+        bad[:] = 0
+    elif failure == "nan":
+        bad[22, 22] = np.nan
+    elif failure == "colour":
+        bad = np.stack((bad, bad, bad), axis=-1)
+    else:
+        bad = bad[:30]
+    with pytest.raises(ImtRefusal):
+        review.revalidate(draft.source, bad)
+    assert not review.live and not review.draft.confirmed
+    assert review.draft.revision == draft.revision
+    with pytest.raises(ImtRefusal, match="review_required"):
+        review.confirm(draft.source)
+
+
+@pytest.mark.parametrize("failure", ["geometry", "image", "stale"])
+def test_refused_edit_revokes_live_lease_without_publishing_new_values(sample, failure):
+    image, draft = sample
+    review = ImtReview(draft.confirm(draft.source), live=True)
+    li, ma = draft.lumen_intima, draft.media_adventitia
+    current = draft.source
+    if failure == "geometry":
+        li, ma = ma, li
+    elif failure == "image":
+        image = np.zeros_like(image)
+    else:
+        current = replace(current, frame_index=3)
+    with pytest.raises(ImtRefusal):
+        review.edit(current, image, li, ma)
+    assert not review.live and not review.draft.confirmed
+    assert review.draft.revision == draft.revision
+    assert review.draft.lumen_intima == draft.lumen_intima and review.draft.mean_mm == draft.mean_mm
+    with pytest.raises(ImtRefusal, match="review_required"):
+        review.confirm(draft.source)
+
+
+def test_stale_confirmation_revokes_lease_even_if_context_returns(sample):
+    _, draft = sample
+    review = ImtReview(draft.confirm(draft.source), live=True)
+    with pytest.raises(ImtRefusal, match="stale_draft"):
+        review.confirm(replace(draft.source, generation=2))
+    assert not review.live and not review.draft.confirmed
+    with pytest.raises(ImtRefusal, match="review_required"):
+        review.confirm(draft.source)
+
+
+def test_real_correction_recomputes_geometry_and_requires_new_confirmation(sample):
+    image, draft = sample
+    review = ImtReview(draft.confirm(draft.source), live=True)
+    # Shift the second line by one pixel, but retain the physical/QC gates.
+    changed = tuple((x, y + 0.5) for x, y in draft.media_adventitia)
+    corrected = review.edit(draft.source, image, draft.lumen_intima, changed)
+    assert corrected.media_adventitia == changed
+    assert corrected.revision == draft.revision + 1 and not corrected.confirmed
+    assert corrected.mean_mm > draft.mean_mm
+    with pytest.raises(ImtRefusal, match="confirmation_required"):
+        corrected.report_record(draft.source)
+    assert review.confirm(draft.source).report_record(draft.source)["confirmed"] is True
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("mean_mm", -1),
+        ("max_mm", 99),
+        ("attempted_samples", 0),
+        ("accepted_sample_indices", [0, 0]),
+        ("confirmed", "true"),
+        ("distances_mm", [float("nan")]),
+    ],
+)
+def test_loaded_malformed_nested_evidence_refused(sample, field, value):
+    _, draft = sample
+    wire = json.loads(dumps(record(draft)))
+    wire["data"]["imt_measurements"][0][field] = value
+    with pytest.raises(MeasurementStorageError):
+        loads(json.dumps(wire).encode())
