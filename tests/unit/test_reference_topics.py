@@ -62,7 +62,7 @@ class TestTopicView:
         view = build_topic_view(ru_store, "left_ventricle")
         ids = [row.param_id for row in view.rows]
         assert len(ids) == len(set(ids))
-        assert ids[:4] == ["lvedd", "lvesd", "lvedvi", "lvesvi"]
+        assert ids[:6] == ["lvedd", "lvesd", "lvedv", "lvedvi", "lvesv", "lvesvi"]
 
     def test_unknown_topic_is_empty_not_an_error(self, ru_store):
         view = build_topic_view(ru_store, "no_such_topic")
@@ -72,7 +72,7 @@ class TestTopicView:
         view = build_topic_view(ru_store, "left_ventricle")
         assert view.pathology_names[0] == "Размеры левого желудочка"
         rows = [row for row in view.rows if row.pathology_name == view.pathology_names[0]]
-        assert {row.param_id for row in rows} == {"lvedd", "lvesd", "lvedvi", "lvesvi", "lvpwd", "ivsd"}
+        assert {row.param_id for row in rows} == {"lvedd", "lvesd", "lvedv", "lvedvi", "lvesv", "lvesvi", "lvpwd", "ivsd"}
 
 
 class TestSex:

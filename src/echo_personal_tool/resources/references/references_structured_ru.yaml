@@ -50,6 +50,18 @@ topics:
       - name: Тяжёлое
         range_male: {low: 52}
         range_female: {low: 46}
+    - id: lvedv
+      name: КДО ЛЖ (LVEDV)
+      full_name: Конечно-диастолический объём ЛЖ (биплайн Симпсона)
+      unit: мл
+      norm_male: {low: 62, high: 150}
+      norm_female: {low: 46, high: 106}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
+        by Echocardiography in Adults (биплайн Симпсона)
+      gradations:
+      - name: Норма
+        range_male: {low: 62, high: 150}
+        range_female: {low: 46, high: 106}
     - id: lvedvi
       name: КДО ЛЖ (LVEDVi)
       full_name: Конечно-диастолический объём (LVEDVi)
@@ -71,18 +83,18 @@ topics:
       - name: Тяжёлое
         range_male: {low: 96}
         range_female: {low: 79}
-    - id: lvedv
-      name: КДО ЛЖ (LVEDV)
-      full_name: Конечно-диастолический объём ЛЖ (биплайн Симпсона)
+    - id: lvesv
+      name: КСО ЛЖ (LVESV)
+      full_name: Конечно-систолический объём ЛЖ (биплайн Симпсона)
       unit: мл
-      norm_male: {low: 62, high: 150}
-      norm_female: {low: 46, high: 106}
+      norm_male: {low: 21, high: 61}
+      norm_female: {low: 14, high: 42}
       source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
         by Echocardiography in Adults (биплайн Симпсона)
       gradations:
       - name: Норма
-        range_male: {low: 62, high: 150}
-        range_female: {low: 46, high: 106}
+        range_male: {low: 21, high: 61}
+        range_female: {low: 14, high: 42}
     - id: lvesvi
       name: КСО ЛЖ (LVESVi)
       full_name: Конечно-систолический объём (LVESVi)
@@ -104,18 +116,6 @@ topics:
       - name: Тяжёлое
         range_male: {low: 41}
         range_female: {low: 32}
-    - id: lvesv
-      name: КСО ЛЖ (LVESV)
-      full_name: Конечно-систолический объём ЛЖ (биплайн Симпсона)
-      unit: мл
-      norm_male: {low: 21, high: 61}
-      norm_female: {low: 14, high: 42}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults (биплайн Симпсона)
-      gradations:
-      - name: Норма
-        range_male: {low: 21, high: 61}
-        range_female: {low: 14, high: 42}
     - id: lvpwd
       name: ЗСЛЖ (LVPWd)
       full_name: Толщина задней стенки (LVPWd)

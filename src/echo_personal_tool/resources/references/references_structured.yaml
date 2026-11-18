@@ -50,6 +50,18 @@ topics:
       - name: Severe
         range_male: {low: 52}
         range_female: {low: 46}
+    - id: lvedv
+      name: LVEDV
+      full_name: Left Ventricular End-Diastolic Volume (biplane Simpson)
+      unit: mL
+      norm_male: {low: 62, high: 150}
+      norm_female: {low: 46, high: 106}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
+        by Echocardiography in Adults (biplane Simpson)
+      gradations:
+      - name: Normal
+        range_male: {low: 62, high: 150}
+        range_female: {low: 46, high: 106}
     - id: lvedvi
       name: LVEDVi
       full_name: Left Ventricular End-Diastolic Volume Index
@@ -71,18 +83,18 @@ topics:
       - name: Severe
         range_male: {low: 96}
         range_female: {low: 79}
-    - id: lvedv
-      name: LVEDV
-      full_name: Left Ventricular End-Diastolic Volume (biplane Simpson)
+    - id: lvesv
+      name: LVESV
+      full_name: Left Ventricular End-Systolic Volume (biplane Simpson)
       unit: mL
-      norm_male: {low: 62, high: 150}
-      norm_female: {low: 46, high: 106}
+      norm_male: {low: 21, high: 61}
+      norm_female: {low: 14, high: 42}
       source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
         by Echocardiography in Adults (biplane Simpson)
       gradations:
       - name: Normal
-        range_male: {low: 62, high: 150}
-        range_female: {low: 46, high: 106}
+        range_male: {low: 21, high: 61}
+        range_female: {low: 14, high: 42}
     - id: lvesvi
       name: LVESVi
       full_name: Left Ventricular End-Systolic Volume Index
@@ -104,18 +116,6 @@ topics:
       - name: Severe
         range_male: {low: 41}
         range_female: {low: 32}
-    - id: lvesv
-      name: LVESV
-      full_name: Left Ventricular End-Systolic Volume (biplane Simpson)
-      unit: mL
-      norm_male: {low: 21, high: 61}
-      norm_female: {low: 14, high: 42}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults (biplane Simpson)
-      gradations:
-      - name: Normal
-        range_male: {low: 21, high: 61}
-        range_female: {low: 14, high: 42}
     - id: lvpwd
       name: LVPWd
       full_name: LV Posterior Wall Thickness
