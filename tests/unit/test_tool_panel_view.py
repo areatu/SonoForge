@@ -117,7 +117,8 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     assert len(view.quick) <= QUICK_COUNT
     assert len(view.favorites) <= FAVORITES_COUNT
     assert view.total_count == len(CATALOG)
-    assert view.hidden_count == 71
+    # 71 + the two M-mode IVC tools: the IVC diameters are not 2D-context tools.
+    assert view.hidden_count == 73
 
 
 def test_doppler_context_offers_only_doppler_tools() -> None:
