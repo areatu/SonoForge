@@ -645,6 +645,7 @@ def test_app_menu_of_the_logo_carries_the_window_commands(qtbot) -> None:
     labels = [action.text() for action in menu.actions() if not action.isSeparator()]
     assert labels == [
         tr("app_menu.settings"),
+        tr("app_menu.users"),
         tr("app_menu.layout"),
         tr("app_menu.references"),
         tr("imt.open"),

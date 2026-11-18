@@ -12,16 +12,22 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 
-from echo_personal_tool.domain.models.user import is_valid_user_id
 from echo_personal_tool.infrastructure.profile import portable_enabled, portable_root
 
 _MIGRATION_MARKER = ".path-migration-v1"
+_USER_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _active_user_id: str | None = None
 _active_users_root: Path | None = None
+
+
+def _is_valid_user_id(user_id: str) -> bool:
+    """Pure-stdlib 32-hex check so ``paths`` stays importable without numpy/Qt."""
+    return isinstance(user_id, str) and _USER_ID_RE.fullmatch(user_id) is not None
 
 
 def data_dir() -> Path:
@@ -64,7 +70,7 @@ def users_dir() -> Path:
 
 def user_profile_dir(user_id: str, *, root: Path | None = None) -> Path:
     """Return the isolated per-user preference/phrase directory (validated ID, no traversal)."""
-    if not is_valid_user_id(user_id):
+    if not _is_valid_user_id(user_id):
         raise ValueError("invalid user_id")
     base = Path(root) if root is not None else users_dir()
     return base / "profiles" / user_id
@@ -82,7 +88,7 @@ def set_active_user_profile(user_id: str | None, *, users_root: Path | None = No
         _active_user_id = None
         _active_users_root = None
         return
-    if not is_valid_user_id(user_id):
+    if not _is_valid_user_id(user_id):
         raise ValueError("invalid user_id")
     _active_user_id = user_id
     _active_users_root = Path(users_root) if users_root is not None else None
