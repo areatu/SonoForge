@@ -1,23 +1,26 @@
 """«Откуда значение» — the hover card of the report sheet (UI-4 PR-4, §4.6).
 
 Hovering a value on the A4 sheet opens a card with what the document actually
-records: the method, the clip and frame a caliper was drawn on, the inputs of a
+records: the method, the clips a caliper was drawn on, the inputs of a
 calculator output and the freshness status.  Where the lineage was never
 recorded the card says «происхождение не записано» — it never reconstructs a
 source from the current study (QH §5.3, items 3 and 6).
 
-The card draws only tokens of the active theme (no hex literals) and offers one
-action: «Открыть кадры» jumps back to «Изображения» on the source clip.  The
-window owns that jump; the card only emits :attr:`open_frames_requested`.
+The card draws only tokens of the active theme (no hex literals).  Its actions:
+«Открыть кадры» jumps back to «Изображения» on the source clip, and when the
+row was measured more than once the card lists the readings of every
+acquisition (2026-11-18 list, item 1) — just the values, coloured by their
+norms, no file names or frame numbers — and one click pins the reading for the
+report.  The window owns the jumps and the pins; the card only emits
+:attr:`open_frames_requested` and :attr:`choice_selected`.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPropertyAnimation, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -33,9 +36,15 @@ from echo_personal_tool.domain.models.value_origin import (
     METHOD_DOPPLER_AGGREGATE,
     METHOD_DOPPLER_CALIPER,
     METHOD_LINEAR_CALIPER,
+    METHOD_LINEAR_DERIVED,
     METHOD_NOT_EVALUATED,
     METHOD_PLANIMETER,
+    METHOD_SIMPSON,
+    METHOD_SIMPSON_BIPLANE,
+    METHOD_SIMPSON_MEAN_MONOPLANE,
+    METHOD_SIMPSON_MONOPLANE,
     METHOD_STRAIN,
+    METHOD_TEICHHOLZ,
     METHOD_VESSEL,
     REASON_NOT_RECORDED,
     ValueOrigin,
@@ -56,6 +65,12 @@ _METHOD_KEYS: dict[str, str] = {
     METHOD_DOPPLER_AGGREGATE: "report.origin.method_doppler_aggregate",
     METHOD_STRAIN: "report.origin.method_strain",
     METHOD_NOT_EVALUATED: "report.origin.method_not_evaluated",
+    METHOD_SIMPSON_BIPLANE: "report.origin.method_simpson_biplane",
+    METHOD_SIMPSON_MONOPLANE: "report.origin.method_simpson_monoplane",
+    METHOD_SIMPSON_MEAN_MONOPLANE: "report.origin.method_simpson_mean_monoplane",
+    METHOD_SIMPSON: "report.origin.method_simpson",
+    METHOD_TEICHHOLZ: "report.origin.method_teichholz",
+    METHOD_LINEAR_DERIVED: "report.origin.method_linear_derived",
 }
 
 #: Input source code → i18n key of the calculator engine (Э11).
@@ -67,9 +82,6 @@ _SOURCE_KEYS: dict[str, str] = {
     "derived": "report.origin.source_derived",
     "manual": "report.origin.source_manual",
 }
-
-#: Clip label lookup: DICOM SOP Instance UID → the name the gallery shows.
-ClipLabelProvider = Callable[[str], str]
 
 
 def method_text(origin: ValueOrigin) -> str:
@@ -106,6 +118,9 @@ class ReportValueCard(QFrame):
     #: of the sheet.  ``(measurement_id, new_label)`` — the window writes it
     #: through the contour path, so the overlay and the report agree.
     rename_requested = Signal(str, str)
+    #: The physician pinned one source candidate of a repeat row (2026-11-18
+    #: list, item 1): ``(repeat_key, candidate_id)``; empty id = «Авто».
+    choice_selected = Signal(str, str)
     hover_entered = Signal()
     hover_left = Signal()
 
@@ -116,7 +131,9 @@ class ReportValueCard(QFrame):
         self.setFixedWidth(CARD_WIDTH)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self._value: ReportValue | None = None
-        self._clip_label_provider: ClipLabelProvider | None = None
+        self._repeat_key: str = ""
+        self._chosen: str = ""
+        self._variant_buttons: list[tuple[str, QPushButton]] = []
 
         self._title = QLabel()
         self._title.setObjectName("reportValueCardTitle")
@@ -131,12 +148,20 @@ class ReportValueCard(QFrame):
         self._identity.setWordWrap(True)
         self._identity.setVisible(False)
 
-        self._sources_title = QLabel()
-        self._sources_title.setObjectName("reportValueCardSection")
-        self._sources_title.setVisible(False)
-        self._sources = QVBoxLayout()
-        self._sources.setContentsMargins(0, 0, 0, 0)
-        self._sources.setSpacing(0)
+        #: «Варианты измерений» (2026-11-18 list, item 1): the readings of every
+        #: acquisition of this row, values only — one click pins one for the
+        #: report, «Авто» returns to following the latest acquisition.
+        self._variants_title = QLabel()
+        self._variants_title.setObjectName("reportValueCardVariants")
+        self._variants_title.setVisible(False)
+        self._variants_auto = QPushButton(tr("report.value_card.variants_auto"))
+        self._variants_auto.setObjectName("reportValueCardAuto")
+        self._variants_auto.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._variants_auto.setVisible(False)
+        self._variants_auto.clicked.connect(lambda: self._choose_candidate(""))
+        self._variants = QVBoxLayout()
+        self._variants.setContentsMargins(0, 0, 0, 0)
+        self._variants.setSpacing(0)
 
         self._inputs_title = QLabel()
         self._inputs_title.setObjectName("reportValueCardSection")
@@ -175,12 +200,28 @@ class ReportValueCard(QFrame):
         layout.addWidget(self._title)
         layout.addWidget(self._method)
         layout.addWidget(self._identity)
-        layout.addWidget(self._sources_title)
-        layout.addLayout(self._sources)
+        variant_head = QHBoxLayout()
+        variant_head.setContentsMargins(0, 0, 0, 0)
+        variant_head.setSpacing(0)
+        variant_head.addWidget(self._variants_title)
+        variant_head.addStretch(1)
+        variant_head.addWidget(self._variants_auto)
+        layout.addLayout(variant_head)
+        layout.addLayout(self._variants)
         layout.addWidget(self._inputs_title)
         layout.addLayout(self._inputs)
         layout.addWidget(self._status)
         layout.addLayout(actions)
+
+        # The card fades in (2026-11-18 list, item 2): a hover card that pops
+        # at full strength is easy to miss and feels abrupt next to the sheet.
+        self._opacity = QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity)
+        self._fade = QPropertyAnimation(self._opacity, b"opacity", self)
+        self._fade.setDuration(120)
+        self._fade.setStartValue(0.0)
+        self._fade.setEndValue(1.0)
 
         self.setVisible(False)
         self.apply_theme()
@@ -197,10 +238,6 @@ class ReportValueCard(QFrame):
     def open_button(self) -> QPushButton:
         return self._open
 
-    def set_clip_label_provider(self, provider: ClipLabelProvider | None) -> None:
-        """Look up the gallery name of a clip; the UID tail is the fallback."""
-        self._clip_label_provider = provider
-
     def show_value(self, value: ReportValue, *, origin: ValueOrigin | None = None) -> None:
         """Fill the card from *value* (its own origin by default) and show it."""
         self._value = value
@@ -209,7 +246,7 @@ class ReportValueCard(QFrame):
         self._method.setText(tr("report.origin.method") + ": " + method_text(resolved) if resolved else "")
         self._method.setVisible(resolved is not None)
         self._fill_identity(resolved)
-        self._fill_sources(resolved)
+        self._fill_variants(value)
         self._fill_inputs(resolved)
         text, recorded = freshness_text(resolved)
         self._status.setText(text)
@@ -220,6 +257,9 @@ class ReportValueCard(QFrame):
         self.adjustSize()
         self.setVisible(True)
         self.raise_()
+        self._fade.stop()
+        self._opacity.setOpacity(0.0)
+        self._fade.start()
 
     def _rename_target(self) -> str | None:
         """``measurement_id`` of the row when it may be renamed, else ``None``.
@@ -254,6 +294,8 @@ class ReportValueCard(QFrame):
 
     def hide_card(self) -> None:
         self._value = None
+        self._fade.stop()
+        self._opacity.setOpacity(1.0)
         self.setVisible(False)
 
     # ── content ──────────────────────────────────────────────────────
@@ -266,23 +308,57 @@ class ReportValueCard(QFrame):
         self._identity.setText(text)
         self._identity.setVisible(bool(text))
 
-    def _fill_sources(self, origin: ValueOrigin | None) -> None:
-        _clear_boxes(self._sources)
-        clips = origin.clips if origin is not None else ()
-        for index, clip in enumerate(clips):
-            name = self._clip_name(clip.sop_instance_uid)
-            if clip.frame_index is None:
-                text = tr("report.origin.clip", name=name)
-            else:
-                text = tr("report.origin.clip_frame", name=name, frame=int(clip.frame_index) + 1)
-            label = QLabel(text)
-            label.setObjectName("reportValueCardSource")
-            label.setWordWrap(True)
-            label.setProperty("clipIndex", index)
-            label.setToolTip(clip.sop_instance_uid)
-            self._sources.addWidget(label)
-        self._sources_title.setText(tr("report.origin.sources"))
-        self._sources_title.setVisible(bool(clips))
+    def _fill_variants(self, value: ReportValue) -> None:
+        """One line per acquisition, values only (2026-11-18 list, item 1).
+
+        File names and frame numbers stay out of the card: they do not fit the
+        server's names and the physician chooses by the reading itself.  The
+        colour of a line is the norm verdict the builder recorded for the
+        candidate's readings — green in norm, red outside, plain text when no
+        norm is known.
+        """
+        _clear_boxes(self._variants)
+        repeat = value.repeat
+        self._repeat_key = repeat.key if repeat is not None else ""
+        self._chosen = repeat.override if repeat is not None else ""
+        candidates = repeat.candidates if repeat is not None else ()
+        active = self._chosen or (repeat.default_id if repeat is not None else "")
+        self._variant_buttons = []
+        for candidate in candidates:
+            texts = [description for description, _source in candidate.parts]
+            button = QPushButton("\n".join(texts))
+            button.setObjectName("reportValueCardVariant")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setCheckable(True)
+            button.setProperty("pathology", _pathology_property(candidate.pathological))
+            button.setProperty("baseText", button.text())
+            button.clicked.connect(lambda _checked=False, cid=candidate.id: self._choose_candidate(cid))
+            self._variants.addWidget(button)
+            self._variant_buttons.append((candidate.id, button))
+        self._mark_active(active)
+        self._variants_title.setText(tr("report.origin.variants"))
+        self._variants_title.setVisible(bool(candidates))
+        self._variants_auto.setText(tr("report.origin.variants_auto"))
+        self._variants_auto.setToolTip(tr("report.origin.variants_auto_hint"))
+        self._variants_auto.setVisible(bool(candidates))
+        _repolish(self._variants_auto)
+
+    def _mark_active(self, active: str) -> None:
+        for candidate_id, button in self._variant_buttons:
+            now = candidate_id == active
+            button.setChecked(now)
+            base = str(button.property("baseText") or "")
+            button.setText(("✓ " if now else "") + base)
+
+    def _choose_candidate(self, candidate_id: str) -> None:
+        self._chosen = candidate_id
+        self._mark_active(candidate_id or self._repeat_active_id())
+        if self._repeat_key:
+            self.choice_selected.emit(self._repeat_key, candidate_id)
+
+    def _repeat_active_id(self) -> str:
+        repeat = self._value.repeat if self._value is not None else None
+        return repeat.default_id if repeat is not None else ""
 
     def _fill_inputs(self, origin: ValueOrigin | None) -> None:
         _clear_boxes(self._inputs)
@@ -303,17 +379,6 @@ class ReportValueCard(QFrame):
             title = tr("report.origin.calculator_inputs")
         self._inputs_title.setText(title)
         self._inputs_title.setVisible(bool(inputs))
-
-    def _clip_name(self, sop_instance_uid: str) -> str:
-        if self._clip_label_provider is not None and sop_instance_uid:
-            try:
-                name = self._clip_label_provider(sop_instance_uid)
-            except Exception:  # noqa: BLE001 - a label must never break the card
-                name = ""
-            if name:
-                return name
-        tail = sop_instance_uid[-8:] if sop_instance_uid else ""
-        return tr("report.origin.clip_fallback", id=tail) if tail else tr("report.origin.clip_unnamed")
 
     def _open_frames(self) -> None:
         origin = self._value.origin if self._value is not None else None
@@ -383,6 +448,30 @@ class ReportValueCard(QFrame):
             #reportValueCardOpen:hover {{
                 text-decoration: underline;
             }}
+            #reportValueCardVariant {{
+                color: {tokens["text.2"]};
+                background: transparent;
+                border: none;
+                padding: 2px 4px;
+                text-align: left;
+            }}
+            #reportValueCardVariant[pathology="false"] {{
+                color: {tokens["state.ok"]};
+            }}
+            #reportValueCardVariant[pathology="true"] {{
+                color: {tokens["state.err"]};
+            }}
+            #reportValueCardVariant:checked {{
+                font-weight: 600;
+            }}
+            #reportValueCardAuto {{
+                color: {tokens["accent.text"]};
+                border: none;
+                padding: 2px 0;
+            }}
+            #reportValueCardAuto:hover {{
+                text-decoration: underline;
+            }}
             """
         )
 
@@ -391,6 +480,13 @@ def _title_text(value: ReportValue) -> str:
     """«КДР ЛЖ · 48 мм» — label and value with its unit, never a second format."""
     unit = f" {value.unit}" if value.unit else ""
     return f"{value.label} · {value.display_value}{unit}"
+
+
+def _pathology_property(pathological: bool | None) -> str:
+    """Stylesheet hook: ``\"true\"`` red, ``\"false\"`` green, ``\"\"`` unjudged."""
+    if pathological is None:
+        return ""
+    return "true" if pathological else "false"
 
 
 def _clear_boxes(layout: QVBoxLayout) -> None:

@@ -363,7 +363,9 @@ class TestHideValueMenu:
     """Item 9 of the 2026-11-06 list: «Скрыть в отчёте» from a value cell.
 
     The sheet is the exported bytes, so the row is not painted over: the click
-    reports the key and the window rebuilds the document without it.
+    reports the key and the window rebuilds the document without it.  The menu
+    is a context menu — the right button opens it, the left click stays free
+    (2026-11-18 list, item 9).
     """
 
     def _keyed_document(self) -> ReportDocument:
@@ -377,7 +379,7 @@ class TestHideValueMenu:
         )
         return replace(document, groups=(replace(group, values=keyed),))
 
-    def test_a_click_on_a_value_asks_to_hide_it(self, qtbot, monkeypatch) -> None:
+    def test_a_right_click_on_a_value_asks_to_hide_it(self, qtbot, monkeypatch) -> None:
         from PySide6.QtCore import QPoint, Qt
 
         widget = _make(qtbot, self._keyed_document)
@@ -386,12 +388,21 @@ class TestHideValueMenu:
         widget.value_visibility_changed.connect(lambda key, hidden: seen.append((key, hidden)))
         monkeypatch.setattr(widget, "value_at", lambda x, y: (0, 1))
 
-        handled = widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton)
+        handled = widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.RightButton)
 
         assert handled is True
         # The menu is a popup: the intent is reported by its action.
         widget._build_value_menu(widget.document.groups[0].values[1]).actions()[0].trigger()
         assert seen == [(widget.document.groups[0].values[1].key, True)]
+
+    def test_a_left_click_stays_free(self, qtbot, monkeypatch) -> None:
+        from PySide6.QtCore import QPoint, Qt
+
+        widget = _make(qtbot, self._keyed_document)
+        widget.refresh_now()
+        monkeypatch.setattr(widget, "value_at", lambda x, y: (0, 1))
+
+        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton) is False
 
     def test_a_click_outside_the_cells_is_not_ours(self, qtbot, monkeypatch) -> None:
         from PySide6.QtCore import QPoint, Qt
@@ -400,7 +411,7 @@ class TestHideValueMenu:
         widget.refresh_now()
         monkeypatch.setattr(widget, "value_at", lambda x, y: None)
 
-        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton) is False
+        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.RightButton) is False
 
     def test_a_finished_sheet_offers_no_menu(self, qtbot, monkeypatch) -> None:
         from PySide6.QtCore import QPoint, Qt
@@ -411,7 +422,7 @@ class TestHideValueMenu:
         widget._document = self._keyed_document()
         widget.set_frozen(True)
 
-        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.LeftButton) is False
+        assert widget._handle_value_press(QPoint(10, 10), Qt.MouseButton.RightButton) is False
 
     def test_a_row_without_a_key_cannot_be_hidden(self, qtbot) -> None:
         from echo_personal_tool.domain.services.report_builder import ReportValue

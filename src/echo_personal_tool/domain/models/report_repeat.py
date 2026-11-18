@@ -11,6 +11,13 @@ from echo_personal_tool.domain.models.value_origin import ClipSource
 class ReportCandidate:
     id: str
     parts: tuple[tuple[str, ClipSource], ...]
+    #: Norm label and value of every reading of each part, in ``parts`` order.
+    #: Selection never judges them — the report builder fills ``pathological``
+    #: when it knows the patient's sex (2026-11-18 list, item 1).
+    readings: tuple[tuple[tuple[str, float], ...], ...] = ()
+    #: ``True`` when any recorded reading is outside its norm, ``False`` when
+    #: all known readings are in norm, ``None`` when nothing could be judged.
+    pathological: bool | None = None
 
 
 @dataclass(frozen=True)

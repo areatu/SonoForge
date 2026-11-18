@@ -188,11 +188,6 @@ class UserPreferences:
     # the header heart rate is a convenience, not a measurement the physician
     # asked to see.  Off by default; the hotkey keeps working either way.
     show_heart_rate_tools: bool = False
-    # Item 6 of the 2026-11-06 list: «Убрать предупреждение о черновике в отчете».
-    # The draft line warns that morphology, thrombi and pericardium were not
-    # assessed automatically, so the default keeps it; the draft status stays
-    # visible outside the conclusion through the draft/finish buttons.
-    hide_report_draft_notice: bool = False
     # Item 8 of the 2026-11-06 list: «Входные данные» of the report.  The line
     # repeats the «откуда значение» card and the JSON export, and in routine work
     # it is noise; off by default, but the physician can bring it back per user
@@ -561,7 +556,6 @@ def _read_experimental_preferences(store: Any) -> dict[str, Any]:
         show_strain=_read_bool(store.value("show_strain"), False),
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
         show_heart_rate_tools=_read_bool(store.value("show_heart_rate_tools"), False),
-        hide_report_draft_notice=_read_bool(store.value("hide_report_draft_notice"), False),
     )
 
 

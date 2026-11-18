@@ -76,6 +76,44 @@ def caliper_pair_origin(snapshot: MeasurementSnapshot, method_id: str) -> ValueO
     return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
 
 
+#: Labels of the M-mode IVC calipers the RAP estimate is read from.
+IVC_CALIPER_ALIASES = {"ivc-exp", "ivc-insp"}
+
+
+def linear_caliper_union_origin(snapshot: MeasurementSnapshot, aliases: set[str], method_id: str) -> ValueOrigin:
+    """Origin citing *every* caliper whose label matches ``aliases``.
+
+    Unlike :func:`linear_caliper_origin` (the first match wins, for formulas
+    anchored on one caliper), a value read from a pair — the IVC diameters of
+    the RAP estimate — cites both, in study order.
+    """
+    sources: list[ClipSource] = []
+    ids: list[str] = []
+    for measurement in snapshot.linear_measurements:
+        if measurement.label.strip().casefold() not in aliases:
+            continue
+        uid = str(measurement.sop_instance_uid or "")
+        if uid:
+            source = ClipSource(uid, measurement.frame_index)
+            if source not in sources:
+                sources.append(source)
+        identifier = str(measurement.measurement_id or "")
+        if identifier and identifier not in ids:
+            ids.append(identifier)
+    return derived_origin(method_id, sources=tuple(sources), measurement_ids=tuple(ids))
+
+
+def ivc_pair_origin(snapshot: MeasurementSnapshot, method_id: str) -> ValueOrigin:
+    """Origin of the RAP / IVC-collapse rows: the two M-mode IVC calipers.
+
+    Пункт 5 (2026-11-18): «Происхождение для всех измеренных результатов» —
+    the derived right-atrial pressure used to cite nothing even though both
+    calipers carry their clip and frame.  Both are cited here, exactly like
+    the LV caliper pair above.
+    """
+    return linear_caliper_union_origin(snapshot, IVC_CALIPER_ALIASES, method_id)
+
+
 def planimeter_origin(item: object) -> ValueOrigin:
     """Origin of one planimeter result from the contour it was traced on."""
     lineage = getattr(item, "contour", None)

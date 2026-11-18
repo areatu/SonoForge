@@ -208,7 +208,6 @@ class ReportPreferences(Protocol):
     """Printable report sheet formatting, template, and header preferences."""
 
     pdf_font_size: int
-    hide_report_draft_notice: bool
     report_show_inputs: bool
     report_template_json: str
     report_value_excluded: tuple[str, ...]

@@ -91,6 +91,23 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "VA-L": "menu.vessel_va_left",
     "RA-R": "menu.vessel_renal_right",
     "RA-L": "menu.vessel_renal_left",
+    # Echo tool labels (2026-11-18 list, item 4 — the aorta rows). The report
+    # keeps the Latin wording the physician quotes («Prox Ao»), but every
+    # caliper label must cross the i18n bridge so a rename stays a locale edit
+    # (test_caliper_map_shares_labels_with_i18n).
+    "AV": "caliper.av",
+    "Annulus": "caliper.ao_annulus",
+    "Ao Sinus": "caliper.ao_sinus",
+    "Ao Junction": "caliper.ao_junction",
+    "Prox Ao": "caliper.prox_ao",
+    "MVd": "caliper.mvd",
+    "RV basal": "caliper.rv_basal",
+    "RV mid": "caliper.rv_mid",
+    "RVOT": "caliper.rvot",
+    "RVOTd": "caliper.rvotd",
+    "PISA MS": "caliper.pisa_ms",
+    "PISA MR": "caliper.pisa_mr",
+    "PISA AR": "caliper.pisa_ar",
 }
 
 #: Labels whose ``millimeter_length`` holds a percentage, not a length.

@@ -54,7 +54,7 @@ from echo_personal_tool.domain.services.report_profiles import (
     normalize_profile_id,
 )
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
-from echo_personal_tool.presentation.report_mode.provenance import ClipLabelProvider, ReportValueCard
+from echo_personal_tool.presentation.report_mode.provenance import ReportValueCard
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,10 @@ class ReportPreview(QWidget):
     #: The physician renamed a planimetry row from its «откуда значение» card
     #: (item 10 of the 2026-11-06 list): ``(measurement_id, new_label)``.
     value_rename_requested = Signal(str, str)
+    #: The physician pinned one source candidate of a repeat row from the hover
+    #: card (2026-11-18 list, item 1): ``(repeat_key, candidate_id)``; an empty
+    #: candidate id returns the row to following the latest acquisition.
+    value_choice_changed = Signal(str, str)
 
     def __init__(
         self,
@@ -255,6 +259,7 @@ class ReportPreview(QWidget):
         # PR-4: the hover card lives over the sheet and never inside it.
         self._card = ReportValueCard(self)
         self._card.rename_requested.connect(self.value_rename_requested)
+        self._card.choice_selected.connect(self.value_choice_changed)
         self._card.open_frames_requested.connect(self.open_frames_requested)
         self._card.hover_entered.connect(self._cancel_card_hide)
         self._card.hover_left.connect(self._schedule_card_hide)
@@ -520,10 +525,6 @@ class ReportPreview(QWidget):
     def card(self) -> ReportValueCard:
         return self._card
 
-    def set_clip_label_provider(self, provider: ClipLabelProvider | None) -> None:
-        """How a clip is named in the card (the window knows the gallery)."""
-        self._card.set_clip_label_provider(provider)
-
     def _install_hover_filter(self) -> None:
         if self._view is not None:
             self._view.viewport().setMouseTracking(True)
@@ -543,12 +544,15 @@ class ReportPreview(QWidget):
         return super().eventFilter(watched, event)
 
     def _handle_value_press(self, position: QPoint, button: Qt.MouseButton) -> bool:
-        """A left click on a value cell offers «скрыть в отчёте» (item 9).
+        """A right click on a value cell offers «скрыть в отчёте» (item 9).
+
+        The menu is a context menu: the left click keeps navigating the sheet
+        and only the right button opens row actions (2026-11-18 list, item 9).
 
         Returns ``True`` when the press belonged to a value cell, so the generic
         card hiding does not fight the menu.
         """
-        if button != Qt.MouseButton.LeftButton or self._frozen:
+        if button != Qt.MouseButton.RightButton or self._frozen:
             return False
         value = self.value_record(self.value_at(position.x(), position.y()))
         if value is None:
@@ -578,14 +582,20 @@ class ReportPreview(QWidget):
         self._place_card(position)
 
     def _place_card(self, position: QPoint) -> None:
-        """Put the card next to the pointer, clamped inside the preview."""
+        """Put the card's top edge just above the cursor (2026-11-18 list, item 2).
+
+        The pointer rests a few pixels left of the card's top-left corner, so
+        reaching the card is a short move right and never drags the hover onto
+        the row below — the old placement sat lower and farther right, and the
+        card switched under the travelling pointer.
+        """
         viewport = self._view.viewport() if self._view is not None else self
         anchor = viewport.mapTo(self, position)
         size = self._card.sizeHint()
-        x = anchor.x() + 18
+        x = anchor.x() + 12
         if x + size.width() > self.width():
-            x = max(0, anchor.x() - size.width() - 18)
-        y = anchor.y() + 12
+            x = max(0, anchor.x() - size.width() - 12)
+        y = max(0, anchor.y() - 8)
         if y + size.height() > self.height():
             y = max(0, self.height() - size.height() - 4)
         self._card.move(QPoint(x, y))
@@ -726,9 +736,6 @@ class ReportPreview(QWidget):
             return None
         action = QMenu(self)
         action.setObjectName("reportValueMenu")
-        if value.repeat is not None:
-            choose = action.addAction(tr("report.values.choose"))
-            choose.triggered.connect(lambda: self.edit_values_requested.emit(value.key))
         toggle = action.addAction(tr("report.hide_value"))
         toggle.triggered.connect(lambda _checked=False, key=value.key: self.value_visibility_changed.emit(key, True))
         return action

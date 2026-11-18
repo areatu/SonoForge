@@ -30,6 +30,16 @@ AO_JUNCTION_MM = NormRange(25.0, 38.0)
 AO_PROX_MM = NormRange(25.0, 40.0)
 AO_AV_MM = NormRange(25.0, 42.0)
 
+#: Indexed aorta diameters (mm/m²) — the second look at a dilated segment
+#: (2026-11-18, item 8): an absolute diameter above its range is re-read as
+#: diameter/BSA against the indexed upper limits of the adult references
+#: (annulus ≤14, sinuses of Valsalva ≤20, sinotubular junction and ascending
+#: aorta ≤17 mm/m²).
+AO_ANNULUS_INDEX_MM_M2 = NormRange(None, 14.0)
+AO_SINUS_INDEX_MM_M2 = NormRange(None, 20.0)
+AO_JUNCTION_INDEX_MM_M2 = NormRange(None, 17.0)
+AO_PROX_INDEX_MM_M2 = NormRange(None, 17.0)
+
 
 def is_outside_norm(value: float, norm: NormRange) -> bool:
     if norm.low is not None and value < norm.low:
@@ -48,6 +58,12 @@ def linear_norm_for_label(label: str) -> NormRange | None:
         "ao sinus": AO_SINUS_MM,
         "ao junction": AO_JUNCTION_MM,
         "prox ao": AO_PROX_MM,
+        # Indexed aorta diameters (mm/m²), item 8 of the 2026-11-18 list.
+        "av index": AO_ANNULUS_INDEX_MM_M2,
+        "annulus index": AO_ANNULUS_INDEX_MM_M2,
+        "ao sinus index": AO_SINUS_INDEX_MM_M2,
+        "ao junction index": AO_JUNCTION_INDEX_MM_M2,
+        "prox ao index": AO_PROX_INDEX_MM_M2,
     }
     return mapping.get(key)
 

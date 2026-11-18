@@ -172,8 +172,42 @@ def contour_candidate_text(item: Contour, spacing: tuple[float, float], calibrat
     return format_contour_overlay(item, spacing, spacing_calibrated=calibrated)
 
 
+def candidate_readings(
+    item: _T,
+    *,
+    pixel_spacing: tuple[float, float] | None = None,
+    spacing_calibrated: bool = True,
+) -> tuple[tuple[str, float], ...]:
+    """Norm label and value of one acquisition's readings (2026-11-18, item 1).
+
+    The hover card colours a candidate by these readings against the norms of
+    the reference handbook, so each reading carries the label the report row
+    resolves its norm with (``LVEDV``, ``Ao Sinus``…).  A reading without a
+    norm simply stays unjudged; selection never invents one.
+    """
+    if isinstance(item, LinearMeasurement):
+        if item.doppler or item.millimeter_length is None:
+            return ()
+        return ((item.label, item.millimeter_length),)
+    if isinstance(item, Contour) and pixel_spacing is not None and spacing_calibrated and not item.review_pending:
+        from echo_personal_tool.domain.calculations.lvef_simpson import simpson_volume_ml_from_contour
+
+        chamber, view, phase = item.chamber.upper(), item.view.lower(), item.phase.lower()
+        if chamber == "LV" and view in {"a4c", "a2c"} and phase in {"ed", "es"}:
+            volume = simpson_volume_ml_from_contour(item, pixel_spacing)
+            return (("LVEDV" if phase == "ed" else "LVESV", volume),) if volume is not None else ()
+        if chamber in {"LA", "RA"} and (chamber, view) in _CHAMBER_ROWS and phase in {"ed", "es"}:
+            volume = simpson_volume_ml_from_contour(item, pixel_spacing)
+            return (("LAV" if chamber == "LA" else "RAV", volume),) if volume is not None else ()
+    return ()
+
+
 def _candidate(
-    sources: tuple[_T, ...], run: tuple[int, ...], members: tuple[int, ...], describe: Callable[[_T], str]
+    sources: tuple[_T, ...],
+    run: tuple[int, ...],
+    members: tuple[int, ...],
+    describe: Callable[[_T], str],
+    readings_of: Callable[[_T], tuple[tuple[str, float], ...]] | None = None,
 ) -> ReportCandidate:
     # Pin the acquisition, not its ordinal or its optional same-frame wall
     # readings. Older calipers without a UUID use their actual storage slot.
@@ -184,14 +218,21 @@ def _candidate(
         ref = item.measurement_id or (item.frame_index, slot)
         identity.append((item.sop_instance_uid, ref))
     parts = []
+    readings: list[tuple[tuple[str, float], ...]] = []
     for index in members:
         item = sources[index]
         parts.append((describe(item), ClipSource(item.sop_instance_uid or "", item.frame_index)))
-    return ReportCandidate(json.dumps(identity, separators=(",", ":")), tuple(parts))
+        if readings_of is not None:
+            readings.append(readings_of(item))
+    return ReportCandidate(json.dumps(identity, separators=(",", ":")), tuple(parts), tuple(readings))
 
 
 def select_report_sources(
-    sources: tuple[_T, ...], choices: Mapping[str, str], *, describe: Callable[[_T], str] = _description
+    sources: tuple[_T, ...],
+    choices: Mapping[str, str],
+    *,
+    describe: Callable[[_T], str] = _description,
+    readings_of: Callable[[_T], tuple[tuple[str, float], ...]] | None = None,
 ) -> tuple[tuple[_T, ...], tuple[ReportRepeat, ...]]:
     """Keep the chosen source(s), or the latest complete acquisition by default.
 
@@ -220,7 +261,7 @@ def select_report_sources(
         if key == "lv.diameter_pair" and walls:
             members = [_with_walls(run, walls) for run in runs]
             row_ids.extend(wall for companions in walls.values() for _, wall in companions)
-        candidates = tuple(_candidate(sources, run, parts, describe) for run, parts in zip(runs, members))
+        candidates = tuple(_candidate(sources, run, parts, describe, readings_of) for run, parts in zip(runs, members))
         override = choices.get(key, "")
         chosen = next((i for i, c in enumerate(candidates) if c.id == override), latest)
         rows = tuple(dict.fromkeys(row_ids))

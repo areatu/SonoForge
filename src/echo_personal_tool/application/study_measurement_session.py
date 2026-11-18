@@ -34,7 +34,11 @@ from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 from echo_personal_tool.domain.services.imt_validation import MAX_IMT_MEASUREMENTS, imt_key, validate_imt
 from echo_personal_tool.domain.services.pixel_spacing_resolver import manual_calibration_context
-from echo_personal_tool.domain.services.report_selection import contour_candidate_text, select_report_sources
+from echo_personal_tool.domain.services.report_selection import (
+    candidate_readings,
+    contour_candidate_text,
+    select_report_sources,
+)
 from echo_personal_tool.domain.services.simpson_freshness import SimpsonBasis
 
 if False:  # TYPE_CHECKING guard for persisted provenance bases
@@ -408,9 +412,12 @@ def report_measurement_sources(
     data: StudyMeasurementData, choices: Mapping[str, str], pixel_spacing: tuple[float, float], calibrated: bool
 ) -> tuple[StudyMeasurementData, tuple[ReportRepeat, ...]]:
     """Project a transient session on the resolved grid; never change the saved study."""
-    linear, linear_choices = select_report_sources(data.linear_measurements, choices)
+    linear, linear_choices = select_report_sources(data.linear_measurements, choices, readings_of=candidate_readings)
     contours, contour_choices = select_report_sources(
-        data.contours, choices, describe=lambda c: contour_candidate_text(c, pixel_spacing, calibrated)
+        data.contours,
+        choices,
+        describe=lambda c: contour_candidate_text(c, pixel_spacing, calibrated),
+        readings_of=lambda c: candidate_readings(c, pixel_spacing=pixel_spacing, spacing_calibrated=calibrated),
     )
     vessels, vessel_choices = select_report_sources(data.vessel_measurements, choices)
     projected = replace(data, linear_measurements=linear, contours=contours, vessel_measurements=vessels)
