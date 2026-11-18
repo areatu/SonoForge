@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pyqtgraph as pg
 import pytest
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
@@ -46,8 +47,14 @@ def editor(qtbot, monkeypatch, tmp_path):
         manual_calibration=CalibrationContext((0.1, 0.2), source="manual"),
     )
     store = StudyMeasurementSessionStore()
+
+    class State(QObject):
+        state_changed = Signal(object)
+
+    manager = State(window)
+    manager.snapshot = state
     window._controller = SimpleNamespace(
-        state_manager=SimpleNamespace(snapshot=state),
+        state_manager=manager,
         resolve_study_uid=lambda _i: "1.2.3",
         frame_access=SimpleNamespace(frame=lambda *_args: image),
     )
@@ -143,3 +150,103 @@ def test_live_context_cannot_confirm_after_change(editor, change):
         dialog.save()
     dialog.check_context()
     assert not dialog.review.live and not dialog.review.draft.confirmed
+
+
+@pytest.mark.parametrize("change", ["frame", "calibration", "playback", "side", "roi"])
+def test_observed_context_aba_revokes_review_before_timer(editor, change):
+    from dataclasses import replace
+
+    dialog, store = editor
+    dialog.propose()
+    dialog.confirm()
+    manager = dialog.host._controller.state_manager
+    original = manager.snapshot
+    if change in ("frame", "calibration", "playback"):
+        if change == "frame":
+            manager.snapshot = replace(original, current_frame_index=3)
+        elif change == "calibration":
+            manager.snapshot = replace(
+                original, manual_calibration=CalibrationContext((0.11, 0.2), source="manual", revision=1)
+            )
+        else:
+            manager.snapshot = replace(original, is_playing=True)
+        manager.state_changed.emit(manager.snapshot)
+        manager.snapshot = original
+        manager.state_changed.emit(original)
+    elif change == "side":
+        dialog.side.setCurrentText("L")
+        dialog.side.setCurrentText("R")
+    else:
+        dialog.fields["roi"].setText("1,0,96,64")
+        dialog.fields["roi"].setText("0,0,96,64")
+    assert not dialog.review.live and not dialog.review.draft.confirmed and not dialog.overlays
+    with pytest.raises(ImtRefusal, match="review_required"):
+        dialog.confirm()
+    with pytest.raises(ImtRefusal, match="review_required"):
+        dialog.save()
+    assert not store.get("1.2.3").imt_measurements
+
+
+def test_load_revalidate_bad_pixels_preserves_stored_confirmed_record(editor):
+    dialog, store = editor
+    dialog.propose()
+    dialog.confirm()
+    dialog.save()
+    saved = store.get("1.2.3").imt_measurements[0]
+    dialog.load()
+    dialog.host._controller.frame_access.frame = lambda *_: np.zeros((64, 96))
+    with pytest.raises(ImtRefusal, match="flat_roi"):
+        dialog.revalidate()
+    assert not dialog.review.live and not dialog.review.draft.confirmed
+    with pytest.raises(ImtRefusal, match="review_required"):
+        dialog.save()
+    assert store.get("1.2.3").imt_measurements == (saved,)
+
+
+def test_real_state_manager_frame_and_calibration_events_invalidate_before_aba(editor):
+    from echo_personal_tool.application.state_manager import StateManager
+
+    dialog, store = editor
+    # Use the real manager, and subscribe as the dialog does during construction.
+    old = dialog.host._controller.state_manager.snapshot
+    manager = StateManager()
+    manager.set_instance(old.instance, old.total_frames, old.frame_time_ms)
+    manager.set_manual_calibration(old.manual_calibration)
+    manager.set_frame(old.current_frame_index)
+    dialog.host._controller.state_manager = manager
+    manager.state_changed.connect(dialog.context_changed)
+    dialog.propose()
+    dialog.confirm()
+    manager.set_frame(3)
+    manager.set_frame(2)
+    assert not dialog.review.live and not dialog.review.draft.confirmed
+    with pytest.raises(ImtRefusal, match="review_required"):
+        dialog.save()
+    dialog.revalidate()
+    dialog.confirm()
+    manager.set_manual_calibration(CalibrationContext((0.11, 0.2), source="manual", revision=1))
+    manager.set_manual_calibration(old.manual_calibration)
+    assert not dialog.review.live and not dialog.review.draft.confirmed
+    assert not store.get("1.2.3").imt_measurements
+
+
+def test_actual_overlay_edit_recomputes_and_keeps_persisted_acceptance_unchanged(editor):
+    dialog, store = editor
+    dialog.propose()
+    dialog.confirm()
+    dialog.save()
+    saved = store.get("1.2.3").imt_measurements[0]
+    overlay = dialog.overlays[1]
+    points = [(float(p.x()), float(p.y()) + 0.5) for _, p in overlay.getLocalHandlePositions()]
+    overlay.blockSignals(True)
+    overlay.setPoints(points)
+    overlay.blockSignals(False)
+    dialog.edit_started()
+    dialog.edited()
+    draft = dialog.review.draft
+    assert draft.revision == saved.revision + 1 and not draft.confirmed
+    assert draft.media_adventitia == tuple(points) and draft.mean_mm > saved.mean_mm
+    assert store.get("1.2.3").imt_measurements == (saved,)
+    dialog.confirm()
+    dialog.save()
+    assert store.get("1.2.3").imt_measurements == (dialog.review.draft,)
