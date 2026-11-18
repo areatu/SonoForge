@@ -517,7 +517,7 @@ def test_row_dialog_persists_layout_but_only_pins_the_sample_in_its_tab(
     from PySide6.QtWidgets import QComboBox, QPushButton, QTreeWidget
 
     from echo_personal_tool.application.localization import tr
-    from echo_personal_tool.presentation.report_mode.values_dialog import ReportValuesDialog
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
 
     window.preferences.report_value_order = ("thyroid:absent:0",)
     window.preferences.report_value_excluded = ("kidney:absent:0",)
@@ -617,7 +617,7 @@ def test_automatic_choice_cancel_and_quick_hide_do_not_leak_between_tabs(
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QComboBox, QToolButton, QTreeWidget
 
-    from echo_personal_tool.presentation.report_mode.values_dialog import ReportValuesDialog
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
 
     coordinator.set_mode(True)
     page = coordinator.page
@@ -660,7 +660,7 @@ def test_last_hidden_row_can_be_restored_from_an_empty_section(coordinator, repe
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QTreeWidget
 
-    from echo_personal_tool.presentation.report_mode.values_dialog import ReportValuesDialog
+    from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
 
     coordinator.set_mode(True)
     page = coordinator.page

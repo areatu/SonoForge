@@ -53,7 +53,7 @@ from echo_personal_tool.domain.services.report_sections import checklist_notices
 from echo_personal_tool.domain.services.report_value_layout import DEFAULT_REPORT_VALUE_EXCLUDED, merge_report_order
 from echo_personal_tool.presentation.report_mode import ReportModePage, SheetVersion
 from echo_personal_tool.presentation.report_mode.print_job import print_report_pdf
-from echo_personal_tool.presentation.report_mode.values_dialog import ReportValuesDialog
+from echo_personal_tool.presentation.report_values_dialog import ReportValuesDialog
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QStackedWidget, QWidget
