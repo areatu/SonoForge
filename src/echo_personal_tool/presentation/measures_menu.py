@@ -163,6 +163,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.ra_diameter", MeasurementAction.RA_DIAMETER),
             _btn("menu.rav_volume", MeasurementAction.RAV_VOLUME),
+            _btn("menu.ivc_diameter", caliper_label="IVC"),
         ),
     ),
     (
@@ -281,6 +282,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.mmode_time_hr", MeasurementAction.MMODE_TIME_HR),
             _btn("menu.teichholz_ed", MeasurementAction.TEICHHOLZ_ED),
             _btn("menu.teichholz_es", MeasurementAction.TEICHHOLZ_ES),
+            _btn("menu.ivc_exp", MeasurementAction.IVC_MMODE_EXPIR),
+            _btn("menu.ivc_insp", MeasurementAction.IVC_MMODE_INSP),
         ),
     ),
     # Organ sections of the non-cardiac study profiles (item 11).  The catalog

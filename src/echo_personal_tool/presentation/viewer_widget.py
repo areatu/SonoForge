@@ -57,9 +57,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_area_label,
     next_volume_label,
 )
-from echo_personal_tool.domain.doppler_catalog import format_velocity_measurement
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
-from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
@@ -163,6 +161,10 @@ from echo_personal_tool.presentation.viewer.mmode_controller import (
 from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
+)
+from echo_personal_tool.presentation.viewer.point_label_menu import (
+    offer_caliper,
+    offer_point,
 )
 from echo_personal_tool.presentation.viewer.transport import ViewerTransport
 from echo_personal_tool.presentation.viewer.zoom import ViewerZoom
@@ -980,7 +982,7 @@ class ViewerWidget(QWidget):
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._last_view_cursor_xy: tuple[float, float] | None = None
-        self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode"}
+        self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode", "IVC-EXP", "IVC-INSP"}
         self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
@@ -1451,6 +1453,10 @@ class ViewerWidget(QWidget):
                     # Freehand: right-click rolls back the last segment (B)
                     # instead of opening the save menu while a stroke is drawn.
                     if self.rollback_freehand_segment():
+                        return True
+                    # A right-click on a committed general-tools point names it
+                    # (item 1) instead of starting the radial gesture.
+                    if offer_point(self, event.globalPosition()):
                         return True
                     # an idle right-press starts the radial-menu gesture
                     # (three controller entry points; the window owns it).
@@ -7390,26 +7396,13 @@ class ViewerWidget(QWidget):
         except Exception:  # noqa: BLE001
             return QPoint(int(point[0]), int(point[1]))
 
-    def _format_caliper_value_for_picker(self, measurement: LinearMeasurement) -> str:
-        mid = measurement_for_caliper(measurement.label)
-        if measurement.doppler:
-            if measurement.velocity_cm_s is not None:
-                vel_str, unit = format_velocity_measurement(
-                    mid or "doppler.vmax", abs(measurement.velocity_cm_s), measurement.doppler_mode
-                )
-                return f"{vel_str} {unit}"
-            if measurement.time_ms is not None:
-                return f"{_fmt(mid or 'doppler.pht', measurement.time_ms, 'ms')} {tr('unit.ms')}"
-            return ""
-        if measurement.millimeter_length is not None:
-            mm = float(measurement.millimeter_length)
-            if self._length_display_unit == "cm":
-                return f"{_fmt(mid or 'caliper.length', mm / 10.0, 'cm')} {tr('unit.cm')}"
-            fallback_id = "caliper.length_submm" if measurement.submillimeter else "caliper.length"
-            return f"{_fmt(mid or fallback_id, mm, 'mm')} {tr('unit.mm')}"
-        return f"{_fmt(mid or 'caliper.length', measurement.pixel_length, 'px')} px"
-
-    def _open_label_picker_for_contour(self, contour: Contour) -> None:
+    def _open_label_picker_for_contour(
+        self,
+        contour: Contour,
+        *,
+        anchor_point: tuple[float, float] | None = None,
+        allow_free_text: bool = False,
+    ) -> None:
         """Offer to name a just-traced planimeter polygon (item 10).
 
         «Площадь1» and «Площадь2» of one frame are indistinguishable in the
@@ -7435,7 +7428,11 @@ class ViewerWidget(QWidget):
                 area = closed_polygon_area_cm2(contour, spacing)
                 if area is not None:
                     value_text = f"{_fmt('planimeter.area', area, 'cm²')} {tr('unit.cm2')}"
-        anchor_point = points[-1] if points else (self.width() / 2.0, self.height() / 2.0)
+        anchor_point = (
+            anchor_point
+            if anchor_point is not None
+            else (points[-1] if points else (self.width() / 2.0, self.height() / 2.0))
+        )
         from echo_personal_tool.presentation.label_picker import PICKER_CONTEXT_PLANIMETER
 
         self.label_picker_owner.offer(
@@ -7444,6 +7441,7 @@ class ViewerWidget(QWidget):
             context=PICKER_CONTEXT_PLANIMETER,
             anchor=self._map_image_point_to_viewer(anchor_point),
             bounds=self._graphics_content_geometry(),
+            allow_free_text=allow_free_text,
         )
 
     def _with_measurement_identity(self, contour: Contour) -> Contour:
@@ -7492,19 +7490,13 @@ class ViewerWidget(QWidget):
         self,
         key: tuple[str, int],
         measurement: LinearMeasurement,
+        *,
+        anchor_point: tuple[float, float] | None = None,
+        allow_free_text: bool = False,
     ) -> None:
         if not self._should_show_label_picker():
             return
-        value_text = self._format_caliper_value_for_picker(measurement)
-        context = self._resolve_label_picker_context(doppler_measurement=measurement.doppler)
-        anchor = self._map_image_point_to_viewer(measurement.end)
-        self.label_picker_owner.offer(
-            target=("caliper", key),
-            value_text=value_text,
-            context=context,
-            anchor=anchor,
-            bounds=self._graphics_content_geometry(),
-        )
+        offer_caliper(self, key, measurement, anchor_point=anchor_point, allow_free_text=allow_free_text)
 
     def _on_doppler_trace_committed(self, trace: object) -> None:
         raw_label = getattr(trace, "label", "") or ""

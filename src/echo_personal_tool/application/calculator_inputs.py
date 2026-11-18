@@ -17,6 +17,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from echo_personal_tool.domain.calculations.body_surface import bsa_du_bois_m2
+from echo_personal_tool.domain.calculations.right_atrial_pressure import rap_from_ivc_pair
 from echo_personal_tool.domain.calculators.engine import evaluate
 from echo_personal_tool.domain.calculators.models import (
     SOURCE_DERIVED,
@@ -174,6 +175,24 @@ def _bsa(height: InputValue, weight: InputValue) -> InputValue:
     return InputValue("bsa", bsa, source=SOURCE_DERIVED, detail="Du Bois")
 
 
+def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:
+    """Newest M-mode IVC diameters (expiration, inspiration) in mm.
+
+    Tuple order is insertion order — the last entry of each label wins; the
+    Doppler-zone calipers and uncalibrated lengths are not IVC diameters.
+    """
+    exp = insp = None
+    for item in measurements:
+        if item.doppler or item.millimeter_length is None:
+            continue
+        key = item.label.strip().upper()
+        if key == "IVC-EXP":
+            exp = item.millimeter_length
+        elif key == "IVC-INSP":
+            insp = item.millimeter_length
+    return exp, insp
+
+
 def resolve_study_inputs(
     *,
     doppler: DopplerResults | None,
@@ -219,6 +238,13 @@ def resolve_study_inputs(
         spec = input_spec(input_id)
         if spec is not None and spec.manual_only:
             auto[input_id] = InputValue(input_id, None)
+    # RAP from the M-mode IVC pair: the physician's manual value still wins
+    # (_apply_manual below), but the guideline estimate fills the gap (item 3).
+    exp_mm, insp_mm = _ivc_pair_mm(measurements)
+    rap = None
+    if exp_mm is not None and insp_mm is not None:
+        _, rap = rap_from_ivc_pair(exp_mm, insp_mm)
+    auto["rap"] = _measured("rap", float(rap) if rap is not None else None, source=SOURCE_DERIVED, detail="IVC")
     auto.update(
         {
             "hr": (

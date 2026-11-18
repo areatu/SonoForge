@@ -17,7 +17,15 @@ import pytest
 from echo_personal_tool.application.calculator_inputs import resolve_standalone_inputs
 from echo_personal_tool.domain.calculators import evaluate
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
-from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults, MeasurementSnapshot
+from echo_personal_tool.domain.models.measurements import (
+    ContourLineage,
+    DopplerFlowResult,
+    DopplerResults,
+    LvefResult,
+    LvViewMetrics,
+    MeasurementSnapshot,
+    PlanimeterResult,
+)
 from echo_personal_tool.domain.models.result_provenance import Freshness
 from echo_personal_tool.domain.models.value_origin import (
     KIND_CALCULATOR,
@@ -28,6 +36,7 @@ from echo_personal_tool.domain.models.value_origin import (
     METHOD_LINEAR_CALIPER,
     METHOD_NOT_EVALUATED,
     METHOD_PLANIMETER,
+    METHOD_SIMPSON_BIPLANE,
     METHOD_VESSEL,
     ClipSource,
     ValueOrigin,
@@ -43,6 +52,14 @@ from echo_personal_tool.domain.services.report_builder import (
     build_report_document,
     build_report_groups,
     with_extra_values,
+)
+from echo_personal_tool.domain.services.report_provenance import (
+    LVEDD_ALIASES,
+    caliper_pair_origin,
+    lineage_source,
+    linear_caliper_origin,
+    planimeter_origin,
+    simpson_origin,
 )
 from echo_personal_tool.domain.services.report_sections import build_report_sections, not_evaluated_values
 from echo_personal_tool.infrastructure.i18n import set_language, tr
@@ -263,3 +280,121 @@ def test_a_value_without_an_origin_is_not_pretended_to_have_one() -> None:
     assert plain.origin is None
     explicit = ReportValue(label="Y", value="2", origin=ValueOrigin(kind=KIND_MEASUREMENT, method_id="m"))
     assert explicit.origin is not None
+
+
+# ── the helpers extracted from report_builder (#474) ───────────────────
+
+
+def _lvef() -> LvefResult:
+    return LvefResult(
+        a4c=LvViewMetrics(
+            edv_ml=110.0,
+            esv_ml=45.0,
+            ed_contour=ContourLineage(measurement_id="a4c-ed", sop_instance_uid="4.1", frame_index=1),
+            es_contour=ContourLineage(measurement_id="a4c-es", sop_instance_uid="4.1", frame_index=2),
+        ),
+        a2c=LvViewMetrics(
+            edv_ml=100.0,
+            esv_ml=40.0,
+            ed_contour=ContourLineage(measurement_id="a2c-ed", sop_instance_uid="4.2", frame_index=5),
+            es_contour=ContourLineage(measurement_id="a2c-es", sop_instance_uid="4.2", frame_index=6),
+        ),
+    )
+
+
+def test_the_caliper_helper_cites_the_clip_frame_and_revision() -> None:
+    origin = linear_caliper_origin(
+        MeasurementSnapshot(linear_measurements=(_caliper(),)), LVEDD_ALIASES, "linear_derived"
+    )
+
+    assert origin is not None
+    assert origin.method_id == "linear_derived"
+    assert origin.measurement_id == "m-0001"
+    assert origin.revision == 3
+    assert origin.sources == (ClipSource(UID, 7),)
+
+
+def test_a_label_outside_the_aliases_has_no_origin() -> None:
+    snapshot = MeasurementSnapshot(linear_measurements=(_caliper(label="RV basal"),))
+
+    assert linear_caliper_origin(snapshot, LVEDD_ALIASES, "linear_derived") is None
+
+
+def test_the_pair_helper_cites_both_clips_and_keeps_the_diastolic_identity() -> None:
+    snapshot = MeasurementSnapshot(
+        linear_measurements=(
+            _caliper(label="LVEDD", sop_instance_uid="1.1.1", frame_index=3, measurement_id="ed"),
+            _caliper(label="LVESD", sop_instance_uid="1.1.2", frame_index=4, measurement_id="es"),
+        )
+    )
+
+    origin = caliper_pair_origin(snapshot, "teichholz")
+
+    assert origin.sources == (ClipSource("1.1.1", 3), ClipSource("1.1.2", 4))
+    assert origin.measurement_id == "ed"
+
+
+def test_one_missing_caliper_leaves_the_pair_citing_what_it_has() -> None:
+    snapshot = MeasurementSnapshot(linear_measurements=(_caliper(label="LVESD", sop_instance_uid="1.1.2"),))
+
+    origin = caliper_pair_origin(snapshot, "teichholz")
+
+    assert origin.sources == (ClipSource("1.1.2", 7),)
+
+
+def test_lineage_without_a_clip_gives_no_source() -> None:
+    assert lineage_source(ContourLineage(measurement_id="c-1")) is None
+    assert lineage_source(ContourLineage(measurement_id="c-1", sop_instance_uid="9.9", frame_index=2)) == ClipSource(
+        "9.9", 2
+    )
+
+
+def test_the_planimeter_helper_keeps_the_method_without_lineage() -> None:
+    origin = planimeter_origin(PlanimeterResult(label="Площадь1", kind="area", value=4.0, unit="cm²"))
+
+    assert origin.method_id == METHOD_PLANIMETER
+    assert origin.sources == ()
+    assert origin.measurement_id == ""
+
+
+def test_the_planimeter_helper_cites_the_contour_it_was_traced_on() -> None:
+    item = PlanimeterResult(
+        label="Площадь1",
+        kind="area",
+        value=4.0,
+        unit="cm²",
+        contour=ContourLineage(measurement_id="contour-7", revision=3, sop_instance_uid="5.5", frame_index=11),
+    )
+
+    origin = planimeter_origin(item)
+
+    assert origin.measurement_id == "contour-7"
+    assert origin.revision == 3
+    assert origin.sources == (ClipSource("5.5", 11),)
+
+
+def test_the_simpson_helper_cites_only_the_requested_phase() -> None:
+    origin = simpson_origin(_lvef(), method_id="simpson_monoplan", phase="es")
+
+    assert origin.sources == (ClipSource("4.1", 2), ClipSource("4.2", 6))
+    assert origin.measurement_id == "a4c-es"
+
+
+def test_the_biplane_helper_is_narrowed_to_the_views_it_was_computed_from() -> None:
+    a4c_only = simpson_origin(_lvef(), method_id=METHOD_SIMPSON_BIPLANE, views=("a4c",), phase="both")
+    both = simpson_origin(_lvef(), method_id=METHOD_SIMPSON_BIPLANE, phase="both")
+
+    assert a4c_only.sources == (ClipSource("4.1", 1), ClipSource("4.1", 2))
+    assert both.sources == (
+        ClipSource("4.1", 1),
+        ClipSource("4.1", 2),
+        ClipSource("4.2", 5),
+        ClipSource("4.2", 6),
+    )
+
+
+def test_a_view_without_lineage_cites_nothing_and_says_so() -> None:
+    origin = simpson_origin(LvefResult(a4c=LvViewMetrics(edv_ml=90.0)), method_id="simpson_monoplan")
+
+    assert origin.sources == ()
+    assert origin.measurement_id == ""

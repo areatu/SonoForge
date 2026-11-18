@@ -42,6 +42,8 @@ class MeasurementAction(str, Enum):
     RV_TAPSE = "rv_tapse"
     RV_S_PRIME = "rv_s_prime"
     RV_FAC = "rv_fac"
+    IVC_MMODE_EXPIR = "ivc_mmode_expir"
+    IVC_MMODE_INSP = "ivc_mmode_insp"
     DOPPLER_PEAK = "doppler_peak"
     DOPPLER_E_DT_A = "doppler_e_dt_a"
     DOPPLER_INTERVAL = "doppler_interval"
