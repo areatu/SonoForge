@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `fix(imt)`: #558 — инвалидация проверки КИМ и регрессии редактирования/загрузки ([полностью](changelog.d/013-fix-imt-review-invalidation-558.md))
 - `feat(ctmr)`: #557 — ленивое получение индексированных срезов и отмена запросов ([полностью](changelog.d/012-feat-ctmr-lazy-slices-557.md))
 - `fix(segmentation)`: ticket публикации LV/LA auto-segmentation и защита поздних результатов (#552) ([полностью](changelog.d/011-fix-segmentation-publication-552.md))
 - `fix(mmode)`: происхождение ручной калибровки (#547) и opt-in диагностика памяти/очередей (#553/#545) ([полностью](changelog.d/010-fix-mmode-provenance-547.md))

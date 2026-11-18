@@ -11,7 +11,7 @@ from typing import Any, cast
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -72,6 +72,11 @@ class ImtEditor(QDialog):
             button = QPushButton(tr(f"imt.{key}"))
             button.clicked.connect(lambda _checked=False, fn=callback: self.run(fn))
             layout.addWidget(button)
+        # State changes must revoke the lease synchronously: polling alone can
+        # miss frame/calibration A→B→A between timer ticks.
+        self.host._controller.state_manager.state_changed.connect(self.context_changed)
+        self.side.currentTextChanged.connect(self.context_changed)
+        self.fields["roi"].textChanged.connect(self.context_changed)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_context)
         self.timer.start(100)
@@ -252,6 +257,10 @@ class ImtEditor(QDialog):
                 revision=d.revision,
             )
         )
+
+    @Slot(object)
+    def context_changed(self, _value: object) -> None:
+        self.check_context()
 
     def check_context(self) -> None:
         if self.review is None:
