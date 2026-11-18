@@ -404,11 +404,19 @@ class MeasurementPersistence(QObject):
         store: _MeasurementStore,
         *,
         enabled: bool = False,
+        author_provider: Callable[[], str] | None = None,
+        can_write: Callable[[], bool] | None = None,
+        can_delete: Callable[[], bool] | None = None,
+        audit_callback: Callable[[str, str, int], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.store = store
         self.enabled = enabled
+        self._author_provider = author_provider
+        self._can_write = can_write
+        self._can_delete = can_delete
+        self._audit_callback = audit_callback
         self.repository = MeasurementRepository(root)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="measurement-io")
         self._pending = 0
@@ -704,6 +712,11 @@ class MeasurementPersistence(QObject):
         self._first_dirty = None
         if not self.enabled or not self._dirty or self._saving:
             return
+        if self._can_write is not None and not self._can_write():
+            self._dirty.clear()
+            self.status.emit("permission")
+            return
+        batch_author = self._author_provider() if self._author_provider is not None else ""
         self._saving = True
         batch, self._dirty = self._dirty, {}
         self._inflight_uids = set(batch)
@@ -741,8 +754,15 @@ class MeasurementPersistence(QObject):
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
                     all_sources = {**(record["sources"] if record else {}), **sources}
+                    save_kwargs = {"author_id": batch_author} if batch_author else {}
                     try:
-                        result = self.repository.save(uid, full, all_sources, record["revision"] if record else 0)
+                        result = self.repository.save(
+                            uid,
+                            full,
+                            all_sources,
+                            record["revision"] if record else 0,
+                            **save_kwargs,
+                        )
                     except MeasurementStorageError as save_exc:
                         if save_exc.code in ("invalid", "limit") and any(
                             getattr(full, name) is not None
@@ -750,13 +770,21 @@ class MeasurementPersistence(QObject):
                         ):
                             fallback = replace(full, simpson_basis=None, doppler_basis=None, derived_snapshot=None)
                             result = self.repository.save(
-                                uid, fallback, all_sources, record["revision"] if record else 0
+                                uid,
+                                fallback,
+                                all_sources,
+                                record["revision"] if record else 0,
+                                **save_kwargs,
                             )
                             full = fallback
                         else:
                             raise
                     self._contexts[uid] = (result, sources)
                     written[uid] = (full.bsa_basis, full.simpson_basis, full.doppler_basis, full.derived_snapshot)
+                    if self._audit_callback is not None:
+                        from echo_personal_tool.infrastructure.measurement_codec import study_key
+
+                        self._audit_callback("saved", study_key(uid), int(result["revision"]))
                 except (MeasurementStorageError, OSError) as exc:
                     raw_code = exc.code if isinstance(exc, MeasurementStorageError) else "io"
                     failures[uid] = safe_failure_code(raw_code, fallback="io")
@@ -890,6 +918,10 @@ class MeasurementPersistence(QObject):
         return not self._pending and not self._dirty
 
     def delete_all(self, callback: Callable[..., None] | None) -> None:
+        if self._can_delete is not None and not self._can_delete():
+            self.status.emit("permission")
+            self._deliver_callback(callback, "permission")
+            return
         # UI prevents edits during this operation; discard queued RAM, then delete after in-flight saves.
         affected = set(self._studies) | set(self._contexts) | set(self._dirty) | set(self._versions)
         snapshots = {uid: self.store.snapshot(uid) for uid in affected}
@@ -922,6 +954,8 @@ class MeasurementPersistence(QObject):
                 self.loaded.clear()
                 self.sources.clear()
                 self._dirty.clear()  # an earlier failing save may have requeued data
+                if self._audit_callback is not None:
+                    self._audit_callback("delete_all", "", 0)
             self.status.emit(error or "disabled")
             self._deliver_callback(callback, error)
 
@@ -959,6 +993,10 @@ class MeasurementPersistence(QObject):
         return True
 
     def delete_record(self, key: str, callback: Callable[..., None] | None) -> None:
+        if self._can_delete is not None and not self._can_delete():
+            self.status.emit("permission")
+            self._deliver_callback(callback, "permission")
+            return
         from echo_personal_tool.infrastructure.measurement_codec import study_key
 
         uids = set()
@@ -1003,6 +1041,8 @@ class MeasurementPersistence(QObject):
                 for uid in uids:
                     self._dirty.pop(uid, None)
                     self.loaded.discard(uid)
+                if self._audit_callback is not None:
+                    self._audit_callback("deleted", key, 0)
             self.status.emit(error or "disabled")
             self._deliver_callback(callback, error)
 
@@ -1138,10 +1178,18 @@ class MeasurementPersistence(QObject):
             # Replacement is deliberately a full imported record.  In
             # particular, an empty category is an explicit deletion, not a
             # merge with RAM or the old repository record.
+            if self._can_write is not None and not self._can_write():
+                raise MeasurementStorageError("permission")
             if self.enabled:
+                import_author = self._author_provider() if self._author_provider is not None else ""
+                import_kwargs = {"author_id": import_author} if import_author else {}
                 try:
                     record = self.repository.save(
-                        uid, record["data"], record["sources"], current["revision"] if current else 0
+                        uid,
+                        record["data"],
+                        record["sources"],
+                        current["revision"] if current else 0,
+                        **import_kwargs,
                     )
                 except OSError:
                     self._reconcile_write(uid, current, record["data"], record["sources"], sources)

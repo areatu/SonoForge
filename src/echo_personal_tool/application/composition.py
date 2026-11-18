@@ -58,6 +58,9 @@ from echo_personal_tool.application.user_preferences import (
     load_user_preferences,
     save_user_preferences,
 )
+from echo_personal_tool.application.user_session import UserSessionService
+from echo_personal_tool.domain.models.audit import AuditAction
+from echo_personal_tool.domain.models.user import Permission
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
@@ -102,6 +105,7 @@ class AppPaths:
     orthanc_cache_root: Path
     models_dir: Path
     settings_ini: Path | None = None
+    users_dir: Path | None = None
 
     @classmethod
     def under(cls, root: Path) -> AppPaths:
@@ -112,6 +116,7 @@ class AppPaths:
             orthanc_cache_root=base / "orthanc-cache",
             models_dir=base / "models",
             settings_ini=base / "preferences.ini",
+            users_dir=base / "users",
         )
 
     @classmethod
@@ -124,6 +129,7 @@ class AppPaths:
             orthanc_cache_root=host_paths.orthanc_cache_root(),
             models_dir=host_paths.models_dir(),
             settings_ini=None,
+            users_dir=host_paths.users_dir(),
         )
 
 
@@ -288,6 +294,7 @@ class AppServices:
     frame_cache: FrameCache
     segmenter: IOnnxSegmenter
     io: AppIoFacades
+    user_session: UserSessionService | None = None
     analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
     segmentation_jobs: SegmentationJobs = field(default_factory=SegmentationJobs)
 
@@ -327,6 +334,28 @@ def segmentation_jobs_of(controller: object) -> SegmentationJobs:
     if services is None:
         raise RuntimeError("Controller services are not bound")
     return services.segmentation_jobs
+
+
+def user_session_of(controller: object) -> UserSessionService | None:
+    """Return the local user-session service bound to ``controller``, if any."""
+    services = services_of(controller)
+    return services.user_session if services is not None else None
+
+
+def _make_persistence_audit_hook(user_session: UserSessionService) -> Callable[[str, str, int], None]:
+    def _hook(kind: str, study_key: str, revision: int) -> None:
+        if kind == "saved":
+            user_session.record_study_audit(
+                AuditAction.STUDY_SAVED,
+                study_key=study_key,
+                details={"revision": revision},
+            )
+        elif kind == "deleted":
+            user_session.record_study_audit(AuditAction.STUDY_DELETED, study_key=study_key)
+        elif kind == "delete_all":
+            user_session.record_study_audit(AuditAction.STUDY_DELETE_ALL)
+
+    return _hook
 
 
 def normalize_profile_name(profile: str | None) -> str:
@@ -497,6 +526,8 @@ def build_app_services(
     state_manager = StateManager()
     measurement_store = StudyMeasurementSessionStore()
     calculator_inputs = CalculatorInputStore()
+    users_root = resolved_paths.users_dir or (resolved_paths.measurements_dir.parent / "users")
+    user_session = UserSessionService(users_root, scope_paths=not hermetic)
     persistence_enabled = bool(
         getattr(resolved_prefs, "measurement_persistence_enabled", capabilities.measurement_storage_default)
     )
@@ -504,6 +535,10 @@ def build_app_services(
         resolved_paths.measurements_dir,
         measurement_store,
         enabled=persistence_enabled,
+        author_provider=lambda: user_session.active_user_id,
+        can_write=lambda: user_session.can(Permission.EDIT_MEASUREMENTS),
+        can_delete=lambda: user_session.can(Permission.DELETE_MEASUREMENTS),
+        audit_callback=_make_persistence_audit_hook(user_session),
     )
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
@@ -543,6 +578,7 @@ def build_app_services(
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
         io=io_facades,
+        user_session=user_session,
     )
 
 
@@ -575,10 +611,16 @@ def in_memory_app_services(
     state_manager = StateManager()
     measurement_store = StudyMeasurementSessionStore()
     calculator_inputs = CalculatorInputStore()
+    inmem_users_root = resolved_paths.users_dir or (scratch_root / "users")
+    inmem_user_session = UserSessionService(inmem_users_root, scope_paths=False)
     persistence = MeasurementPersistence(
         resolved_paths.measurements_dir,
         measurement_store,
         enabled=bool(getattr(resolved_prefs, "measurement_persistence_enabled", False)),
+        author_provider=lambda: inmem_user_session.active_user_id,
+        can_write=lambda: inmem_user_session.can(Permission.EDIT_MEASUREMENTS),
+        can_delete=lambda: inmem_user_session.can(Permission.DELETE_MEASUREMENTS),
+        audit_callback=_make_persistence_audit_hook(inmem_user_session),
     )
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,
@@ -608,6 +650,7 @@ def in_memory_app_services(
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
         io=io_facades,
+        user_session=inmem_user_session,
     )
 
 
