@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `fix(persistence)`: #160 — достоверный результат повторного shutdown ([полностью](changelog.d/014-fix-persistence-shutdown-result-160.md))
 - `fix(imt)`: #558 — инвалидация проверки КИМ и регрессии редактирования/загрузки ([полностью](changelog.d/013-fix-imt-review-invalidation-558.md))
 - `feat(report)`: формализованный черновик заключения и врачебный выбор при неоднозначных клапанных критериях (PR-C) ([полностью](changelog.d/013-feat-report-formal-conclusion.md))
 - `feat(ctmr)`: #557 — ленивое получение индексированных срезов и отмена запросов ([полностью](changelog.d/012-feat-ctmr-lazy-slices-557.md))
