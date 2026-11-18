@@ -322,6 +322,15 @@ def test_zero_logger_exception_or_exc_info_in_codebase():
                 target = ast.unparse(node.func.value)
                 if rel.as_posix() == "presentation/presenter_view.py" and target in {"self._diag", "diag"}:
                     continue
+                # This is concurrent.futures.Future.exception(), not a logger:
+                # the worker inspects its outcome and never logs the exception.
+                if (
+                    rel.as_posix() == "application/ctmr_slice_requests.py"
+                    and target == "future"
+                    and not node.args
+                    and not node.keywords
+                ):
+                    continue
                 violations.append(f"{rel}:{node.lineno} -> {ast.unparse(node)}")
             elif node.func.attr in {"debug", "info", "warning", "error", "critical", "log"}:
                 for kw in node.keywords:

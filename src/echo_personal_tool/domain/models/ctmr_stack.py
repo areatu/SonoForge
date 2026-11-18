@@ -54,7 +54,7 @@ class StackFrameRef:
     """One exact SOP/local frame, with no resident pixels or patient demographics.
 
     The stat stamp detects ordinary replacement; it is NOT a content hash.
-    The future loader must re-check it before decoding/publishing.
+    A loader must re-check it before decoding and before publishing.
     """
 
     path: Path
