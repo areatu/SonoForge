@@ -162,8 +162,9 @@ class FakeWindow(QWidget):
 
 
 @pytest.fixture()
-def host(qapp) -> FakeWindow:
+def host(qapp, qtbot) -> FakeWindow:
     window = FakeWindow()
+    qtbot.addWidget(window)
     window._comparison = ComparisonCoordinator(window)
     return window
 

@@ -28,6 +28,7 @@ def qapp() -> QApplication:
 
 def test_dicom_decode_worker_emits_all_frames(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=4, rows=16, cols=16)
 
@@ -48,6 +49,7 @@ def test_dicom_decode_worker_emits_all_frames(qapp: QApplication, qtbot, tmp_pat
 
 def test_dicom_decode_worker_emits_failed_for_missing_file(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "missing.dcm"
     errors: list[tuple[int, str]] = []
     worker = DicomDecodeWorker(path, request_id=1, parent=parent)

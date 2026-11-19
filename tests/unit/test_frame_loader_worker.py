@@ -41,6 +41,7 @@ def _run_worker(qtbot, worker: FrameLoaderWorker) -> np.ndarray:
 
 def test_frame_loader_reads_dicom(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "frame.dcm"
     write_synthetic_dicom(path)
     pixels = _run_worker(
@@ -52,6 +53,7 @@ def test_frame_loader_reads_dicom(qapp: QApplication, qtbot, tmp_path: Path) -> 
 
 def test_frame_loader_reads_mp4(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "clip.mp4"
     write_synthetic_mp4(path, frame_count=4, width=20, height=16)
     pixels = _run_worker(
@@ -63,6 +65,7 @@ def test_frame_loader_reads_mp4(qapp: QApplication, qtbot, tmp_path: Path) -> No
 
 def test_frame_loader_reads_jpeg(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "still.jpg"
     write_synthetic_jpeg(path, width=24, height=18, value=42)
     pixels = _run_worker(
@@ -75,6 +78,7 @@ def test_frame_loader_reads_jpeg(qapp: QApplication, qtbot, tmp_path: Path) -> N
 
 def test_frame_loader_reads_png(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     path = tmp_path / "still.png"
     write_synthetic_png(path, width=24, height=18, value=17)
     pixels = _run_worker(

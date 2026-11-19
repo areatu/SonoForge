@@ -101,6 +101,16 @@ include = ["src/echo_personal_tool", "README.md"]
 [tool.coverage.run]
 source = ["src/echo_personal_tool"]
 
+[tool.mutmut]
+# Issue #620: reproducible mutation-testing profile for the pure domain
+# calculators (ASE). The nightly-suites workflow runs `mutmut run` with this
+# config and reports surviving mutants.
+paths_to_mutate = [
+    "src/echo_personal_tool/domain/calculations/",
+    "src/echo_personal_tool/domain/calculators/",
+]
+runner = "pytest tests/unit/test_bernoulli.py tests/unit/test_body_surface.py tests/unit/test_chamber_simpson.py tests/unit/test_continuity_calculations.py tests/unit/test_diastology_grade.py tests/unit/test_doppler_metrics.py tests/unit/test_la_area_length.py tests/unit/test_lvef_simpson.py tests/unit/test_lvm.py tests/unit/test_pisa_calculators.py tests/unit/test_planimeter.py tests/unit/test_regurgitation_grade.py tests/unit/test_rv_fac.py tests/unit/test_calculator_inputs.py -q -p no:cov"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

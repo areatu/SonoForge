@@ -47,6 +47,42 @@ jobs:
         run: |
           uv run --no-sync pytest tests/exploratory/ -vv --tb=short --no-header --durations=15
 
+  mutation_calculators:
+    name: mutation (ubuntu-latest, domain calculators, mutmut)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.0"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python 3.11
+      - name: Install mutmut (pinned)
+        run: uv pip install --python 3.11 "mutmut==3.3.1"
+      # Issue #620: reproducible mutation profile lives in [tool.mutmut] in
+      # pyproject.toml (paths + runner). Survivors are summarized below; the
+      # job fails only when the score drops under MUTATION_MIN_SCORE (default
+      # report-only until the baseline is established).
+      - name: Run mutation testing on domain calculations/calculators
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run --no-sync mutmut run
+          uv run --no-sync python .github/scripts/mutation_summary.py --min-score "${MUTATION_MIN_SCORE:-0}" --github-summary
+
   system:
     name: system (${{ matrix.os }}, 3.11)
     runs-on: ${{ matrix.os }}

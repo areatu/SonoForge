@@ -33,6 +33,7 @@ def test_dicom_decode_worker_first_frame_only(qapp: QApplication, qtbot, tmp_pat
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=10, rows=16, cols=16)
     parent = QWidget()
+    qtbot.addWidget(parent)
 
     first_frames: list = []
     finished_events: list = []
@@ -57,6 +58,7 @@ def test_dicom_decode_worker_full_decode(qapp: QApplication, qtbot, tmp_path: Pa
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=5, rows=16, cols=16)
     parent = QWidget()
+    qtbot.addWidget(parent)
 
     first_frames: list = []
     finished_events: list = []
@@ -79,6 +81,7 @@ def test_video_decode_worker_first_frame_only(qapp: QApplication, qtbot, tmp_pat
     path = tmp_path / "clip.mp4"
     write_synthetic_mp4(path, frame_count=10, width=20, height=16)
     parent = QWidget()
+    qtbot.addWidget(parent)
 
     first_frames: list = []
     finished_events: list = []
@@ -103,6 +106,7 @@ def test_video_decode_worker_full_decode(qapp: QApplication, qtbot, tmp_path: Pa
     path = tmp_path / "clip.mp4"
     write_synthetic_mp4(path, frame_count=5, width=20, height=16)
     parent = QWidget()
+    qtbot.addWidget(parent)
 
     first_frames: list = []
     finished_events: list = []
