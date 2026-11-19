@@ -6,8 +6,15 @@
 # RNG-derived values as "secret" taint, so the clear-text-logging query reports
 # every printed error table as a leak — a false positive on a physics harness
 # whose whole purpose is to print those numbers. Everything patient-facing lives
-# under ``src/`` and stays fully analysed.
+# under ``src/`` and stays fully analysed — with one reviewed exception below.
 name: SonoForge CodeQL config
 
 paths-ignore:
   - bench/**
+  # Reviewed exception (#625): interop_export.py writes the .hl7 / .fhir.json
+  # export files, which by design contain the signed report (patient data and
+  # the signature stamp) in clear text — the same data the PDF/CSV/JSON exports
+  # already write. py/clear-text-storage-sensitive-data is a false positive on
+  # that feature; the inline codeql[...] comments at the sinks document it and
+  # take effect if alert-suppression processing is ever enabled.
+  - src/echo_personal_tool/application/interop_export.py
