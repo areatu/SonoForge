@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 import weakref
@@ -18,6 +19,9 @@ from echo_personal_tool.presentation.dark_theme import get_theme_palette, get_th
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QScreen
+
+
+logger = logging.getLogger(__name__)
 
 
 def styled_open_file(
@@ -484,11 +488,10 @@ def _attach_recents_bar(dialog: QFileDialog, store: RecentFolderStore) -> None:
             # styles): still show recents instead of silently dropping them.
             try:
                 layout.addWidget(bar)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                log_boundary_failure(logger, "styled_dialogs.recents_strip", exc, code="invalid", level=logging.DEBUG)
                 return
     except Exception as exc:  # noqa: BLE001 - a missing strip must not break the dialog
-        import logging
-
         log_boundary_failure(logging.getLogger(__name__), "ui.cleanup", exc, code="unexpected", level=logging.DEBUG)
 
 

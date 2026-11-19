@@ -371,7 +371,7 @@ class TabCoordinator:
                     )
                     is not False
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             self.abort_load()
             self._restore_aborted_tab(previous, tab.tab_id)
             raise

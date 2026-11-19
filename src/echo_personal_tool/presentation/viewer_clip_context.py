@@ -18,8 +18,10 @@ DICOM slice and only has to implement ``current_clip_view()`` to be picked up.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.domain.measurement_catalog import (
     CTX_2D,
     CTX_M,
@@ -29,6 +31,9 @@ from echo_personal_tool.domain.measurement_catalog import (
 #: Fallback when the viewer reports Doppler but not *which* Doppler: an unknown
 #: mode must not lock the step (spec: a lock needs knowledge of the problem).
 UNKNOWN_DOPPLER: frozenset[str] = frozenset()
+
+
+logger = logging.getLogger(__name__)
 
 
 def clip_modes(viewer: Any, *, mmode_active: bool = False) -> frozenset[str]:
@@ -59,7 +64,8 @@ def clip_view(viewer: Any) -> str:
         return ""
     try:
         return (reader() or "").strip().upper()
-    except Exception:  # noqa: BLE001 - a viewer hiccup must not break the projection
+    except Exception as exc:  # noqa: BLE001 - a viewer hiccup must not break the projection
+        log_boundary_failure(logger, "viewer_clip_context.read", exc, code="invalid", level=logging.DEBUG)
         return ""
 
 

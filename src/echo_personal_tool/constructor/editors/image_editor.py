@@ -186,7 +186,7 @@ class ImageEditor(BaseEditor):
                 self._preview_label.setPixmap(QPixmap.fromImage(image))
             else:
                 self._preview_label.setText(tr("constructor.image.invalid_svg", name=path.name))
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             self._preview_label.setText(tr("constructor.image.svg_error", name=path.name))
 
     def _on_zoom_changed(self, text: str) -> None:

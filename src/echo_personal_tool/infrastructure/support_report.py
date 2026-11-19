@@ -18,6 +18,7 @@ Privacy rules, matching ``infrastructure/diagnostics.py``:
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 from datetime import datetime
@@ -26,12 +27,15 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode
 
 from echo_personal_tool import __version__
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QGuiApplication
 
 #: ``issues/new`` accepts issue-form prefill parameters: ``template``,
 #: ``title``, ``labels`` plus one parameter per form field ``id``.
+logger = logging.getLogger(__name__)
+
 ISSUE_BASE_URL = "https://github.com/areatu/SonoForge/issues/new"
 BUG_TEMPLATE = "bug_report.yml"
 DEFAULT_ISSUE_TITLE = "[Bug]: "
@@ -72,7 +76,8 @@ def windows_build() -> int | None:
         return None
     try:
         return int(getter().build)
-    except Exception:  # noqa: BLE001 - never fail a report because of a probe
+    except Exception as exc:  # noqa: BLE001 - never fail a report because of a probe
+        log_boundary_failure(logger, "support.os_build_probe", exc, code="unavailable", level=logging.DEBUG)
         return None
 
 

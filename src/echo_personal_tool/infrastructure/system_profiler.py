@@ -11,6 +11,8 @@ import psutil
 
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
+logger = logging.getLogger(__name__)
+
 _LOG = logging.getLogger(__name__)
 
 _LOW_END_CORES = 2
@@ -111,7 +113,8 @@ def _is_remote_windows_session() -> bool:
 
         sm_remotesession = 0x1000
         return bool(ctypes.windll.user32.GetSystemMetrics(sm_remotesession))
-    except Exception:  # noqa: BLE001 - never let a probe decide whether the app starts
+    except Exception as exc:  # noqa: BLE001 - never let a probe decide whether the app starts
+        log_boundary_failure(logger, "system_profiler.remote_session", exc, code="unavailable", level=logging.DEBUG)
         return False
 
 
@@ -124,7 +127,8 @@ def _probe_gl_renderer() -> str | None:
     """
     try:
         from PySide6.QtGui import QOffscreenSurface, QOpenGLContext
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "system_profiler.gl_import", exc, code="unavailable", level=logging.DEBUG)
         return None
     context = None
     surface = None
@@ -142,7 +146,8 @@ def _probe_gl_renderer() -> str | None:
         if isinstance(value, (bytes, bytearray)):
             value = value.decode("utf-8", "replace")
         return str(value).strip() or None
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "system_profiler.gl_renderer", exc, code="unavailable", level=logging.DEBUG)
         return None
     finally:
         try:

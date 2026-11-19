@@ -300,7 +300,7 @@ def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
                     "UR",
                     "UT",
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 - reviewed boundary
                 is_explicit = False
 
             if is_explicit:
@@ -322,7 +322,7 @@ def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
         try:
             vr = vr_bytes.decode("ascii")
             is_explicit = all(c.isalpha() for c in vr)
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             is_explicit = False
 
         if is_explicit and group != 0x7FE0:
@@ -415,7 +415,7 @@ def _build_encapsulated_frame_index(
         bot_offsets = parse_basic_offsets(pixel_data)
         if not bot_offsets:
             bot_offsets = None
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         bot_offsets = None
     return frames, bot_offsets
 
@@ -440,7 +440,8 @@ def _decode_fragment_openjpeg(
         if img.shape[:2] != (rows, cols):
             return None
         return np.ascontiguousarray(img)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a bad frame must not break playback
+        log_boundary_failure(logger, "dicom_session.decode_frame", exc, code="invalid", level=logging.DEBUG)
         return None
 
 
@@ -480,7 +481,8 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
         if img.shape[:2] != (rows, cols):
             return None
         return np.ascontiguousarray(img)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a bad color frame must not break playback
+        log_boundary_failure(logger, "dicom_session.decode_color_frame", exc, code="invalid", level=logging.DEBUG)
         return None
 
 

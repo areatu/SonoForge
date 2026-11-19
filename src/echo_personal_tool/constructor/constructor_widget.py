@@ -267,7 +267,7 @@ class ConstructorWidget(QWidget):
                 # was actually added.
                 if self._model.merge_from_dict(imported):
                     self._mark_dirty()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - reviewed boundary
                 from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.import_error"), safe_error_category(exc))
@@ -283,7 +283,7 @@ class ConstructorWidget(QWidget):
                 )
 
                 export_to_pdf(self._model, Path(path))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - reviewed boundary
                 from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))
@@ -299,7 +299,7 @@ class ConstructorWidget(QWidget):
                 )
 
                 export_to_html(self._model, Path(path))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - reviewed boundary
                 from echo_personal_tool.application.diagnostics import safe_error_category
 
                 QMessageBox.critical(self, tr("constructor.export_error"), safe_error_category(exc))

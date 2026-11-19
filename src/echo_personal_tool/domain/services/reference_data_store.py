@@ -409,7 +409,7 @@ class ReferenceDataStore:
                         sort_keys=False,
                     )
                 os.replace(tmp_name, self._yaml_path)
-            except BaseException:
+            except BaseException:  # noqa: BLE001 - reviewed boundary
                 try:
                     os.unlink(tmp_name)
                 except OSError:

@@ -20,6 +20,7 @@ from dataclasses import replace
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.domain.models.metadata import InstanceMetadata
 from echo_personal_tool.domain.models.multiview import (
     DEFAULT_EVENT_LABEL,
@@ -562,7 +563,8 @@ class MultiViewController(QObject):
         """Mirror AppController's playback state; conservative for doubles."""
         try:
             value = self._controller.state_manager.snapshot.is_playing
-        except Exception:  # noqa: BLE001 - controller may be a test double
+        except Exception as exc:  # noqa: BLE001 - controller may be a test double
+            log_boundary_failure(logger, "multiview.playing_probe", exc, code="invalid", level=logging.DEBUG)
             return False
         return value if isinstance(value, bool) else False
 

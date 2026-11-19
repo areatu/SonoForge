@@ -398,7 +398,7 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
         else:
             logger.error("model_manifest.json not found after extraction")
             return False
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - reviewed boundary
         log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
         return False
 

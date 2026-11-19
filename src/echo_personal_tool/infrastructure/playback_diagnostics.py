@@ -35,6 +35,10 @@ from dataclasses import dataclass, field
 
 import psutil
 
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
+
 _LOG = logging.getLogger("echo_personal_tool.playback_diag")
 _ENABLED = os.environ.get("ECHO_PLAYBACK_DIAG", "0") == "1"
 
@@ -47,7 +51,8 @@ def _process() -> psutil.Process | None:
     if _PROCESS is None:
         try:
             _PROCESS = psutil.Process()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(logger, "diagnostics.process_handle", exc, code="unavailable", level=logging.DEBUG)
             return None
     return _PROCESS
 
@@ -63,7 +68,8 @@ def process_rss_mb() -> float:
         return 0.0
     try:
         return float(proc.memory_info().rss) / 1e6
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "diagnostics.rss", exc, code="unavailable", level=logging.DEBUG)
         return 0.0
 
 
@@ -79,7 +85,8 @@ def peak_rss_mb() -> float:
         return 0.0
     try:
         info = proc.memory_info()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "diagnostics.peak_rss_psutil", exc, code="unavailable", level=logging.DEBUG)
         return 0.0
     peak = getattr(info, "peak_wset", 0) or 0
     if peak:
@@ -91,7 +98,8 @@ def peak_rss_mb() -> float:
         # Linux reports KiB, macOS reports bytes; psutil's rss is bytes, so keep MB (1e6).
         peak_bytes = ru_maxrss if sys.platform == "darwin" else ru_maxrss * 1024
         return peak_bytes / 1e6
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        log_boundary_failure(logger, "diagnostics.peak_rss_resource", exc, code="unavailable", level=logging.DEBUG)
         return 0.0
 
 
@@ -118,7 +126,7 @@ def _numpy_memory_report() -> dict[str, object]:
             "total_mb": total_bytes / 1e6,
             "by_dtype": by_dtype,
         }
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         return {"array_count": 0, "total_bytes": 0, "total_mb": 0.0, "by_dtype": {}}
 
 

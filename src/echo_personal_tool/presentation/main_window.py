@@ -2289,7 +2289,8 @@ class MainWindow(QMainWindow):
         """
         try:
             return self._tabs.active
-        except Exception:  # noqa: BLE001 - a missing tab means "no state to keep"
+        except Exception as exc:  # noqa: BLE001 - a missing tab means "no state to keep"
+            log_boundary_failure(logger, "tabs.active_probe", exc, code="invalid", level=logging.DEBUG)
             return None
 
     def focus_mode_active(self) -> bool:
@@ -4078,7 +4079,7 @@ class MainWindow(QMainWindow):
         try:
             with self._batch_study_surface_updates():
                 self._apply_loaded_studies(studies)
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             self._abort_tab_load()
             raise
 

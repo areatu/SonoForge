@@ -34,6 +34,7 @@ from echo_personal_tool.imaging.samsung_tick_detector import (
     detect_samsung_doppler_scales,
     detect_ticks,
 )
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
     Vendor,
     VendorProfile,
@@ -132,7 +133,7 @@ def _compute_baseline_with_profile(
                 result.source,
             )
             return result.baseline_y, result.velocity_sign
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - reviewed boundary
         logger.debug("Vendor baseline computation failed: %s", type(e).__name__)
 
     # 2. Fallback: center of ROI, standard convention
@@ -321,7 +322,8 @@ def _evidence_baseline(arr: np.ndarray, roi: DopplerSpectrogramRoi) -> float | N
     """
     try:
         estimate = detect_baseline_robust(arr, roi)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a failed estimate yields no calibration
+        log_boundary_failure(logger, "vendor_calibration.baseline", exc, code="invalid", level=logging.DEBUG)
         return None
     if estimate is None or estimate.confidence < 0.5:
         return None
@@ -643,7 +645,7 @@ def try_parse_samsung_tick_calibration(
         detected = None
         try:
             detected = detect_spectrogram_roi(arr)
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             detected = None
         if detected is not None:
             x0, y0, x1, y1 = detected
@@ -758,7 +760,7 @@ def try_parse_samsung_tick_calibration(
                 detected_baseline = detect_baseline_y(arr, roi)
                 if detected_baseline is not None:
                     baseline_y = float(detected_baseline)
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             logger.debug("Samsung tick fallback: baseline detection failed")
 
     candidate = calibration_from_roi_and_baseline(

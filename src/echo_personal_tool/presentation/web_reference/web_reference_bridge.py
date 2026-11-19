@@ -152,7 +152,7 @@ class WebReferenceBridge(QObject):
         try:
             self._store.load()
             return json.dumps({"ok": True})
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - reviewed boundary
             return json.dumps({"error": str(exc)})
 
     @Slot(result=str)

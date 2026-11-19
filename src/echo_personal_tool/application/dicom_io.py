@@ -7,6 +7,7 @@ application import does not initialize the DICOM decode stack.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -14,11 +15,15 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.domain.models.frame_panels import FramePanelLayout
 from echo_personal_tool.domain.models.metadata import PatientDemographics
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 if TYPE_CHECKING:
     import numpy as np
 
     from echo_personal_tool.domain.models.properties_snapshot import PropertiesSnapshot
+
+
+logger = logging.getLogger(__name__)
 
 
 class DicomTagRow(Protocol):
@@ -131,7 +136,8 @@ def load_dicom_preview_frame(path: Path) -> np.ndarray | None:
         session = get_dicom_session(path)
         session.open(path)
         return np.array(session.decode_first_frame(), copy=True)
-    except Exception:  # noqa: BLE001 - a preview must never break the export
+    except Exception as exc:  # noqa: BLE001 - a preview must never break the export
+        log_boundary_failure(logger, "preview.decode", exc, code="invalid", level=logging.DEBUG)
         return None
 
 

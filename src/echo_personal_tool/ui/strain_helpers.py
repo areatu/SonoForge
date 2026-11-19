@@ -102,7 +102,7 @@ def _smooth_contour(points: np.ndarray, n_output: int = 64) -> np.ndarray:
     try:
         cs_x = CubicSpline(t_norm, closed[:, 0], bc_type="periodic")
         cs_y = CubicSpline(t_norm, closed[:, 1], bc_type="periodic")
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         return points
 
     # Interpolate

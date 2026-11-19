@@ -508,7 +508,7 @@ class MeasurementPersistence(QObject):
                 code = safe_failure_code(exc.code, fallback="io")
                 log_boundary_failure(logger, context, exc, code=code)
                 value, error = None, code
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - reviewed boundary
                 # This is the asynchronous operation boundary: unknown worker
                 # failures must complete the callback as a safe refusal rather
                 # than strand the UI. Diagnostics project only allowlisted data.

@@ -23,13 +23,16 @@ exercise the module construct it with an explicit path.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import traceback
 from pathlib import Path
 from typing import Any
 
-from echo_personal_tool.application.diagnostics import sanitize_log_text
+from echo_personal_tool.application.diagnostics import log_boundary_failure, sanitize_log_text
+
+logger = logging.getLogger(__name__)
 
 _DISABLE_ENV = "SONOFORGE_PRESENTER_DIAG"
 
@@ -149,5 +152,6 @@ def qimage_brightness(image: Any) -> float | None:
         grid = np.frombuffer(buf, dtype=np.uint8).reshape(small.height(), small.bytesPerLine())
         cropped = grid[:, : small.width() * 4]
         return float(cropped.mean())
-    except Exception:  # noqa: BLE001 — probe must never raise
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        log_boundary_failure(logger, "presenter_diagnostics.brightness", exc, code="invalid", level=logging.DEBUG)
         return None

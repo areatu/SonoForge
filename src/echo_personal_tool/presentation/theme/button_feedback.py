@@ -24,17 +24,21 @@ leave an animation alive.  ``install()`` is idempotent.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Property, QEvent, QObject, QPropertyAnimation, Qt, Signal
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.theme.controls import BUTTON_RADIUS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
 
     from PySide6.QtWidgets import QAbstractButton
+
+logger = logging.getLogger(__name__)
 
 _HOVER_MS = 110
 _PRESS_MS = 80
@@ -48,7 +52,8 @@ def _reduce_motion() -> bool:
         from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 
         return _reduce_motion_enabled()
-    except Exception:  # noqa: BLE001 - a missing preference must not break a click
+    except Exception as exc:  # noqa: BLE001 - a missing preference must not break a click
+        log_boundary_failure(logger, "theme.reduce_motion_probe", exc, code="invalid", level=logging.DEBUG)
         return False
 
 

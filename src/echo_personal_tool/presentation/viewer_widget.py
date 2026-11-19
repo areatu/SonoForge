@@ -5366,7 +5366,7 @@ class ViewerWidget(QWidget):
         """Screen-space position of a graphics event, or None when unavailable."""
         try:
             pos = ev.screenPos()
-        except Exception:  # noqa: BLE001 - test doubles may not provide it
+        except (AttributeError, RuntimeError):  # test doubles may not provide screenPos
             return None
         if pos is None:
             return None

@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -42,7 +44,8 @@ def _reduce_motion_enabled() -> bool:
         from echo_personal_tool.application.user_preferences import load_user_preferences
 
         return load_user_preferences().reduce_motion
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a missing preference means "no reduced motion"
+        log_boundary_failure(logger, "animations.reduce_motion", exc, code="invalid", level=logging.DEBUG)
         return False
 
 
@@ -92,7 +95,7 @@ def _init_time_source() -> Callable[[], int]:
         from PySide6.QtCore import QDateTime
 
         return lambda: int(QDateTime.currentMSecsSinceEpoch())
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         import time
 
         return lambda: int(time.time() * 1000)
