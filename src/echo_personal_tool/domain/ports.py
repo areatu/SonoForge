@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -202,3 +203,42 @@ class DicomUploadClient(Protocol):
     """Unified upload contract (DIMSE or STOW-RS)."""
 
     def upload_instance(self, dicom_bytes: bytes) -> bool: ...
+
+
+@dataclass(frozen=True)
+class ReportSignature:
+    """Raw Ed25519 signature over a canonical report snapshot.
+
+    ``signature`` is the 64-byte Ed25519 signature; the base64 receipt form is
+    built by the domain receipt layer, never by the signer itself.
+    """
+
+    key_id: str
+    algorithm: str
+    public_key_b64: str
+    signature: bytes
+
+
+class SignerPort(Protocol):
+    """Local Ed25519 signer for report protocols (#624).
+
+    The private key is unwrapped with the signer's password/PIN only for the
+    duration of :meth:`sign` and never persisted in plaintext. Implementations
+    must wipe key material from memory after use and must not log secrets,
+    payloads or signatures.
+    """
+
+    def sign(self, payload: bytes, *, secret: str) -> ReportSignature:
+        """Sign *payload* with the bound user's Ed25519 key.
+
+        *secret* is the user's password or PIN, re-entered at signing time.
+        Raises :class:`~echo_personal_tool.domain.exceptions.UserAuthError`
+        on authentication failure and
+        :class:`~echo_personal_tool.domain.exceptions.ReportSignatureError`
+        on signing failure.
+        """
+        ...
+
+    def verify(self, payload: bytes, signature: ReportSignature) -> bool:
+        """Return True if *signature* is valid for *payload* (offline check)."""
+        ...

@@ -57,6 +57,9 @@ class ReportModePage(QWidget):
     print_requested = Signal()
     finish_requested = Signal()
     draft_requested = Signal()
+    #: Local Ed25519 signing intents (issue 624); the window owns the secret prompt.
+    sign_requested = Signal()
+    verify_requested = Signal()
 
     def __init__(
         self,
@@ -136,6 +139,8 @@ class ReportModePage(QWidget):
             self._export.csv_button,
             self._export.json_button,
             self._export.print_button,
+            self._export.sign_button,
+            self._export.verify_button,
             self._export.finish_button,
         )
         for first, second in zip(chain, chain[1:]):

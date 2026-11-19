@@ -17,6 +17,7 @@ from echo_personal_tool.domain.services.report_builder import ReportDocument
 from echo_personal_tool.infrastructure import measurement_report_pdf as _pdf_adapter
 
 if TYPE_CHECKING:
+    from echo_personal_tool.domain.models.report_signature import SignatureStamp
     from echo_personal_tool.domain.services.report_template import ReportTemplate
 
 ValueId: TypeAlias = tuple[int, int]
@@ -48,15 +49,20 @@ class ReportExportError(RuntimeError):
 
 
 def render_report(
-    document: ReportDocument, *, font_size: int = 10, template: ReportTemplate | None = None
+    document: ReportDocument,
+    *,
+    font_size: int = 10,
+    template: ReportTemplate | None = None,
+    stamp: SignatureStamp | None = None,
 ) -> RenderedReport:
     """Render a report for preview without exposing the infrastructure DTO.
 
     ``template`` is the printable form of the protocol (item 12 of the
-    2026-11-06 list); ``None`` keeps the full form of older builds.
+    2026-11-06 list); ``None`` keeps the full form of older builds.  ``stamp``
+    (#624) draws the visual local-EP block of a signed sheet.
     """
     try:
-        rendered = _pdf_adapter.render_report(document, font_size=font_size, template=template)
+        rendered = _pdf_adapter.render_report(document, font_size=font_size, template=template, stamp=stamp)
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
 
