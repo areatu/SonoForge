@@ -44,6 +44,7 @@ dependencies = [
     "reportlab>=4.0",
     "openpyxl>=3.1",
     "keyring>=25.0",
+    "cryptography>=44,<51",
 ]
 
 [project.optional-dependencies]
@@ -198,6 +199,7 @@ files = [
     "src/echo_personal_tool/presentation/command_catalog.py",
     "src/echo_personal_tool/presentation/coordinators/__init__.py",
     "src/echo_personal_tool/presentation/coordinators/protocol_coordinator.py",
+    "src/echo_personal_tool/presentation/coordinators/user_session_coordinator.py",
     "src/echo_personal_tool/presentation/dark_theme.py",
     "src/echo_personal_tool/presentation/dicom_export.py",
     "src/echo_personal_tool/presentation/dicom_export_dialog.py",
@@ -248,6 +250,8 @@ files = [
     "src/echo_personal_tool/presentation/theme/dialog_outline.py",
     "src/echo_personal_tool/presentation/theme/palette_picker.py",
     "src/echo_personal_tool/presentation/theme/palettes.py",
+    "src/echo_personal_tool/presentation/user_login_dialog.py",
+    "src/echo_personal_tool/presentation/user_management_dialog.py",
     "src/echo_personal_tool/presentation/theme/qss.py",
     "src/echo_personal_tool/presentation/theme/system_theme.py",
     "src/echo_personal_tool/presentation/theme/token_restyle.py",

@@ -108,10 +108,31 @@ class SavedRecordSummary:
     kinds: tuple[str, ...] = ()
     #: Allowlisted codec/OS code; never a path, a message or a payload fragment.
     error: str = ""
+    #: Optional opaque 32-hex local user IDs (empty in single-user / legacy records).
+    created_by: str = ""
+    updated_by: str = ""
 
     @property
     def readable(self) -> bool:
         return self.status == STATUS_READABLE
+
+    def authored_by(self, user_id: str) -> bool:
+        """Return True if *user_id* created or last updated this record."""
+        if not user_id:
+            return False
+        return user_id == self.created_by or user_id == self.updated_by
+
+
+def filter_saved_records(
+    records: tuple[SavedRecordSummary, ...],
+    *,
+    scope: str = "all",
+    user_id: str = "",
+) -> tuple[SavedRecordSummary, ...]:
+    """Filter cabinet study records by ``'all'`` or ``'mine'`` (current user)."""
+    if scope != "mine" or not user_id:
+        return records
+    return tuple(record for record in records if record.authored_by(user_id))
 
 
 @dataclass(frozen=True)
@@ -208,6 +229,8 @@ def summarize_record(key: str, payload: bytes, *, size_bytes: int | None = None)
         doppler_count=doppler,
         has_metrics=data.height_cm is not None or data.weight_kg is not None,
         kinds=kinds,
+        created_by=str(record.get("created_by", "")),
+        updated_by=str(record.get("updated_by", "")),
     )
 
 
@@ -296,6 +319,7 @@ __all__ = [
     "SavedRecordsListing",
     "default_diagnostic_bundle_path",
     "default_logs_dir",
+    "filter_saved_records",
     "migrate_legacy_scan_errors",
     "optional_study_key_for_uid",
     "read_saved_records",

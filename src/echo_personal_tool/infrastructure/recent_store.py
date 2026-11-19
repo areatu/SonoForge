@@ -89,7 +89,9 @@ class RecentStore:
             enabled = has_recent_folders()
         self._enabled = bool(enabled)
         self._store = store
+        self._fixed_entries = store is None and entries is not None
         self._limit = max(1, int(limit))
+        self._loaded_scope: Path | None = self._active_scope()
         self._entries: list[RecentFolder] = (
             (list(entries) if entries is not None else self._load()) if self._enabled else []
         )
@@ -101,14 +103,29 @@ class RecentStore:
 
     # ── persistence ──────────────────────────────────────────────────
 
+    @staticmethod
+    def _active_scope() -> Path | None:
+        from echo_personal_tool.infrastructure.paths import active_user_preferences_ini
+
+        return active_user_preferences_ini()
+
     def _store_object(self) -> QSettings:
-        if self._store is None:
-            self._store = _settings_store()
-        return self._store
+        if self._store is not None:
+            return self._store
+        return _settings_store()
+
+    def _sync_scope(self) -> None:
+        """Reload transparently when the active workstation user changed."""
+        if not self._enabled or self._store is not None or self._fixed_entries:
+            return
+        scope = self._active_scope()
+        if scope != self._loaded_scope:
+            self._entries = self._load()
 
     def _load(self) -> list[RecentFolder]:
         if not self._enabled:
             return []
+        self._loaded_scope = self._active_scope()
         raw = self._store_object().value(_SETTINGS_KEY, "")
         if not raw:
             return []
@@ -138,8 +155,9 @@ class RecentStore:
         store.sync()
 
     def reload(self) -> None:
-        """Refresh from QSettings after another store instance has written."""
+        """Refresh from QSettings after another store instance has written or user switched."""
         if self._enabled:
+            self._fixed_entries = False
             self._entries = self._load()
 
     # ── reading ──────────────────────────────────────────────────────
@@ -148,6 +166,7 @@ class RecentStore:
         """Pinned entries first, then the rest in recency order."""
         if not self._enabled:
             return []
+        self._sync_scope()
         return [entry for entry in self._entries if entry.pinned] + [
             entry for entry in self._entries if not entry.pinned
         ]
@@ -158,6 +177,7 @@ class RecentStore:
     def is_pinned(self, path: str | Path) -> bool:
         if not self._enabled:
             return False
+        self._sync_scope()
         key = normalize_folder(path)
         return any(entry.pinned and normalize_folder(entry.path) == key for entry in self._entries)
 
@@ -174,6 +194,7 @@ class RecentStore:
         """Remember ``path``; duplicates move to the front, pins are preserved."""
         if not self._enabled:
             return
+        self._sync_scope()
         text = str(path).strip()
         if not text:
             return
@@ -195,6 +216,7 @@ class RecentStore:
     def set_pinned(self, path: str | Path, pinned: bool = True) -> None:
         if not self._enabled:
             return
+        self._sync_scope()
         key = normalize_folder(path)
         updated = [
             RecentFolder(path=entry.path, pinned=pinned) if normalize_folder(entry.path) == key else entry
@@ -214,6 +236,7 @@ class RecentStore:
     def remove(self, path: str | Path) -> None:
         if not self._enabled:
             return
+        self._sync_scope()
         key = normalize_folder(path)
         self._entries = [entry for entry in self._entries if normalize_folder(entry.path) != key]
         self._save()
@@ -222,6 +245,7 @@ class RecentStore:
         """Forget the list; pinned entries stay unless asked otherwise."""
         if not self._enabled:
             return
+        self._sync_scope()
         self._entries = [entry for entry in self._entries if keep_pinned and entry.pinned]
         self._save()
 

@@ -60,7 +60,7 @@ a = Analysis(
         'pylibjpeg_openjpeg', 'pylibjpeg_libjpeg',
         'numpy', 'scipy', 'cv2', 'httpx', 'psutil', 'pymupdf',
         'pynetdicom', 'yaml', 'jsonschema', 'onnxruntime',
-        'reportlab', 'openpyxl', 'keyring',
+        'reportlab', 'openpyxl', 'keyring', 'cryptography',
         'echo_personal_tool',
         # QH-5a: `--package-smoke` imports this module lazily from __main__,
         # so PyInstaller cannot see it by following imports.

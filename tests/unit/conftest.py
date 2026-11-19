@@ -167,7 +167,9 @@ def _restore_canonical_app_sheet(_gc_per_test):
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
-    if app is None:
+    if app is None or not isinstance(app, QApplication):
+        # A bare QCoreApplication has no stylesheet to pin; skip rather than
+        # crash with AttributeError on styleSheet().
         yield
         return
     yield

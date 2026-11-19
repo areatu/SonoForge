@@ -67,29 +67,33 @@ class PhraseStore:
     """
 
     def __init__(self, path: Path | None = None) -> None:
-        self._path = Path(path) if path is not None else report_phrases_file()
+        self._explicit_path: Path | None = Path(path) if path is not None else None
+        self._loaded_path: Path | None = None
         self._phrases: tuple[ReportPhrase, ...] | None = None
 
     @property
     def path(self) -> Path:
-        return self._path
+        return self._explicit_path if self._explicit_path is not None else report_phrases_file()
 
     # ── reading ──────────────────────────────────────────────────────
 
     def phrases(self) -> tuple[ReportPhrase, ...]:
-        """The stored phrases, read once per store instance."""
-        if self._phrases is None:
-            self._phrases = self._read()
+        """The stored phrases for the active profile, cached per resolved file path."""
+        target = self.path
+        if self._phrases is None or self._loaded_path != target:
+            self._phrases = self._read(target)
+            self._loaded_path = target
         return self._phrases
 
     def reload(self) -> tuple[ReportPhrase, ...]:
-        """Drop the cache and read the file again (used after an import)."""
+        """Drop the cache and read the file again (used after an import or profile switch)."""
         self._phrases = None
+        self._loaded_path = None
         return self.phrases()
 
-    def _read(self) -> tuple[ReportPhrase, ...]:
+    def _read(self, target: Path) -> tuple[ReportPhrase, ...]:
         try:
-            text = self._path.read_text(encoding="utf-8")
+            text = target.read_text(encoding="utf-8")
         except FileNotFoundError:
             return ()
         except OSError as exc:
@@ -162,5 +166,7 @@ class PhraseStore:
     # ── persistence ──────────────────────────────────────────────────
 
     def _write(self, phrases: tuple[ReportPhrase, ...]) -> None:
-        write_phrase_document(self._path, phrases)
+        target = self.path
+        write_phrase_document(target, phrases)
+        self._loaded_path = target
         self._phrases = tuple(phrases)

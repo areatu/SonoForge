@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -19,6 +20,14 @@ from pathlib import Path
 from echo_personal_tool.infrastructure.profile import portable_enabled, portable_root
 
 _MIGRATION_MARKER = ".path-migration-v1"
+_USER_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_active_user_id: str | None = None
+_active_users_root: Path | None = None
+
+
+def _is_valid_user_id(user_id: str) -> bool:
+    """Pure-stdlib 32-hex check so ``paths`` stays importable without numpy/Qt."""
+    return isinstance(user_id, str) and _USER_ID_RE.fullmatch(user_id) is not None
 
 
 def data_dir() -> Path:
@@ -54,13 +63,58 @@ def models_dir() -> Path:
     return data_dir() / "models"
 
 
+def users_dir() -> Path:
+    """Return the canonical directory for local user accounts, profiles and audit trail."""
+    return data_dir() / "users"
+
+
+def user_profile_dir(user_id: str, *, root: Path | None = None) -> Path:
+    """Return the isolated per-user preference/phrase directory (validated ID, no traversal)."""
+    if not _is_valid_user_id(user_id):
+        raise ValueError("invalid user_id")
+    base = Path(root) if root is not None else users_dir()
+    return base / "profiles" / user_id
+
+
+def user_preferences_ini(user_id: str, *, root: Path | None = None) -> Path:
+    """Return the INI file holding a local user's personal UI and report preferences."""
+    return user_profile_dir(user_id, root=root) / "preferences.ini"
+
+
+def set_active_user_profile(user_id: str | None, *, users_root: Path | None = None) -> None:
+    """Scope per-user settings/phrases to *user_id*, or clear (``None``) for single-user mode."""
+    global _active_user_id, _active_users_root
+    if not user_id:
+        _active_user_id = None
+        _active_users_root = None
+        return
+    if not _is_valid_user_id(user_id):
+        raise ValueError("invalid user_id")
+    _active_user_id = user_id
+    _active_users_root = Path(users_root) if users_root is not None else None
+
+
+def active_user_id() -> str | None:
+    """Return the active local user's opaque ID, or ``None`` in single-user mode."""
+    return _active_user_id
+
+
+def active_user_preferences_ini() -> Path | None:
+    """Return the active local user's personal INI path, or ``None`` in single-user mode."""
+    if _active_user_id is None:
+        return None
+    return user_preferences_ini(_active_user_id, root=_active_users_root)
+
+
 def report_phrases_file() -> Path:
-    """User-authored report phrases (UI-4 PR-3).
+    """User-authored report phrases (per local account when signed in, else workstation).
 
     One JSON document doubles as the import/export format; it lives with the
     other durable per-user data, so the portable profile keeps it next to the
     executable like the rest of the settings.
     """
+    if _active_user_id is not None:
+        return user_profile_dir(_active_user_id, root=_active_users_root) / "report_phrases.json"
     return data_dir() / "report_phrases.json"
 
 

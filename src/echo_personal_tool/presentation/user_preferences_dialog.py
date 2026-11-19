@@ -1260,6 +1260,13 @@ class UserPreferencesDialog(QDialog):
         # it used to live on a separate «Прочее» tab that the mock does not
         # have — every section of that tab moved to the page it belongs to.
         self._server_form = ServerSettingsForm()
+        from echo_personal_tool.domain.models.user import Permission
+        from echo_personal_tool.presentation.coordinators.user_session_coordinator import user_session_coordinator_of
+
+        parent = self.parentWidget()
+        coord = user_session_coordinator_of(parent) if parent is not None else None
+        if coord is not None and coord.service is not None and not coord.service.can(Permission.CONFIGURE_SERVERS):
+            self._server_form.setEnabled(False)
         # The shared form keeps its own dense layout for the server dialogs;
         # inside Settings it is dressed like every other row so the page does
         # not switch style halfway down.

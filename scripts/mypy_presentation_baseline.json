@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 67,
-  "total_errors": 798,
+  "total_errors": 797,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -66,7 +66,7 @@
     },
     "src/echo_personal_tool/presentation/measurement_storage_dialog.py": {
       "no-untyped-call": 11,
-      "no-untyped-def": 21
+      "no-untyped-def": 20
     },
     "src/echo_personal_tool/presentation/measures_menu.py": {
       "attr-defined": 4,

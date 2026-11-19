@@ -567,6 +567,10 @@ _V1_KEYS = {"format", "schema_version", "study_uid", "revision", "saved_at", "so
 # Schema versions 2–4 share the same top-level envelope; additions live in the
 # explicitly allowlisted ``StudyMeasurementData`` projection.
 _V2_PLUS_KEYS = _V1_KEYS | {"measurement_semantics_version"}
+# Optional opaque 32-hex local user IDs (omitted in single-user mode so legacy
+# documents keep their exact wire shape).
+_OPTIONAL_AUTHOR_KEYS = frozenset({"created_by", "updated_by"})
+_AUTHOR_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 def _collapse_legacy_label(items: tuple[Any, ...], *, identity_of: Callable[[Any], tuple[str, str]]) -> tuple[Any, ...]:
@@ -697,8 +701,17 @@ def loads(payload: bytes) -> dict:
         version = record.get("schema_version")
         if type(version) is not int or version not in range(MIN_SUPPORTED_VERSION, VERSION + 1):
             raise MeasurementStorageError("version")
-        if set(record) != (_V1_KEYS if version == 1 else _V2_PLUS_KEYS):
+        required_keys = _V1_KEYS if version == 1 else _V2_PLUS_KEYS
+        record_keys = set(record)
+        extra_keys = record_keys - required_keys
+        if not required_keys.issubset(record_keys):
             raise MeasurementStorageError("invalid")
+        if extra_keys and (version < 2 or not extra_keys.issubset(_OPTIONAL_AUTHOR_KEYS)):
+            raise MeasurementStorageError("invalid")
+        for author_key in extra_keys:
+            author_val = record.get(author_key)
+            if not isinstance(author_val, str) or not _AUTHOR_ID_RE.fullmatch(author_val):
+                raise MeasurementStorageError("invalid")
         if version >= 2:
             semantics = record.get("measurement_semantics_version")
             if type(semantics) is not int or semantics not in range(MIN_SUPPORTED_SEMANTICS, SEMANTICS_VERSION + 1):

@@ -106,6 +106,16 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._command_edit.setCompleter(self._command_completer)
         self._command_edit.installEventFilter(self)
 
+        self._user_button = QToolButton(self)
+        self._user_button.setObjectName("activeUserButton")
+        self._user_button.setAutoRaise(True)
+        self._user_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._user_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._user_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._user_button.setAccessibleName(tr("auth.title_bar.a11y"))
+        self._user_button.hide()
+        self._user_menu: QMenu | None = None
+
         self._btn_minimize = self._window_control_button("minimizeButton", tr("system_bar.minimize"))
         self._btn_minimize.clicked.connect(self.minimize_requested.emit)
         self._btn_maximize = self._window_control_button("maximizeButton", tr("system_bar.maximize"))
@@ -135,6 +145,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._content_index = layout.count()
         layout.addStretch(1)
         layout.addWidget(self._command_edit, 0)
+        layout.addWidget(self._user_button, 0)
         layout.addWidget(self._window_controls, 0)
 
         self.reload_icons()
@@ -174,6 +185,26 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         """Attach the application menu to the logo button."""
         self._menu = menu
         self._app_button.setMenu(menu)
+
+    def set_user_badge(self, text: str, *, tooltip: str = "", menu: QMenu | None = None) -> None:
+        """Show or hide the signed-in workstation user chip in the title bar."""
+        from typing import cast
+
+        self._user_menu = menu
+        # Qt's C++ QToolButton::setMenu(nullptr) clears the popup menu; PySide6 stubs omit None.
+        self._user_button.setMenu(menu if menu is not None else cast(QMenu, None))
+        if text:
+            self._user_button.setText(text)
+            self._user_button.setToolTip(tooltip or text)
+            self._user_button.show()
+        else:
+            self._user_button.setText("")
+            self._user_button.setToolTip("")
+            self._user_button.hide()
+
+    @property
+    def user_button(self) -> QToolButton:
+        return self._user_button
 
     @property
     def app_button(self) -> QToolButton:
@@ -231,6 +262,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         for button in (self._btn_minimize, self._btn_maximize, self._btn_close):
             button.setFixedSize(WINDOW_CONTROL_WIDTH_PX, controls_height)
         self._command_edit.setFixedHeight(control_height(self, padding=8, minimum=24))
+        self._user_button.setFixedHeight(control_height(self, padding=8, minimum=24))
         icon_side = max(10, min(16, line_height(self) - 4))
         self._app_button.setIconSize(QSize(icon_side + 4, icon_side + 4))
         self._btn_minimize.setIconSize(QSize(icon_side, icon_side))
@@ -303,6 +335,23 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
 #windowTitleBar QLineEdit#commandField:focus {{
     border-color: {tokens["accent"]};
 }}
+#windowTitleBar QToolButton#activeUserButton {{
+    background: {tokens["surface.2"]};
+    color: {tokens["text.1"]};
+    border: 1px solid {tokens["line.1"]};
+    border-radius: 6px;
+    padding: 2px 8px;
+}}
+#windowTitleBar QToolButton#activeUserButton:hover,
+#windowTitleBar QToolButton#activeUserButton:focus {{
+    background: {tokens["surface.3"]};
+    border-color: {tokens["accent"]};
+}}
+#windowTitleBar QToolButton#activeUserButton::menu-indicator {{
+    image: none;
+    width: 0;
+    height: 0;
+}}
 #windowTitleBar QWidget#windowControls {{
     background: transparent;
 }}
@@ -369,6 +418,7 @@ class WindowTitleBar(CaptionDragMixin, QWidget):
         self._app_button.setAccessibleName(tr("title_bar.app_menu_a11y"))
         self._app_button.setAccessibleDescription(tr("title_bar.app_menu_tooltip"))
         self._command_edit.setPlaceholderText(self._command_placeholder_text())
+        self._user_button.setAccessibleName(tr("auth.title_bar.a11y"))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_minimize.setAccessibleName(tr("system_bar.minimize"))
         self._btn_close.setToolTip(tr("system_bar.close"))
