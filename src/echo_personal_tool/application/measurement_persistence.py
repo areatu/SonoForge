@@ -440,6 +440,7 @@ class MeasurementPersistence(QObject):
         self._errors: set[str] = set()
         self._first_dirty: float | None = None
         self._closed = False
+        self._close_future: Future[None] | None = None
         self.completed.connect(self._complete)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -1216,23 +1217,25 @@ class MeasurementPersistence(QObject):
         self._submit(read, applied, context="measurement.import")
 
     def close(self, timeout_ms: int = 2000) -> bool:
-        if self._closed:
-            return True
-        if not self.flush(timeout_ms=timeout_ms):
-            return False
-        # Mark closed before the bounded shutdown so a timeout can never leak the worker.
-        self._closed = True
-        closed = True
+        first_close = not self._closed
+        if first_close:
+            if not self.flush(timeout_ms=timeout_ms):
+                return False
+            # Stop new work once the final flush succeeds; preserve the close
+            # future so subsequent calls can observe its actual terminal result.
+            self._closed = True
         timeout_s = max(0.001, float(timeout_ms) / 1000.0)
         try:
-            future = self._executor.submit(self.repository.close)
-            future.result(timeout=timeout_s)
+            if first_close:
+                self._close_future = self._executor.submit(self.repository.close)
+            if self._close_future is None:
+                return False  # submission itself failed on the first attempt
+            self._close_future.result(timeout=timeout_s)
+            return True
         except (CancelledError, OSError, RuntimeError, TimeoutError) as exc:
-            # Close failure is a distinct shutdown outcome, not a successful
-            # flush acknowledgement.  The executor still stops in finally.
-            closed = False
             code = "timeout" if isinstance(exc, TimeoutError) else "io"
             log_boundary_failure(logger, "measurement.close", exc, code=code)
+            return False
         finally:
-            self._executor.shutdown(wait=False, cancel_futures=True)
-        return closed
+            if first_close:
+                self._executor.shutdown(wait=False, cancel_futures=True)
