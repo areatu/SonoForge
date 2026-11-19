@@ -103,7 +103,7 @@ class ReportExportPanel(QFrame):
                 (self._json, self._print),
                 (self._sign, self._verify),
                 (self._hl7, self._fhir),
-                (self._pacs, self._pacs),
+                (self._pacs,),
             )
         ):
             for column, button in enumerate(pair):
