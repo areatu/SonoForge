@@ -1271,9 +1271,11 @@ class ReportCoordinator(QObject):
         if not ok:
             return
         try:
-            from echo_personal_tool.infrastructure.hl7_mllp import Hl7MllpClient
+            from echo_personal_tool.application.interop_export import make_hl7_mllp_client
 
-            client = Hl7MllpClient(host=host.strip(), port=port_text, use_tls=(use_tls == tr("report.interop_tls_yes")))
+            client = make_hl7_mllp_client(
+                host=host.strip(), port=port_text, use_tls=(use_tls == tr("report.interop_tls_yes"))
+            )
             service = self._interop_service()
             ack = service.send_hl7(
                 document,
@@ -1314,9 +1316,9 @@ class ReportCoordinator(QObject):
         if not ok:
             return
         try:
-            from echo_personal_tool.infrastructure.fhir_https_client import FhirHttpsClient
+            from echo_personal_tool.application.interop_export import make_fhir_https_client
 
-            client = FhirHttpsClient(base_url=url.strip(), bearer_token=token)
+            client = make_fhir_https_client(base_url=url.strip(), bearer_token=token)
             service = self._interop_service()
             result = service.send_fhir(
                 document,

@@ -291,3 +291,53 @@ class InteropExportService:
             study_key=study_key(study_uid) if study_uid else "",
             details=details,
         )
+
+
+def make_hl7_mllp_client(
+    *,
+    host: str,
+    port: int,
+    use_tls: bool = False,
+    timeout_s: float = 30.0,
+    tls_verify: bool = True,
+    tls_ca_path: str = "",
+    tls_cert_path: str = "",
+    tls_key_path: str = "",
+) -> Any:
+    """Build the MLLP/MLLP+TLS adapter (facade; infrastructure stays behind this call)."""
+    from echo_personal_tool.infrastructure.hl7_mllp import Hl7MllpClient
+
+    return Hl7MllpClient(
+        host=host,
+        port=port,
+        timeout_s=timeout_s,
+        use_tls=use_tls,
+        tls_verify=tls_verify,
+        tls_ca_path=tls_ca_path,
+        tls_cert_path=tls_cert_path,
+        tls_key_path=tls_key_path,
+    )
+
+
+def make_fhir_https_client(
+    *,
+    base_url: str,
+    username: str = "",
+    password: str = "",
+    bearer_token: str = "",
+    timeout_s: float = 30.0,
+    tls_verify: bool = True,
+    tls_ca_path: str = "",
+) -> Any:
+    """Build the FHIR HTTPS adapter (facade; infrastructure stays behind this call)."""
+    from echo_personal_tool.infrastructure.fhir_https_client import FhirHttpsClient
+
+    return FhirHttpsClient(
+        base_url=base_url,
+        username=username,
+        password=password,
+        bearer_token=bearer_token,
+        timeout_s=timeout_s,
+        tls_verify=tls_verify,
+        tls_ca_path=tls_ca_path,
+    )
