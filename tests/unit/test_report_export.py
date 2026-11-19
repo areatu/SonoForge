@@ -83,9 +83,9 @@ def test_the_block_offers_only_pdf_and_print(qtbot) -> None:
     from PySide6.QtWidgets import QPushButton
 
     names = {button.objectName() for button in panel.findChildren(QPushButton)}
-    assert {"reportExportPdf", "reportExportPrint", "reportFinish"} <= names
-    # UQ-06: DICOM SR and «В PACS» are absent, not disabled stubs.
-    assert not any("dicom" in name.lower() or "pacs" in name.lower() for name in names)
+    assert {"reportExportPdf", "reportExportPrint", "reportFinish", "reportExportPacs"} <= names
+    # UQ-06: DICOM SR is absent, not a disabled stub; «В PACS…» (#625) is a real send action.
+    assert not any("dicom" in name.lower() for name in names)
 
 
 @pytest.mark.gui_smoke

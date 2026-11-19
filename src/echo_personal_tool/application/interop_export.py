@@ -157,8 +157,7 @@ class InteropExportService:
         target = Path(path)
         tmp = target.with_suffix(target.suffix + ".tmp")
         # The .hl7 payload intentionally carries the signed report (OBX|ED) — that is the export feature.
-        # codeql[py/clear-text-storage-sensitive-data]
-        tmp.write_bytes(payload)
+        tmp.write_bytes(payload)  # codeql[py/clear-text-storage-sensitive-data]
         tmp.replace(target)
         self._audit(PROTOCOL_HL7, "exported", study_uid=kwargs.get("study_uid", ""))
         return InteropExportResult(protocol=PROTOCOL_HL7, outcome="exported", path=target)
@@ -217,8 +216,7 @@ class InteropExportService:
         target = Path(path)
         tmp = target.with_suffix(target.suffix + ".tmp")
         # The .fhir.json payload intentionally carries the signed report (Provenance signature).
-        # codeql[py/clear-text-storage-sensitive-data]
-        tmp.write_bytes(payload)
+        tmp.write_bytes(payload)  # codeql[py/clear-text-storage-sensitive-data]
         tmp.replace(target)
         self._audit(PROTOCOL_FHIR, "exported", study_uid=kwargs.get("study_uid", ""))
         return InteropExportResult(protocol=PROTOCOL_FHIR, outcome="exported", path=target)
