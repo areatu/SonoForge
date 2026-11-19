@@ -88,6 +88,31 @@
       "type": "string",
       "pattern": "^[a-f0-9]{32}$",
       "description": "Optional opaque local user_id that wrote this revision."
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "signed",
+        "amended"
+      ],
+      "description": "Local signature lifecycle of this study record (#624). Omitted on unsigned (draft) records; derived from signatures/addenda."
+    },
+    "signatures": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Detached Ed25519 receipt history of signed protocol revisions (#624). Preserved verbatim across amendments.",
+      "items": {
+        "$ref": "#/$defs/SignatureReceipt"
+      }
+    },
+    "addenda": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Explicit addenda applied to a signed protocol (#624); each links the previous and new document hashes.",
+      "items": {
+        "$ref": "#/$defs/ReportAddendum"
+      }
     }
   },
   "additionalProperties": false,
@@ -2375,6 +2400,123 @@
         "segment",
         "clip_mode"
       ]
+    },
+    "SignatureReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "schema_version",
+        "user_id",
+        "key_id",
+        "algorithm",
+        "public_key_b64",
+        "signed_at",
+        "document_sha256",
+        "pdf_sha256",
+        "signature_b64",
+        "lifecycle",
+        "revision",
+        "signer_display_name"
+      ],
+      "properties": {
+        "format": {
+          "const": "sonoforge.report-signature"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "user_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "public_key_b64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{43}=$"
+        },
+        "signed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "document_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "pdf_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signature_b64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$"
+        },
+        "lifecycle": {
+          "enum": [
+            "draft",
+            "signed",
+            "amended"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signer_display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "signer_title": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "ReportAddendum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addendum_id",
+        "created_at",
+        "author_user_id",
+        "reason",
+        "previous_document_sha256",
+        "new_document_sha256"
+      ],
+      "properties": {
+        "addendum_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "author_user_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "previous_document_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "new_document_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
     }
   },
   "$id": ""

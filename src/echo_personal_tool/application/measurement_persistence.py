@@ -755,7 +755,7 @@ class MeasurementPersistence(QObject):
                     if record and set(record["sources"]) - set(sources):
                         full = replace(full, strain=record["data"].strain)
                     all_sources = {**(record["sources"] if record else {}), **sources}
-                    save_kwargs = {"author_id": batch_author} if batch_author else {}
+                    save_kwargs: dict[str, Any] = {"author_id": batch_author} if batch_author else {}
                     try:
                         result = self.repository.save(
                             uid,
@@ -1183,7 +1183,7 @@ class MeasurementPersistence(QObject):
                 raise MeasurementStorageError("permission")
             if self.enabled:
                 import_author = self._author_provider() if self._author_provider is not None else ""
-                import_kwargs = {"author_id": import_author} if import_author else {}
+                import_kwargs: dict[str, Any] = {"author_id": import_author} if import_author else {}
                 try:
                     record = self.repository.save(
                         uid,

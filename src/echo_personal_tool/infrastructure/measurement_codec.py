@@ -570,6 +570,9 @@ _V2_PLUS_KEYS = _V1_KEYS | {"measurement_semantics_version"}
 # Optional opaque 32-hex local user IDs (omitted in single-user mode so legacy
 # documents keep their exact wire shape).
 _OPTIONAL_AUTHOR_KEYS = frozenset({"created_by", "updated_by"})
+# Optional local-signature envelope (#624): written only on studies that carry
+# a signed protocol, so unsigned records keep their exact wire shape.
+_OPTIONAL_SIGNATURE_KEYS = frozenset({"lifecycle", "signatures", "addenda"})
 _AUTHOR_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
@@ -690,6 +693,38 @@ def migrate(record: dict) -> dict:
     }
 
 
+def _validate_signature_envelope(record: dict) -> None:
+    """Validate the optional #624 signature fields of a v7 record (structural only).
+
+    The lifecycle guard semantics (a signed revision is never overwritten
+    silently) live in :class:`MeasurementRepository`; here we only guarantee
+    that whatever is on disk is well-formed and internally consistent.
+    """
+    from echo_personal_tool.domain.exceptions import ReportSignatureError
+    from echo_personal_tool.domain.models.report_signature import (
+        VALID_LIFECYCLES,
+        lifecycle_for_history,
+        validate_addendum_history,
+        validate_receipt_history,
+    )
+
+    try:
+        lifecycle = record.get("lifecycle", "draft")
+        if not isinstance(lifecycle, str) or lifecycle not in VALID_LIFECYCLES:
+            raise MeasurementStorageError("invalid")
+        signatures_raw = record.get("signatures", [])
+        addenda_raw = record.get("addenda", [])
+        if not isinstance(signatures_raw, list) or not isinstance(addenda_raw, list):
+            raise MeasurementStorageError("invalid")
+        signatures = validate_receipt_history(signatures_raw)
+        addenda = validate_addendum_history(addenda_raw)
+        derived = lifecycle_for_history(signatures=signatures, addenda=addenda).value
+        if lifecycle != derived:
+            raise MeasurementStorageError("invalid")
+    except ReportSignatureError as exc:
+        raise MeasurementStorageError("invalid") from exc
+
+
 def loads(payload: bytes) -> dict:
     if len(payload) > MAX_DOCUMENT_BYTES:
         raise MeasurementStorageError("limit")
@@ -706,12 +741,17 @@ def loads(payload: bytes) -> dict:
         extra_keys = record_keys - required_keys
         if not required_keys.issubset(record_keys):
             raise MeasurementStorageError("invalid")
-        if extra_keys and (version < 2 or not extra_keys.issubset(_OPTIONAL_AUTHOR_KEYS)):
+        allowed_extra = set(_OPTIONAL_AUTHOR_KEYS)
+        if version >= VERSION:
+            allowed_extra |= _OPTIONAL_SIGNATURE_KEYS
+        if extra_keys and (version < 2 or not extra_keys.issubset(allowed_extra)):
             raise MeasurementStorageError("invalid")
-        for author_key in extra_keys:
+        for author_key in extra_keys & _OPTIONAL_AUTHOR_KEYS:
             author_val = record.get(author_key)
             if not isinstance(author_val, str) or not _AUTHOR_ID_RE.fullmatch(author_val):
                 raise MeasurementStorageError("invalid")
+        if extra_keys & _OPTIONAL_SIGNATURE_KEYS:
+            _validate_signature_envelope(record)
         if version >= 2:
             semantics = record.get("measurement_semantics_version")
             if type(semantics) is not int or semantics not in range(MIN_SUPPORTED_SEMANTICS, SEMANTICS_VERSION + 1):

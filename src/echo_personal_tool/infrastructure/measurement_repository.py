@@ -97,6 +97,8 @@ class MeasurementRepository:
         expected_revision: int,
         *,
         author_id: str = "",
+        signatures: list[dict[str, Any]] | None = None,
+        addenda: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self.acquire()
         path = self._path(uid)
@@ -104,7 +106,17 @@ class MeasurementRepository:
         revision = previous["revision"] if previous else 0
         if revision != expected_revision:
             raise MeasurementStorageError("conflict")
-        record: dict[str, Any] = dict(
+        previous_signatures = list(previous.get("signatures", [])) if previous else []
+        previous_addenda = list(previous.get("addenda", [])) if previous else []
+        previous_lifecycle = str(previous.get("lifecycle", "")) if previous else ""
+        lifecycle, signatures, addenda = self._apply_signature_guard(
+            previous_lifecycle,
+            previous_signatures,
+            previous_addenda,
+            signatures,
+            addenda,
+        )
+        stored: dict[str, Any] = dict(
             format=FORMAT,
             schema_version=VERSION,
             measurement_semantics_version=SEMANTICS_VERSION,
@@ -119,15 +131,133 @@ class MeasurementRepository:
         creator = previous_creator or author_id
         updater = author_id or previous_updater
         if creator:
-            record["created_by"] = creator
+            stored["created_by"] = creator
         if updater:
-            record["updated_by"] = updater
-        payload = dumps(record)
+            stored["updated_by"] = updater
+        if signatures:
+            stored["signatures"] = [dict(item) for item in signatures]
+        if addenda:
+            stored["addenda"] = [dict(item) for item in addenda]
+        if signatures or addenda:
+            stored["lifecycle"] = lifecycle
+        payload = dumps(stored)
         old_size = path.stat().st_size if path.exists() else 0
         if self.size_bytes() - old_size + len(payload) > self.max_bytes:
             raise MeasurementStorageError("quota")
         self.atomic_write(path, payload)
-        return record
+        return stored
+
+    @staticmethod
+    def _apply_signature_guard(
+        previous_lifecycle: str,
+        previous_signatures: list[dict[str, Any]],
+        previous_addenda: list[dict[str, Any]],
+        signatures: list[dict[str, Any]] | None,
+        addenda: list[dict[str, Any]] | None,
+    ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+        """Enforce the ``draft → signed → amended`` lifecycle (#624).
+
+        A signed or amended revision is immutable: a plain save (neither
+        *signatures* nor *addenda* given) is rejected with ``signed_locked``
+        instead of silently overwriting it.  Explicit signature/addendum
+        updates must be append-only — the previous history has to be a
+        verbatim prefix of the new one, so no signed revision can be dropped
+        or rewritten.  Returns ``(lifecycle, signatures, addenda)`` for the
+        new record.
+        """
+        from echo_personal_tool.domain.exceptions import ReportSignatureError
+        from echo_personal_tool.domain.models.report_signature import (
+            lifecycle_for_history,
+            validate_addendum_history,
+            validate_receipt_history,
+        )
+
+        try:
+            if previous_lifecycle in ("signed", "amended"):
+                if signatures is None and addenda is None:
+                    raise MeasurementStorageError("signed_locked")
+                if signatures is not None and [dict(i) for i in signatures][: len(previous_signatures)] != [
+                    dict(i) for i in previous_signatures
+                ]:
+                    raise MeasurementStorageError("signed_locked")
+                if addenda is not None and [dict(i) for i in addenda][: len(previous_addenda)] != [
+                    dict(i) for i in previous_addenda
+                ]:
+                    raise MeasurementStorageError("signed_locked")
+            new_signatures = list(signatures) if signatures is not None else list(previous_signatures)
+            new_addenda = list(addenda) if addenda is not None else list(previous_addenda)
+            receipts = validate_receipt_history(new_signatures)
+            parsed_addenda = validate_addendum_history(new_addenda)
+            lifecycle = lifecycle_for_history(signatures=receipts, addenda=parsed_addenda).value
+        except ReportSignatureError as exc:
+            raise MeasurementStorageError("invalid") from exc
+        return lifecycle, new_signatures, new_addenda
+
+    def append_signature(
+        self,
+        uid: str,
+        receipt: dict[str, Any],
+        *,
+        author_id: str = "",
+    ) -> dict[str, Any]:
+        """Attach one validated receipt to the study's signature history (#624)."""
+        from echo_personal_tool.domain.exceptions import ReportSignatureError
+        from echo_personal_tool.domain.models.report_signature import SignatureReceipt
+
+        try:
+            parsed = SignatureReceipt.from_dict(receipt).to_dict()
+        except ReportSignatureError as exc:
+            raise MeasurementStorageError("invalid") from exc
+        self.acquire()
+        previous = self.load(uid)
+        if previous is None:
+            raise MeasurementStorageError("not_found")
+        signatures = list(previous.get("signatures", []))
+        if any(str(item.get("document_sha256", "")) == parsed["document_sha256"] for item in signatures):
+            raise MeasurementStorageError("signed_locked")
+        signatures.append(parsed)
+        return self.save(
+            uid,
+            previous["data"],
+            previous["sources"],
+            previous["revision"],
+            author_id=author_id,
+            signatures=signatures,
+            addenda=list(previous.get("addenda", [])),
+        )
+
+    def append_addendum(
+        self,
+        uid: str,
+        addendum: dict[str, Any],
+        *,
+        author_id: str = "",
+    ) -> dict[str, Any]:
+        """Append an explicit addendum to a signed study, preserving signatures (#624)."""
+        from echo_personal_tool.domain.exceptions import ReportSignatureError
+        from echo_personal_tool.domain.models.report_signature import ReportAddendum
+
+        try:
+            parsed = ReportAddendum.from_dict(addendum).to_dict()
+        except ReportSignatureError as exc:
+            raise MeasurementStorageError("invalid") from exc
+        self.acquire()
+        previous = self.load(uid)
+        if previous is None:
+            raise MeasurementStorageError("not_found")
+        addenda = list(previous.get("addenda", []))
+        if any(str(item.get("addendum_id", "")) == parsed["addendum_id"] for item in addenda):
+            raise MeasurementStorageError("signed_locked")
+        addenda.append(parsed)
+        return self.save(
+            uid,
+            previous["data"],
+            previous["sources"],
+            previous["revision"],
+            author_id=author_id,
+            signatures=list(previous.get("signatures", [])),
+            addenda=addenda,
+        )
 
     @staticmethod
     def atomic_write(path: Path, payload: bytes) -> None:

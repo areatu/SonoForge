@@ -60,6 +60,7 @@ if TYPE_CHECKING:
 
     from echo_personal_tool.application.app_controller import AppController
     from echo_personal_tool.application.protocol_session import ProtocolSession
+    from echo_personal_tool.application.report_signing import ReportSigningService
     from echo_personal_tool.application.tab_session import TabSession
     from echo_personal_tool.application.user_preferences import UserPreferences
     from echo_personal_tool.domain.models import InstanceMetadata
@@ -182,11 +183,13 @@ class ReportCoordinator(QObject):
         self.refresh_template()
         # Language and the length unit change the document itself.
         page.request_refresh()
+        self._refresh_signing_availability()
 
     def reload_text(self) -> None:
         """Retranslate the page after a language switch."""
         if self._page is not None:
             self._page.reload_text()
+        self._refresh_signing_availability()
 
     def set_allowed_profiles(self, profile_ids: tuple[str, ...]) -> None:
         """The study profile changed: the sheet header offers its formats only."""
@@ -368,6 +371,8 @@ class ReportCoordinator(QObject):
             page.export_csv_requested.connect(self.export_csv)
             page.export_json_requested.connect(self.export_json)
             page.print_requested.connect(self.print_sheet)
+            page.sign_requested.connect(self.sign_report)
+            page.verify_requested.connect(self.verify_signature)
             page.finish_requested.connect(lambda: self.set_finished(True))
             page.draft_requested.connect(lambda: self.set_finished(False))
             page.sections.not_evaluated_changed.connect(self.refresh_marks)
@@ -923,6 +928,171 @@ class ReportCoordinator(QObject):
             self._port.warn(tr(title_key), str(safe_error_category(exc)))
             return
         page.set_status(tr("report.export_done", name=Path(path).name))
+
+    # ── Local Ed25519 signing (issue 624) ─────────────────────────────────
+
+    def _refresh_signing_availability(self) -> None:
+        """«Подписать…» exists only for a signed-in user with SIGN_REPORT."""
+        from echo_personal_tool.application.composition import user_session_of
+        from echo_personal_tool.domain.models.user import Permission
+
+        if self._page is None:
+            return
+        session = user_session_of(self._controller)
+        enabled = session is not None and session.is_multi_user_enabled() and session.can(Permission.SIGN_REPORT)
+        self._page.export.set_signing_enabled(enabled)
+
+    def _signing_service(self) -> ReportSigningService | None:
+        """Build the application signing service over the bound session/repository."""
+        from echo_personal_tool.application.composition import services_of, user_session_of
+        from echo_personal_tool.application.report_signing import ReportSigningService
+
+        session = user_session_of(self._controller)
+        if session is None:
+            return None
+        services = services_of(self._controller)
+        repository = services.persistence.repository if services is not None else None
+        if repository is None:
+            repository = self._controller.measurement_persistence.repository
+        return ReportSigningService(session=session, repository=repository)
+
+    def _ask_signing_secret(self) -> str | None:
+        """Re-enter the password/PIN only at the signing moment (issue 624)."""
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+        text, ok = QInputDialog.getText(
+            self._port.dialog_parent(),
+            tr("report.sign_secret_title"),
+            tr("report.sign_secret_label"),
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not text:
+            return None
+        return text
+
+    def _ask_amend_reason(self) -> str | None:
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+        text, ok = QInputDialog.getText(
+            self._port.dialog_parent(),
+            tr("report.amend_reason_title"),
+            tr("report.amend_reason_label"),
+            QLineEdit.EchoMode.Normal,
+        )
+        if not ok or not text.strip():
+            return None
+        return text.strip()
+
+    def sign_report(self) -> None:
+        """«Подписать…»: sign the shown sheet, publish stamped PDF + .sig.json (issue 624)."""
+        from echo_personal_tool.application.composition import user_session_of
+        from echo_personal_tool.domain.exceptions import ReportSignatureError
+        from echo_personal_tool.domain.models.report_signature import ReportLifecycle
+        from echo_personal_tool.domain.models.user import Permission
+
+        session = user_session_of(self._controller)
+        if session is None or not session.can(Permission.SIGN_REPORT):
+            self._port.show_status(tr("auth.status.permission_denied"))
+            return
+        exportable = self._exportable_document()
+        if exportable is None:
+            return
+        page, document = exportable
+        path = self._port.ask_save_path(
+            tr("report.sign_title"),
+            str(Path(self.default_report_name())),
+            tr("report.pdf_filter"),
+        )
+        if not path:
+            return
+        study_uid = self._controller.resolve_study_uid()
+        if not study_uid or study_uid == "__default__":
+            page.set_status(tr("report.sign_no_study"))
+            return
+        secret = self._ask_signing_secret()
+        if secret is None:
+            return
+        service = self._signing_service()
+        if service is None:
+            page.set_status(tr("report.sign_unavailable"))
+            return
+        try:
+            lifecycle = service.lifecycle_of(study_uid)
+            if lifecycle in (ReportLifecycle.SIGNED, ReportLifecycle.AMENDED):
+                reason = self._ask_amend_reason()
+                if reason is None:
+                    return
+                service.amend_report(
+                    document,
+                    study_uid=study_uid,
+                    output_path=Path(path),
+                    secret=secret,
+                    reason=reason,
+                    font_size=self._port.preferences().pdf_font_size,
+                    template=self.template(),
+                )
+                page.set_status(tr("report.amend_done", name=Path(path).name))
+            else:
+                service.sign_report(
+                    document,
+                    study_uid=study_uid,
+                    output_path=Path(path),
+                    secret=secret,
+                    font_size=self._port.preferences().pdf_font_size,
+                    template=self.template(),
+                )
+                page.set_status(tr("report.sign_done", name=Path(path).name))
+        except ReportSignatureError as exc:
+            page.set_status(tr("report.sign_failed"))
+            self._port.warn(tr("report.sign_title"), f"{tr('report.sign_failed')}: {safe_error_category(exc)}")
+
+    def verify_signature(self) -> None:
+        """«Проверить подпись…»: offline check of an exported signed PDF (issue 624)."""
+        from PySide6.QtWidgets import QMessageBox
+
+        from echo_personal_tool.presentation.styled_dialogs import styled_open_file
+
+        parent = self._port.dialog_parent()
+        chosen, _ = styled_open_file(parent, tr("report.verify_title"), "", tr("report.sig_filter"))
+        if not chosen:
+            return
+        service = self._signing_service()
+        page = self._page
+        if service is None:
+            if page is not None:
+                page.set_status(tr("report.sign_unavailable"))
+            return
+        document = page.document if page is not None else None
+        result = service.verify_report_pdf(Path(chosen), document=document)
+        if page is not None:
+            page.set_status(tr("report.verify_ok") if result.valid else tr("report.verify_failed"))
+        if result.receipt is not None:
+            receipt = result.receipt
+            lines = [
+                tr("report.verify_result_ok" if result.valid else "report.verify_result_bad"),
+                tr(
+                    "report.verify_signer",
+                    name=receipt.signer_display_name + (f", {receipt.signer_title}" if receipt.signer_title else ""),
+                ),
+                tr("report.verify_key", fingerprint=receipt.key_id),
+                tr("report.verify_signed_at", at=receipt.signed_at),
+                tr(
+                    "report.verify_pdf_match",
+                    yes_no=tr("report.verify_yes") if result.pdf_match else tr("report.verify_no"),
+                ),
+                tr(
+                    "report.verify_key_archived"
+                    if result.key_archived
+                    else "report.verify_user_inactive"
+                    if not result.user_active
+                    else "report.verify_key_active"
+                ),
+            ]
+            QMessageBox.information(parent, tr("report.verify_title"), "\n".join(lines))
+        else:
+            QMessageBox.warning(
+                parent, tr("report.verify_title"), tr("report.verify_result_bad") + f": {result.reason}"
+            )
 
     def print_sheet(self) -> None:
         """«Печать…» of the export block: the rendered sheet bytes, nothing re-rendered."""

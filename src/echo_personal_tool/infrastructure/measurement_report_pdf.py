@@ -35,6 +35,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from echo_personal_tool.domain.models.report_signature import SignatureStamp
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
 from echo_personal_tool.domain.services.report_template import (
     FIELD_AGE,
@@ -153,6 +154,7 @@ def _report_story(
     size: int,
     anchors: dict[ValueId, list[PageRect]] | None = None,
     template: ReportTemplate | None = None,
+    stamp: SignatureStamp | None = None,
 ) -> list:
     """Platypus flowables of the study protocol; value cells record their rects."""
     # Item 7 of the 2026-11-06 list: the title is part of the document, not of
@@ -212,6 +214,11 @@ def _report_story(
     if template is None or template.show_signature:
         story.append(Spacer(1, 8 * mm))
         story.append(_signature_block(document, styles))
+    if stamp is not None:
+        # #624: a signed sheet carries the visual local-EP stamp right under
+        # the physician line — honestly labelled as a local app EP, not УКЭП.
+        story.append(Spacer(1, 4 * mm))
+        story.append(_ep_stamp_block(stamp, styles))
     return story
 
 
@@ -433,7 +440,11 @@ class _AnchoredParagraph(Paragraph):  # type: ignore[misc]  # reportlab ships no
 
 
 def render_report(
-    document: ReportDocument, *, font_size: int = 10, template: ReportTemplate | None = None
+    document: ReportDocument,
+    *,
+    font_size: int = 10,
+    template: ReportTemplate | None = None,
+    stamp: SignatureStamp | None = None,
 ) -> RenderedReport:
     """Build the PDF preview and the value-cell anchors in one pass.
 
@@ -442,7 +453,8 @@ def render_report(
     sheet on screen cannot diverge from the exported document. ``anchors``
     locates every value cell on its page for the "where did this value come
     from" hover; markers that must not print are a separate screen layer and
-    are never drawn into the PDF.
+    are never drawn into the PDF.  ``stamp`` (#624) draws the visual local-EP
+    block of a signed sheet.
 
     Failures raise :class:`PdfExportError`, the same safe error as the export.
     """
@@ -451,7 +463,7 @@ def render_report(
         size = max(8, min(16, int(font_size)))
         styles = _report_styles(font_name, size)
         anchors = _AnchorSink()
-        story = _report_story(document, styles, size, anchors, template)
+        story = _report_story(document, styles, size, anchors, template, stamp)
         buffer = BytesIO()
         pdf = SimpleDocTemplate(
             buffer,
@@ -475,6 +487,7 @@ def export_report_document_pdf(
     *,
     font_size: int = 10,
     template: ReportTemplate | None = None,
+    stamp: SignatureStamp | None = None,
 ) -> Path:
     """Write the structured study protocol to a PDF file and return the path.
 
@@ -483,9 +496,10 @@ def export_report_document_pdf(
     pages through platypus flowables, so a long study still prints correctly.
     The bytes come from :func:`render_report` — the same render the preview
     shows — and the file is published atomically (UI-4 PR-5): a failed export
-    leaves an existing report untouched instead of truncating it.
+    leaves an existing report untouched instead of truncating it.  ``stamp``
+    (#624) prints the local-EP block into the exported signed sheet.
     """
-    rendered = render_report(document, font_size=font_size, template=template)
+    rendered = render_report(document, font_size=font_size, template=template, stamp=stamp)
     output_path.write_bytes(rendered.pdf)
     return output_path
 
@@ -714,6 +728,40 @@ def _signature_block(document: ReportDocument, styles: dict[str, ParagraphStyle]
                 ("FONTSIZE", (0, 0), (-1, -1), max(6, styles["small"].fontSize)),
                 ("LINEABOVE", (0, 0), (-1, 0), 0.5, _GRID_COLOR),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    return table
+
+
+def _ep_stamp_block(stamp: SignatureStamp, styles: dict[str, ParagraphStyle]) -> Table:
+    """Visual local-EP stamp of a signed sheet (#624).
+
+    Prints the signer (ФИО, должность), the UTC signing time, the Ed25519 key
+    fingerprint and the SHA-256 of the signed canonical document — and says
+    plainly that this is a local application EP, not a УКЭП.
+    """
+    small = styles["small"]
+    rows = [
+        [Paragraph(_xml_escape(tr("report.stamp.title")), styles["group"])],
+        [Paragraph(_xml_escape(stamp.signer_label), small)],
+        [Paragraph(f"{_xml_escape(tr('report.stamp.signed_at'))}: {_xml_escape(stamp.signed_at)} (UTC)", small)],
+        [Paragraph(f"{_xml_escape(tr('report.stamp.key'))}: {_xml_escape(stamp.key_id)}", small)],
+        [Paragraph(f"{_xml_escape(tr('report.stamp.document'))}: {_xml_escape(stamp.document_sha256)}", small)],
+        [Paragraph(_xml_escape(tr("report.stamp.local_ep")), small)],
+    ]
+    width = A4[0] - 36 * mm
+    table = Table(rows, colWidths=[width])
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), small.fontName),
+                ("FONTSIZE", (0, 0), (-1, -1), max(6, small.fontSize)),
+                ("BOX", (0, 0), (-1, -1), 0.8, _GROUP_COLOR),
+                ("LINEABOVE", (0, 0), (-1, 0), 0.8, _GROUP_COLOR),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )

@@ -29,8 +29,11 @@ ALLOWED_DETAIL_KEYS: frozenset[str] = frozenset(
     {
         "auto_lock_minutes",
         "count",
+        "document_sha256",
         "key_id",
+        "lifecycle",
         "outcome",
+        "pdf_sha256",
         "previous_key_id",
         "protocol",
         "reason",
@@ -69,6 +72,7 @@ class AuditAction(str, Enum):
     STUDY_DELETE_ALL = "study.delete_all"
     REPORT_SIGNED = "report.signed"
     REPORT_AMENDED = "report.amended"
+    SIGNATURE_VERIFIED = "signature.verified"
     INTEROP_EXPORTED = "interop.exported"
 
 

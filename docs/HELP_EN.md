@@ -975,6 +975,10 @@ forbids extra PHI requests.
 
 In the `Report` mode a status line above the sheet names the document state: draft, no image scale, stale values, and unreviewed automatic contours. The same warnings print at the top of the PDF and travel in CSV/JSON; they cannot be hidden, because they describe the document rather than its styling. `Finish` freezes the status with the sheet version.
 
+### 17.2 Local electronic signature of the report
+
+In multi-user mode, a user with the report-signing permission sees a `Sign…` button in the export block of the `Report` mode. The app asks for the account password or PIN again — the Ed25519 private key is unwrapped only for the signing moment and is never stored in plaintext. A signed report is saved as a PDF carrying the local-EP stamp (signer name and title, UTC time, key fingerprint, document SHA-256) next to the `<name>.sig.json` receipt file; the stamp is honestly labelled as a local application EP, not a qualified electronic signature (QES). A signed revision is protected from silent overwrite: it can only be changed by an explicit addendum with a stated reason, and the signature history is preserved. `Verify signature…` performs an offline check of a previously saved PDF against its `.sig.json` — including archived public keys of deactivated users or rotated keys. The `report.signed`, `report.amended` and `signature.verified` events are written to the PHI-free hash-chained `audit.jsonl`.
+
 The column left of the sheet is the **completeness checklist**: the measurements the selected study type expects. It is not an automatic diagnosis and does not suggest what to write; it shows what the chosen protocol still lacks and links to the measurement. The states are listed separately:
 
 - **Missing** — no value yet; `measure` opens the protocol step (for organ studies, the matching measurement-panel tool) with the required view and phase hint;

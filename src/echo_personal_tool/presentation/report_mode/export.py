@@ -41,6 +41,8 @@ class ReportExportPanel(QFrame):
     print_requested = Signal()
     finish_requested = Signal()
     draft_requested = Signal()
+    sign_requested = Signal()
+    verify_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -67,6 +69,12 @@ class ReportExportPanel(QFrame):
         self._print = QPushButton()
         self._print.setObjectName("reportExportPrint")
         self._print.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sign = QPushButton()
+        self._sign.setObjectName("reportExportSign")
+        self._sign.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._verify = QPushButton()
+        self._verify.setObjectName("reportExportVerify")
+        self._verify.setCursor(Qt.CursorShape.PointingHandCursor)
         self._finish = QPushButton()
         self._finish.setObjectName("reportFinish")
         self._finish.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -77,7 +85,7 @@ class ReportExportPanel(QFrame):
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setHorizontalSpacing(6)
         buttons.setVerticalSpacing(4)
-        for row, pair in enumerate(((self._pdf, self._csv), (self._json, self._print))):
+        for row, pair in enumerate(((self._pdf, self._csv), (self._json, self._print), (self._sign, self._verify))):
             for column, button in enumerate(pair):
                 buttons.addWidget(button, row, column)
         buttons.setColumnStretch(0, 1)
@@ -106,6 +114,8 @@ class ReportExportPanel(QFrame):
         self._csv.clicked.connect(self.export_csv_requested)
         self._json.clicked.connect(self.export_json_requested)
         self._print.clicked.connect(self.print_requested)
+        self._sign.clicked.connect(self.sign_requested)
+        self._verify.clicked.connect(self.verify_requested)
         self._finish.clicked.connect(self._on_finish_clicked)
 
         # Reading order for the keyboard and for screen readers (S3-04): the
@@ -144,6 +154,19 @@ class ReportExportPanel(QFrame):
     @property
     def print_button(self) -> QPushButton:
         return self._print
+
+    @property
+    def sign_button(self) -> QPushButton:
+        return self._sign
+
+    @property
+    def verify_button(self) -> QPushButton:
+        return self._verify
+
+    def set_signing_enabled(self, enabled: bool) -> None:
+        """Enable «Подписать…» only when a local signer with SIGN_REPORT exists (issue 624)."""
+        self._sign.setEnabled(enabled)
+        self._sign.setVisible(enabled)
 
     def set_finished(self, finished: bool) -> None:
         """Switch between «Завершить» and «Новый черновик» with its banner."""
@@ -195,6 +218,14 @@ class ReportExportPanel(QFrame):
         self._print.setToolTip(tr("report.print_hint"))
         self._print.setAccessibleName(tr("report.print_a11y"))
         self._print.setAccessibleDescription(tr("a11y.report_print_desc"))
+        self._sign.setText(tr("report.sign"))
+        self._sign.setToolTip(tr("report.sign_hint"))
+        self._sign.setAccessibleName(tr("report.sign_a11y"))
+        self._sign.setAccessibleDescription(tr("a11y.report_sign_desc"))
+        self._verify.setText(tr("report.verify"))
+        self._verify.setToolTip(tr("report.verify_hint"))
+        self._verify.setAccessibleName(tr("report.verify_a11y"))
+        self._verify.setAccessibleDescription(tr("a11y.report_verify_desc"))
         self._finish.setAccessibleDescription(tr("a11y.report_finish_desc"))
         self._status.setAccessibleName(tr("report.export_status_a11y"))
         self.set_finished(self._finished)
@@ -217,13 +248,15 @@ class ReportExportPanel(QFrame):
             #reportExportStatus {{
                 color: {tokens["text.2"]};
             }}
-            #reportExportPdf, #reportExportCsv, #reportExportJson, #reportExportPrint {{
+            #reportExportPdf, #reportExportCsv, #reportExportJson, #reportExportPrint,
+            #reportExportSign, #reportExportVerify {{
                 color: {tokens["accent.text"]};
                 border: 1px solid {tokens["line.1"]};
                 border-radius: 3px;
                 padding: 2px 8px;
             }}
-            #reportExportPdf:hover, #reportExportCsv:hover, #reportExportJson:hover, #reportExportPrint:hover {{
+            #reportExportPdf:hover, #reportExportCsv:hover, #reportExportJson:hover, #reportExportPrint:hover,
+            #reportExportSign:hover, #reportExportVerify:hover {{
                 background: {tokens["surface.3"]};
             }}
             #reportFinish {{
