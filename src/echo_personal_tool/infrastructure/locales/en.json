@@ -3729,5 +3729,11 @@
   "server_settings.listen_port": "Port",
   "server_settings.listen_tls": "TLS (MLLP over TLS)",
   "server_settings.allowed_hosts": "Allowed source hosts",
-  "server_settings.allowed_hosts_hint": "Comma-separated IPs/hostnames; empty = loopback only"
+  "server_settings.allowed_hosts_hint": "Comma-separated IPs/hostnames; empty = loopback only",
+  "report.interop_sr_hint": "Export DICOM SR (TID 5200) to file or send to PACS",
+  "report.interop_cda_hint": "Export the report as HL7 CDA R2 XML",
+  "report.interop_sr_a11y": "Export DICOM SR",
+  "report.interop_cda_a11y": "Export HL7 CDA",
+  "a11y.report_interop_sr_desc": "Save the report as a DICOM Structured Report or send it to the PACS",
+  "a11y.report_interop_cda_desc": "Save the report as an HL7 CDA R2 document"
 }

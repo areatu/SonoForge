@@ -3729,5 +3729,11 @@
   "server_settings.listen_port": "Порт",
   "server_settings.listen_tls": "TLS (MLLP over TLS)",
   "server_settings.allowed_hosts": "Разрешённые источники",
-  "server_settings.allowed_hosts_hint": "Список IP/имён через запятую; пусто — только loopback"
+  "server_settings.allowed_hosts_hint": "Список IP/имён через запятую; пусто — только loopback",
+  "report.interop_sr_hint": "Экспорт DICOM SR (TID 5200) в файл или отправка в PACS",
+  "report.interop_cda_hint": "Экспорт заключения в HL7 CDA R2 XML",
+  "report.interop_sr_a11y": "Экспорт DICOM SR",
+  "report.interop_cda_a11y": "Экспорт HL7 CDA",
+  "a11y.report_interop_sr_desc": "Сохранить заключение как DICOM Structured Report или отправить в PACS",
+  "a11y.report_interop_cda_desc": "Сохранить заключение как документ HL7 CDA R2"
 }

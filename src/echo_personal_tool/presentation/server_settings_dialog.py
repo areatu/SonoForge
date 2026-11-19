@@ -604,7 +604,7 @@ def notify_listener_settings_changed() -> None:
         try:
             callback()
         except Exception:  # noqa: BLE001 - a broken listener callback must not block saving
-            logging.getLogger(__name__).exception("listener settings callback failed")
+            logging.getLogger(__name__).warning("listener settings callback failed")
 
 
 class ServerSettingsDialog(QDialog):
