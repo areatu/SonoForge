@@ -851,6 +851,15 @@ def _create_device_secret(path: _Path) -> bytes:
 
 def _portable_device_secret() -> bytes:
     """Return the per-device secret, or raise: there is no weaker fallback."""
+    from echo_personal_tool.infrastructure import master_password as _mp
+
+    if _mp.master_password_enabled():
+        # Master-password mode (#621): the plaintext device.key is not on the
+        # medium; the secret exists only in memory while unlocked.
+        secret = _mp.session_device_secret()
+        if secret is None:
+            raise PortableSecretStoreError("master_password_required")
+        return secret
     path = _device_key_path()
     if path.exists() or path.is_symlink():
         return _read_device_secret(path)
