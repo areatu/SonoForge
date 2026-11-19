@@ -19,9 +19,10 @@ from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, Repo
 def test_render_returns_application_owned_anchor_types(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter_rect = report_export._pdf_adapter.PageRect(page=1, x=10.0, y=20.0, w=30.0, h=4.0)
 
-    def render(_document: ReportDocument, *, font_size: int, template=None):
+    def render(_document: ReportDocument, *, font_size: int, template=None, stamp=None):
         assert font_size == 12
         assert template is None  # the full form of older builds
+        assert stamp is None  # unsigned preview carries no EP stamp (issue 624)
         return report_export._pdf_adapter.RenderedReport(
             pdf=b"%PDF-test",
             anchors={(2, 3): [adapter_rect]},
