@@ -14,7 +14,7 @@ import pytest
 pytestmark = pytest.mark.gui
 pytest.importorskip("pytestqt")
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QWidget
 
 _WARNING = "shared QObject was deleted directly"
