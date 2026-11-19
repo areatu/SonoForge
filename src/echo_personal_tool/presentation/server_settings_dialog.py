@@ -282,6 +282,24 @@ class ServerSettingsForm(QWidget):
         listener_form.addRow(tr("server_settings.allowed_hosts"), self._allowed_hosts_edit)
         form.addRow(listener_group)
 
+        # Optional master password for the portable secret store (issue 621)
+        master_group = QGroupBox(tr("server_settings.master_password_group"))
+        master_form = QFormLayout(master_group)
+        self._master_status_label = QLabel()
+        self._master_status_label.setWordWrap(True)
+        master_form.addRow(tr("server_settings.master_password_status"), self._master_status_label)
+        master_buttons = QHBoxLayout()
+        self._master_set_btn = QPushButton(tr("server_settings.master_password_set"))
+        self._master_set_btn.setObjectName("masterPasswordSet")
+        self._master_set_btn.clicked.connect(self._on_master_password_set)
+        self._master_unlock_btn = QPushButton(tr("server_settings.master_password_unlock"))
+        self._master_unlock_btn.setObjectName("masterPasswordUnlock")
+        self._master_unlock_btn.clicked.connect(self._on_master_password_unlock)
+        master_buttons.addWidget(self._master_set_btn)
+        master_buttons.addWidget(self._master_unlock_btn)
+        master_form.addRow("", master_buttons)
+        form.addRow(master_group)
+
         # Visible transport security status banner
         self._transport_status_label = QLabel()
         self._transport_status_label.setWordWrap(True)
@@ -517,6 +535,83 @@ class ServerSettingsForm(QWidget):
             return replace(candidate, needs_confirmation=True)
         return candidate
 
+    def _mp_error_text(self, code: str) -> str:
+        key = f"server_settings.mp_error_{code}"
+        text = tr(key)
+        return code if text == key else text
+
+    def _refresh_master_password_status(self) -> None:
+        from echo_personal_tool.application.master_password import master_password_enabled
+
+        if master_password_enabled():
+            self._master_status_label.setText(tr("server_settings.master_password_enabled"))
+            self._master_set_btn.setText(tr("server_settings.master_password_change"))
+            self._master_unlock_btn.setText(tr("server_settings.master_password_lock"))
+        else:
+            self._master_status_label.setText(tr("server_settings.master_password_disabled"))
+            self._master_set_btn.setText(tr("server_settings.master_password_set"))
+            self._master_unlock_btn.setText(tr("server_settings.master_password_unlock"))
+
+    def _ask_password(self, title: str, label: str, *, confirm: bool = False) -> str:
+        from PySide6.QtWidgets import QInputDialog
+
+        password, ok = QInputDialog.getText(self, title, label, QLineEdit.EchoMode.Password)
+        if not ok or not password:
+            return ""
+        if confirm:
+            again, ok2 = QInputDialog.getText(
+                self, title, tr("server_settings.master_password_confirm"), QLineEdit.EchoMode.Password
+            )
+            if not ok2 or again != password:
+                return ""
+        return password
+
+    def _on_master_password_set(self) -> None:
+        from echo_personal_tool.application import master_password as facade
+
+        if facade.master_password_enabled():
+            old = self._ask_password(
+                tr("server_settings.master_password_change"), tr("server_settings.master_password_current")
+            )
+            if not old:
+                return
+            new = self._ask_password(
+                tr("server_settings.master_password_change"),
+                tr("server_settings.master_password_new"),
+                confirm=True,
+            )
+            if not new:
+                return
+            code = facade.change_master_password(old, new)
+        else:
+            new = self._ask_password(
+                tr("server_settings.master_password_set_title"),
+                tr("server_settings.master_password_new"),
+                confirm=True,
+            )
+            if not new:
+                return
+            code = facade.set_master_password(new)
+        if code is not None:
+            QMessageBox.warning(self, tr("server_settings.master_password_title"), self._mp_error_text(code))
+        self._refresh_master_password_status()
+
+    def _on_master_password_unlock(self) -> None:
+        from echo_personal_tool.application import master_password as facade
+
+        if facade.master_password_enabled():
+            password = self._ask_password(
+                tr("server_settings.master_password_unlock_title"), tr("server_settings.master_password_current")
+            )
+            if not password:
+                return
+            code = facade.unlock_master_password(password)
+            if code is not None:
+                QMessageBox.warning(self, tr("server_settings.master_password_title"), self._mp_error_text(code))
+        else:
+            facade.lock_master_password()
+        self._refresh_master_password_status()
+
     def listener_settings(self) -> Any:
         """Collect the inbound-listener fields (issue 626)."""
         from echo_personal_tool.application.interop_servers import ListenerSettings
@@ -616,6 +711,7 @@ class ServerSettingsDialog(QDialog):
         from echo_personal_tool.application.interop_servers import load_listener_settings_facade
 
         self._form.set_listener_settings(load_listener_settings_facade())
+        self._form._refresh_master_password_status()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
