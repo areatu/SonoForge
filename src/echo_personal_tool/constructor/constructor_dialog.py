@@ -51,7 +51,7 @@ def show_constructor_dialog(parent: QWidget | None = None) -> None:
     """Entry point: open the reference constructor."""
     try:
         dialog = ConstructorDialog(parent)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - reviewed boundary
         QMessageBox.critical(
             parent,
             tr("constructor.load_error"),

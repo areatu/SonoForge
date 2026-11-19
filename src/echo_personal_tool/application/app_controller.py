@@ -841,7 +841,8 @@ class AppController(QObject):
             return 96
         try:
             return max(96, int(provider()))
-        except Exception:  # noqa: BLE001 - a bad probe must not break thumbnails
+        except Exception as exc:  # noqa: BLE001 - a bad probe must not break thumbnails
+            log_boundary_failure(logger, "thumbnail.size_probe", exc, code="invalid", level=logging.DEBUG)
             return 96
 
     def request_thumbnail_preview(
@@ -2231,7 +2232,8 @@ class AppController(QObject):
             method = lvef.method if lvef and lvef.method else ""
             calibration = session.active_calibration
             return simpson_basis_from_contours(session.contours, pixel_spacing, method=method, calibration=calibration)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - a stale contour set must not break the record
+            log_boundary_failure(logger, "simpson.basis", exc, code="invalid", level=logging.DEBUG)
             return None
 
     def _simpson_record_status(self, session: StudyMeasurementData, current: SimpsonBasis | None) -> object | None:
@@ -2264,7 +2266,8 @@ class AppController(QObject):
                         calibration = cal
                         break
             return doppler_basis_from_dto(dto, calibration, instance_uid)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - a stale DTO must not break the record
+            log_boundary_failure(logger, "doppler.basis", exc, code="invalid", level=logging.DEBUG)
             return None
 
     def _doppler_record_status(self, session: StudyMeasurementData, current: DopplerBasis | None) -> object | None:

@@ -1847,8 +1847,8 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
     def _reference_sex(self) -> str:
         try:
             return str(self._reference_sex_provider() or "")
-        except Exception:  # noqa: BLE001 — a broken header must not break the card
-            return ""
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return ""  # a broken header must not break the card
 
     def _norm_grade_of(self, status: Any) -> str:
         """Gradation name of the row value («Норма» …); \"\" — no dot (UD-14)."""

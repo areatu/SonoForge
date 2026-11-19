@@ -14,9 +14,13 @@ is *dark* (that inversion was the bug), ``1`` means light.
 
 from __future__ import annotations
 
+import logging
 import sys
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.theme.palettes import THEME_IDS
+
+logger = logging.getLogger(__name__)
 
 THEME_DARK = "dark"
 THEME_LIGHT = "light"
@@ -46,7 +50,8 @@ def _windows_apps_use_light_theme() -> bool | None:
         finally:
             winreg.CloseKey(key)
         return bool(value)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a missing registry value means "unknown"
+        log_boundary_failure(logger, "theme.windows_theme", exc, code="unavailable", level=logging.DEBUG)
         return None
 
 
@@ -61,7 +66,8 @@ def _macos_is_dark() -> bool | None:
             text=True,
             timeout=2,
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a failed probe means "unknown"
+        log_boundary_failure(logger, "theme.macos_theme", exc, code="unavailable", level=logging.DEBUG)
         return None
     return "Dark" in result.stdout
 

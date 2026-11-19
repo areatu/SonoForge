@@ -427,7 +427,10 @@ class PresenterWindow(QWidget):
             return None
         try:
             return qimage_brightness(viewport.grabFramebuffer())
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            log_boundary_failure(
+                logger, "presenter_view.framebuffer_brightness", exc, code="invalid", level=logging.DEBUG
+            )
             return None
 
     @property
@@ -582,7 +585,8 @@ class PresenterWindow(QWidget):
             image_pos = speaker._view.mapSceneToView(scene)
             scene_here = self._viewer._view.mapViewToScene(image_pos)
             return self._viewer._graphics.mapFromScene(scene_here)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - a stale scene must not break hit-testing
+            log_boundary_failure(logger, "presenter_view.hit_test", exc, code="invalid", level=logging.DEBUG)
             return None
 
     # ── interaction (read-only audience window) ─────────────────────
@@ -1510,7 +1514,10 @@ class PresenterMode(QObject):
                 value = getattr(current, name)
                 if value != getattr(snapshot, name):
                     setattr(base, name, value)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - one bad field must not abort the merge
+                log_boundary_failure(
+                    logger, "presenter_view.preference_merge", exc, code="invalid", level=logging.DEBUG
+                )
                 continue
 
     def _restore_preferences(self) -> None:

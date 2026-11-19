@@ -35,7 +35,7 @@ def magnifier_cursor() -> QCursor:
             pixmap = icon.pixmap(32, 32)
             if not pixmap.isNull():
                 return QCursor(pixmap, *ZOOM_CURSOR_HOTSPOT)
-    except Exception:  # pragma: no cover - a broken install still gets a cursor
+    except Exception:  # pragma: no cover - a broken install still gets a cursor  # noqa: BLE001 - reviewed boundary
         # No payload: the diagnostics ratchet (ER-08/ER-09) forbids logging the
         # exception object, and the fallback below is the whole recovery.
         logger.debug("magnifier cursor unavailable, falling back to a cross")

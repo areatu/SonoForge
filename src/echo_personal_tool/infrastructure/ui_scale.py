@@ -20,6 +20,7 @@ everything else keeps working in logical pixels.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import TYPE_CHECKING
@@ -38,6 +39,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 from echo_personal_tool.application.preferences_contract import UI_SCALE_AUTO
 from echo_personal_tool.application.preferences_contract import UI_SCALE_CHOICES as UI_SCALE_CHOICES
 from echo_personal_tool.application.preferences_contract import normalize_ui_scale as normalize_ui_scale
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
+
+logger = logging.getLogger(__name__)
 
 SCALE_STEP_PERCENT = 25
 MIN_UI_SCALE_PERCENT = 100
@@ -105,7 +109,8 @@ def physical_screen_width(screen: QScreen) -> int:
     """Screen width in physical pixels (logical size × devicePixelRatio)."""
     try:
         return int(round(screen.geometry().width() * screen.devicePixelRatio()))
-    except Exception:  # noqa: BLE001 - a probe must never break startup
+    except Exception as exc:  # noqa: BLE001 - a probe must never break startup
+        log_boundary_failure(logger, "ui_scale.screen_width", exc, code="unavailable", level=logging.DEBUG)
         return 0
 
 
@@ -159,5 +164,6 @@ def restart_application() -> bool:
     program, args = restart_command()
     try:
         return bool(QProcess.startDetached(program, args))
-    except Exception:  # noqa: BLE001 - restart is best-effort, the setting is already saved
+    except Exception as exc:  # noqa: BLE001 - restart is best-effort, the setting is already saved
+        log_boundary_failure(logger, "ui_scale.restart", exc, code="failed", level=logging.WARNING)
         return False

@@ -184,7 +184,7 @@ def logits_to_mask(
     if adaptive and array.size > 0:
         try:
             effective = float(np.clip(_otsu_threshold(array), 0.35, 0.65))
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             effective = 0.5
         return (array >= effective).astype(np.uint8)
 
@@ -933,7 +933,7 @@ def _try_refine_annulus_with_onnx(
         return septal, lateral
     try:
         onnx_septal, onnx_lateral = _predict_ma_onnx_keypoints(mask, frame_shape)
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         return septal, lateral
 
     for base, pred in ((septal, onnx_septal), (lateral, onnx_lateral)):

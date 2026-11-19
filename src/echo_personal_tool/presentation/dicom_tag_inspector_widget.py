@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.dicom_io import DicomTagRow, read_all_dicom_tag_rows
+
+logger = logging.getLogger(__name__)
 
 
 class DicomTagInspectorWidget(QWidget):
@@ -29,7 +33,8 @@ class DicomTagInspectorWidget(QWidget):
             return
         try:
             rows = read_all_dicom_tag_rows(path)
-        except Exception:  # noqa: BLE001 — show empty table on parse errors
+        except Exception as exc:  # noqa: BLE001 — show empty table on parse errors
+            log_boundary_failure(logger, "tag_inspector.read", exc, code="invalid", level=logging.DEBUG)
             return
         self._populate(rows)
 

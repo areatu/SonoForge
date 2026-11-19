@@ -101,7 +101,7 @@ try:
         SimpsonBasis,
         SimpsonContourRef,
     )
-except Exception:  # pragma: no cover - optional import for version skew
+except Exception:  # pragma: no cover - optional import for version skew  # noqa: BLE001 - reviewed boundary
     # Version-skew shims: the names must exist for the module to import.
     CalculationsSnapshot = object  # type: ignore[assignment, misc]  # version-skew shim: the name must exist
     SimpsonBasis = object  # type: ignore[assignment, misc]  # version-skew shim: the name must exist

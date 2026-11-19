@@ -384,7 +384,8 @@ def _transfer_syntax_is_compressed(ds: Dataset) -> bool:
         return False
     try:
         return UID(syntax).is_compressed
-    except Exception:  # noqa: BLE001 - an invalid UID must not stop the export
+    except Exception as exc:  # noqa: BLE001 - an invalid UID must not stop the export
+        log_boundary_failure(logger, "deidentify.transfer_syntax", exc, code="invalid", level=logging.DEBUG)
         return False
 
 

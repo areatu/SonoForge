@@ -20,12 +20,14 @@ Implements §4.3 and §8.3 of ``docs/superpowers/specs/2026-10-16-ui-redesign-sp
 from __future__ import annotations
 
 import ctypes
+import logging
 import sys
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Protocol
 
 from PySide6.QtCore import QByteArray, QPoint, QRect
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.presentation.window_chrome.hit_test import (
     BUTTON_ZONES,
     DEFAULT_RESIZE_BORDER_PX,
@@ -37,6 +39,8 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QAbstractButton, QWidget
 
 # ── Win32 Hit-Test Codes ──────────────────────────────────────────
+logger = logging.getLogger(__name__)
+
 HTCLIENT = 1
 HTCAPTION = 2
 HTSYSMENU = 3
@@ -359,7 +363,8 @@ def _default_win32_api() -> Win32Api | None:
         return None
     try:
         return _CtypesWin32Api()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - no Win32 API means default chrome
+        log_boundary_failure(logger, "win32_chrome.api_probe", exc, code="unavailable", level=logging.DEBUG)
         return None
 
 

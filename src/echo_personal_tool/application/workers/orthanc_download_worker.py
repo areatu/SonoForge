@@ -330,7 +330,7 @@ class OrthancDownloadWorker(QRunnable):
                                 errors.append(reason)
                     except DownloadCancelled:
                         break
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - reviewed boundary
                         # never aggregate raw exception text (URLs,
                         # paths, server replies) into the dialog error list.
                         with self._lock:

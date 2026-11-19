@@ -31,6 +31,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
 )
 from echo_personal_tool.imaging.samsung_tick_detector import spectral_band_is_dark
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
     get_vendor_info,
     try_parse_samsung_tick_calibration,
@@ -180,7 +181,7 @@ def try_parse_from_dataset(
                     vendor_info["profile"],
                 )
                 return vendor_result
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - reviewed boundary
             logger.debug("Vendor profile failed, falling back to generic: %s", type(e).__name__)
 
     # Fallback: generic DICOM-based calibration
@@ -250,7 +251,7 @@ def try_parse_from_dataset(
                     if not spectral_band_is_dark(arr_gray, roi.y0 + roi.height):
                         logger.debug("[ROI-TRACE] generic_parse: SKIPPED — fallback ROI is bright (B-mode-like)")
                         continue
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - reviewed boundary
                     logger.debug("spectral_band_is_dark failed: %s", type(e).__name__)
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
@@ -286,7 +287,7 @@ def try_parse_from_dataset(
             if arr.ndim >= 2:
                 try:
                     line_baseline = detect_baseline_line_y(arr, roi)
-                except Exception:
+                except Exception:  # noqa: BLE001 - reviewed boundary
                     logger.debug("detect_baseline_line_y failed, skipping")
         if line_baseline is not None:
             baseline_y = line_baseline
@@ -301,7 +302,7 @@ def try_parse_from_dataset(
                 if arr.ndim >= 2:
                     try:
                         baseline_y = detect_baseline_y(arr, roi)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - reviewed boundary
                         logger.debug("detect_baseline_y failed, using intensity fallback")
                         baseline_y = _detect_baseline_fallback(arr, roi)
 
@@ -343,7 +344,7 @@ def try_parse_from_dataset(
                     tick_state.time_span_ms,
                 )
                 return tick_state
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - reviewed boundary
             logger.debug("Samsung tick fallback failed: %s", type(e).__name__)
 
     return best
@@ -358,14 +359,15 @@ def try_parse_from_path(
     """Load DICOM and attempt spectrogram region calibration from tags only."""
     try:
         dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - an unreadable file yields no calibration
+        log_boundary_failure(logger, "doppler.calibration.read", exc, code="unreadable", level=logging.DEBUG)
         return None
 
     if frame is None:
         try:
             reader = DicomReaderImpl()
             frame = reader.read_pixels(path, 0)
-        except Exception:
+        except Exception:  # noqa: BLE001 - reviewed boundary
             frame = None
 
     return try_parse_from_dataset(dataset, frame, kind=kind)

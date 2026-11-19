@@ -187,7 +187,7 @@ def _bandpass_filter(signal: np.ndarray, fs: float, low: float, high: float) -> 
         b, a = butter(2, [low_n, high_n], btype="band")
         centered = signal - float(np.median(signal))
         return np.asarray(filtfilt(b, a, centered, padtype="even"))
-    except Exception:
+    except Exception:  # noqa: BLE001 - reviewed boundary
         return signal.copy()
 
 

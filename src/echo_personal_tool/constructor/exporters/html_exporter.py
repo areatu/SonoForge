@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.constructor.models import NormRangeModel, ReferenceModel
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
+
+logger = logging.getLogger(__name__)
 
 
 def export_to_html(
@@ -158,7 +162,8 @@ def _embed_image(path: Path) -> str | None:
     try:
         data = path.read_bytes()
         return base64.b64encode(data).decode("ascii")
-    except Exception:
+    except OSError as exc:
+        log_boundary_failure(logger, "html_exporter.embed_image", exc, code="unreadable", level=logging.DEBUG)
         return None
 
 
