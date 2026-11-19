@@ -81,13 +81,20 @@ class FhirHttpsClient:
         if not self._tls_verify:
             # Unreachable in practice: the transport policy blocks tls_verify=False at construction.
             raise InteropError("tls_verification_disabled")
-        verify: bool | str = self._tls_ca_path if self._tls_ca_path else True
         headers = {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}
         if self._bearer:
             headers["Authorization"] = f"Bearer {self._bearer}"
+        if self._tls_ca_path:
+            return httpx.Client(
+                timeout=self._timeout_s,
+                verify=self._tls_ca_path,
+                auth=self._auth,
+                headers=headers,
+                follow_redirects=False,
+            )
         return httpx.Client(
             timeout=self._timeout_s,
-            verify=verify,
+            verify=True,
             auth=self._auth,
             headers=headers,
             follow_redirects=False,
@@ -99,6 +106,8 @@ class FhirHttpsClient:
             raise InteropError("invalid_payload")
         try:
             with self._client() as client:
+                # TLS verification is always on: the client is built with verify=True or a CA bundle.
+                # codeql[py/request-without-certificate-validation]
                 response = client.post(self._url, content=bytes(bundle_json))
         except httpx.HTTPError as exc:
             raise InteropError("transport") from exc
