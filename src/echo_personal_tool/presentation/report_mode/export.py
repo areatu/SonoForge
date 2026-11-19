@@ -43,6 +43,9 @@ class ReportExportPanel(QFrame):
     draft_requested = Signal()
     sign_requested = Signal()
     verify_requested = Signal()
+    interop_hl7_requested = Signal()
+    interop_fhir_requested = Signal()
+    interop_pacs_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,6 +78,15 @@ class ReportExportPanel(QFrame):
         self._verify = QPushButton()
         self._verify.setObjectName("reportExportVerify")
         self._verify.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hl7 = QPushButton()
+        self._hl7.setObjectName("reportExportHl7")
+        self._hl7.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._fhir = QPushButton()
+        self._fhir.setObjectName("reportExportFhir")
+        self._fhir.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._pacs = QPushButton()
+        self._pacs.setObjectName("reportExportPacs")
+        self._pacs.setCursor(Qt.CursorShape.PointingHandCursor)
         self._finish = QPushButton()
         self._finish.setObjectName("reportFinish")
         self._finish.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -116,6 +128,9 @@ class ReportExportPanel(QFrame):
         self._print.clicked.connect(self.print_requested)
         self._sign.clicked.connect(self.sign_requested)
         self._verify.clicked.connect(self.verify_requested)
+        self._hl7.clicked.connect(self.interop_hl7_requested)
+        self._fhir.clicked.connect(self.interop_fhir_requested)
+        self._pacs.clicked.connect(self.interop_pacs_requested)
         self._finish.clicked.connect(self._on_finish_clicked)
 
         # Reading order for the keyboard and for screen readers (S3-04): the
@@ -162,6 +177,18 @@ class ReportExportPanel(QFrame):
     @property
     def verify_button(self) -> QPushButton:
         return self._verify
+
+    @property
+    def hl7_button(self) -> QPushButton:
+        return self._hl7
+
+    @property
+    def fhir_button(self) -> QPushButton:
+        return self._fhir
+
+    @property
+    def pacs_button(self) -> QPushButton:
+        return self._pacs
 
     def set_signing_enabled(self, enabled: bool) -> None:
         """Enable «Подписать…» only when a local signer with SIGN_REPORT exists (issue 624)."""
@@ -226,6 +253,18 @@ class ReportExportPanel(QFrame):
         self._verify.setToolTip(tr("report.verify_hint"))
         self._verify.setAccessibleName(tr("report.verify_a11y"))
         self._verify.setAccessibleDescription(tr("a11y.report_verify_desc"))
+        self._hl7.setText(tr("report.interop_hl7"))
+        self._hl7.setToolTip(tr("report.interop_hl7_hint"))
+        self._hl7.setAccessibleName(tr("report.interop_hl7_a11y"))
+        self._hl7.setAccessibleDescription(tr("a11y.report_interop_hl7_desc"))
+        self._fhir.setText(tr("report.interop_fhir"))
+        self._fhir.setToolTip(tr("report.interop_fhir_hint"))
+        self._fhir.setAccessibleName(tr("report.interop_fhir_a11y"))
+        self._fhir.setAccessibleDescription(tr("a11y.report_interop_fhir_desc"))
+        self._pacs.setText(tr("report.interop_pacs"))
+        self._pacs.setToolTip(tr("report.interop_pacs_hint"))
+        self._pacs.setAccessibleName(tr("report.interop_pacs_a11y"))
+        self._pacs.setAccessibleDescription(tr("a11y.report_interop_pacs_desc"))
         self._finish.setAccessibleDescription(tr("a11y.report_finish_desc"))
         self._status.setAccessibleName(tr("report.export_status_a11y"))
         self.set_finished(self._finished)
@@ -249,14 +288,15 @@ class ReportExportPanel(QFrame):
                 color: {tokens["text.2"]};
             }}
             #reportExportPdf, #reportExportCsv, #reportExportJson, #reportExportPrint,
-            #reportExportSign, #reportExportVerify {{
+            #reportExportSign, #reportExportVerify, #reportExportHl7, #reportExportFhir, #reportExportPacs {{
                 color: {tokens["accent.text"]};
                 border: 1px solid {tokens["line.1"]};
                 border-radius: 3px;
                 padding: 2px 8px;
             }}
             #reportExportPdf:hover, #reportExportCsv:hover, #reportExportJson:hover, #reportExportPrint:hover,
-            #reportExportSign:hover, #reportExportVerify:hover {{
+            #reportExportSign:hover, #reportExportVerify:hover, #reportExportHl7:hover, #reportExportFhir:hover,
+            #reportExportPacs:hover {{
                 background: {tokens["surface.3"]};
             }}
             #reportFinish {{

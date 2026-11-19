@@ -60,6 +60,9 @@ class ReportModePage(QWidget):
     #: Local Ed25519 signing intents (issue 624); the window owns the secret prompt.
     sign_requested = Signal()
     verify_requested = Signal()
+    interop_hl7_requested = Signal()
+    interop_fhir_requested = Signal()
+    interop_pacs_requested = Signal()
 
     def __init__(
         self,
@@ -141,6 +144,9 @@ class ReportModePage(QWidget):
             self._export.print_button,
             self._export.sign_button,
             self._export.verify_button,
+            self._export.hl7_button,
+            self._export.fhir_button,
+            self._export.pacs_button,
             self._export.finish_button,
         )
         for first, second in zip(chain, chain[1:]):

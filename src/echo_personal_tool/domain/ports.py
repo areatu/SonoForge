@@ -219,6 +219,27 @@ class ReportSignature:
     signature: bytes
 
 
+class Hl7MllpPort(Protocol):
+    """MLLP / MLLP+TLS transport for HL7 v2 messages (#625).
+
+    Sends one framed message and returns the parsed ACK.  The endpoint has
+    already been judged by :mod:`transport_policy`; implementations must not
+    log message payloads (PHI) or credentials.
+    """
+
+    def send_oru(self, payload: bytes, *, encoding: str = "utf-8") -> object:
+        """Send one ORU payload; return an ``AckResult``-like object with ``accepted``/``code``/``control_id``."""
+        ...
+
+
+class FhirHttpPort(Protocol):
+    """HTTPS transport for FHIR R4 Bundles (#625)."""
+
+    def post_bundle(self, bundle_json: bytes) -> object:
+        """POST a Bundle; return a result with ``status_code`` and ``accepted`` (2xx)."""
+        ...
+
+
 class SignerPort(Protocol):
     """Local Ed25519 signer for report protocols (#624).
 
