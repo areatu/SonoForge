@@ -31,6 +31,38 @@ class ReportSignatureError(RuntimeError):
         self.code = code
 
 
+class TransportPolicyError(RuntimeError):
+    """Raised when a network operation or listener bind is blocked by policy.
+
+    ``decision`` is the policy verdict object (duck-typed: ``code``, ``verdict``,
+    ``findings``, ``summary()``) so the domain never imports the application layer.
+    """
+
+    def __init__(self, decision: object, message: str = "") -> None:
+        self.decision = decision
+        if not message:
+            findings = getattr(decision, "findings", ()) or ()
+            if findings:
+                details = "; ".join(str(getattr(f, "message", f)) for f in findings)
+            else:
+                summary = getattr(decision, "summary", None)
+                details = str(summary()) if callable(summary) else str(decision)
+            message = f"[{getattr(decision, 'code', '')}] {details}"
+        super().__init__(message)
+
+    @property
+    def code(self) -> str:
+        return str(getattr(self.decision, "code", ""))
+
+    @property
+    def verdict(self) -> object:
+        return getattr(self.decision, "verdict", None)
+
+    @property
+    def endpoint(self) -> object:
+        return getattr(self.decision, "endpoint", None)
+
+
 class InteropError(RuntimeError):
     """Domain error for outbound interop exchange (#625).
 

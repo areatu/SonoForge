@@ -63,6 +63,8 @@ class ReportModePage(QWidget):
     interop_hl7_requested = Signal()
     interop_fhir_requested = Signal()
     interop_pacs_requested = Signal()
+    interop_sr_requested = Signal()
+    interop_cda_requested = Signal()
 
     def __init__(
         self,
@@ -103,6 +105,11 @@ class ReportModePage(QWidget):
         self._export.print_requested.connect(self.print_requested)
         self._export.finish_requested.connect(self.finish_requested)
         self._export.draft_requested.connect(self.draft_requested)
+        self._export.interop_hl7_requested.connect(self.interop_hl7_requested)
+        self._export.interop_fhir_requested.connect(self.interop_fhir_requested)
+        self._export.interop_pacs_requested.connect(self.interop_pacs_requested)
+        self._export.interop_sr_requested.connect(self.interop_sr_requested)
+        self._export.interop_cda_requested.connect(self.interop_cda_requested)
 
         right = QWidget()
         right.setObjectName("reportRightColumn")
@@ -147,6 +154,8 @@ class ReportModePage(QWidget):
             self._export.hl7_button,
             self._export.fhir_button,
             self._export.pacs_button,
+            self._export.sr_button,
+            self._export.cda_button,
             self._export.finish_button,
         )
         for first, second in zip(chain, chain[1:]):

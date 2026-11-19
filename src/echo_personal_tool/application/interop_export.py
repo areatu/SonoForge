@@ -278,6 +278,97 @@ class InteropExportService:
         self._audit(PROTOCOL_DICOM_PDF, "sent" if ok else "failed", study_uid=spec.study_uid)
         return ok
 
+    # ── DICOM SR (TID 5200) / HL7 CDA R2 documents (#626) ────────────
+
+    def _sr_report(self, document: ReportDocument, **kwargs: Any) -> Any:
+        from echo_personal_tool.domain.services.interop_sr import build_sr_tree
+
+        return build_sr_tree(
+            _interop_report(
+                document,
+                study_uid=kwargs.get("study_uid", ""),
+                physician=kwargs.get("physician", ""),
+                receipt=kwargs.get("receipt"),
+                pdf_bytes=kwargs.get("pdf_bytes"),
+                status=kwargs.get("status", "F"),
+                now=self._now() if self._now else None,
+            )
+        )
+
+    def export_cda_file(self, document: ReportDocument, path: Path, **kwargs: Any) -> InteropExportResult:
+        """Write the CDA R2 XML document atomically and audit the export."""
+        from echo_personal_tool.domain.services.interop_cda import build_cda_r2
+
+        report = _interop_report(
+            document,
+            study_uid=kwargs.get("study_uid", ""),
+            physician=kwargs.get("physician", ""),
+            receipt=kwargs.get("receipt"),
+            pdf_bytes=kwargs.get("pdf_bytes"),
+            status=kwargs.get("status", "F"),
+            now=self._now() if self._now else None,
+        )
+        payload = build_cda_r2(report, title=kwargs.get("title") or document.title or "Study report").encode("utf-8")
+        target = Path(path)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(payload)
+        tmp.replace(target)
+        self._audit("cda", "exported", study_uid=kwargs.get("study_uid", ""))
+        return InteropExportResult(protocol="cda", outcome="exported", path=target)
+
+    def export_sr_file(self, document: ReportDocument, path: Path, **kwargs: Any) -> InteropExportResult:
+        """Write the TID 5200 SR object atomically and audit the export."""
+        from echo_personal_tool.infrastructure.dicom_sr import sr_bytes
+
+        tree = self._sr_report(document, **kwargs)
+        patient = document.patient
+        payload = sr_bytes(
+            tree,
+            patient_id=patient.patient_id,
+            patient_name=patient.name,
+            birth_date=patient.birth_date,
+            sex=patient.sex,
+            study_uid=kwargs.get("study_uid", ""),
+            accession=kwargs.get("accession", ""),
+            physician=kwargs.get("physician", ""),
+        )
+        target = Path(path)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(payload)
+        tmp.replace(target)
+        self._audit("dicom-sr", "exported", study_uid=kwargs.get("study_uid", ""))
+        return InteropExportResult(protocol="dicom-sr", outcome="exported", path=target)
+
+    def send_sr(
+        self,
+        document: ReportDocument,
+        *,
+        upload_client: Any = None,
+        stow_client: Any = None,
+        use_stow: bool = False,
+        **kwargs: Any,
+    ) -> bool:
+        """Send the TID 5200 SR object to PACS via STOW-RS or C-STORE."""
+        from echo_personal_tool.infrastructure.dicom_sr import send_sr
+
+        tree = self._sr_report(document, **kwargs)
+        patient = document.patient
+        ok = send_sr(
+            tree,
+            upload_client=upload_client,
+            stow_client=stow_client,
+            use_stow=use_stow,
+            patient_id=patient.patient_id,
+            patient_name=patient.name,
+            birth_date=patient.birth_date,
+            sex=patient.sex,
+            study_uid=kwargs.get("study_uid", ""),
+            accession=kwargs.get("accession", ""),
+            physician=kwargs.get("physician", ""),
+        )
+        self._audit("dicom-sr", "sent" if ok else "failed", study_uid=kwargs.get("study_uid", ""))
+        return ok
+
     # ── audit ────────────────────────────────────────────────────────
 
     def _audit(self, protocol: str, outcome: str, *, study_uid: str = "", status: str = "") -> None:

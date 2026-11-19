@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -19,6 +19,17 @@ from echo_personal_tool.domain.models.orthanc import (
     StudyInfo,
     StudyStatistics,
 )
+
+
+class IWorklistSink(Protocol):
+    """The slice of the worklist the MWL/MPPS SCP needs (#626).
+
+    Infrastructure depends on this protocol, never on the application service.
+    """
+
+    def query_worklist(self, *, patient_id: str = "", station_ae: str = "") -> list[Any]: ...
+
+    def apply_mpps(self, update: Any) -> bool: ...
 
 
 class IDicomReader(Protocol):
@@ -237,6 +248,42 @@ class FhirHttpPort(Protocol):
 
     def post_bundle(self, bundle_json: bytes) -> object:
         """POST a Bundle; return a result with ``status_code`` and ``accepted`` (2xx)."""
+        ...
+
+
+class WorklistStorePort(Protocol):
+    """Persistent worklist queue + patient index (SQLite WAL) (#626).
+
+    Implementations store only operational data needed to schedule and identify
+    studies; audit events go through the session, not this port.
+    """
+
+    def upsert_worklist_item(self, item: object) -> None:
+        """Insert or replace one worklist item keyed by accession number."""
+        ...
+
+    def get_worklist_item(self, accession_number: str) -> object:
+        """Return the item or ``None``."""
+        ...
+
+    def query_worklist(self, *, patient_id: str = "", status: str = "", station_ae: str = "") -> list[object]:
+        """List items filtered by any of the given criteria (empty = wildcard)."""
+        ...
+
+    def set_worklist_status(self, accession_number: str, status: str, *, updated_at: str = "") -> bool:
+        """MPPS status transition; returns False when the accession is unknown."""
+        ...
+
+    def upsert_patient(self, demographics: object) -> None:
+        """Insert or update the patient index entry keyed by patient id."""
+        ...
+
+    def apply_merge(self, source_id: str, target_id: str, *, merged_at: str = "") -> None:
+        """Record a patient merge (ADT^A40 MRG): source items move to target."""
+        ...
+
+    def get_patient(self, patient_id: str) -> object:
+        """Return demographics or ``None``."""
         ...
 
 

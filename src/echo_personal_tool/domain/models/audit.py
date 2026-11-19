@@ -74,6 +74,7 @@ class AuditAction(str, Enum):
     REPORT_AMENDED = "report.amended"
     SIGNATURE_VERIFIED = "signature.verified"
     INTEROP_EXPORTED = "interop.exported"
+    INTEROP_RECEIVED = "interop.received"
 
 
 VALID_AUDIT_ACTIONS: frozenset[str] = frozenset(item.value for item in AuditAction)

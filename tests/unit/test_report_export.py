@@ -263,10 +263,12 @@ def test_export_buttons_fit_narrow_report_column_in_both_states(qtbot) -> None:
                     panel.hl7_button,
                     panel.fhir_button,
                     panel.pacs_button,
+                    panel.sr_button,
+                    panel.cda_button,
                 )
                 assert all(button.width() >= button.minimumWidth() for button in buttons)
-                assert panel.pacs_button.geometry().right() < panel.width() - 10
-                assert panel.finish_button.geometry().top() > panel.pacs_button.geometry().bottom()
+                assert panel.cda_button.geometry().right() < panel.width() - 10
+                assert panel.finish_button.geometry().top() > panel.cda_button.geometry().bottom()
                 assert panel.finish_button.width() >= panel.finish_button.sizeHint().width()
     finally:
         set_language("en")

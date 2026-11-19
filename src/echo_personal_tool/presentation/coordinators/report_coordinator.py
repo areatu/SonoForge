@@ -379,6 +379,8 @@ class ReportCoordinator(QObject):
             page.interop_hl7_requested.connect(self.export_hl7)
             page.interop_fhir_requested.connect(self.export_fhir)
             page.interop_pacs_requested.connect(self.send_report_to_pacs)
+            page.interop_sr_requested.connect(self.export_sr)
+            page.interop_cda_requested.connect(self.export_cda)
             page.finish_requested.connect(lambda: self.set_finished(True))
             page.draft_requested.connect(lambda: self.set_finished(False))
             page.sections.not_evaluated_changed.connect(self.refresh_marks)
@@ -430,7 +432,30 @@ class ReportCoordinator(QObject):
         if not tab.report_finished:
             page.refresh_now()
         if page.document is not None:
-            page.patient_editor.set_patient(page.document.patient)
+            patient = page.document.patient
+            study_uid = self._controller.resolve_study_uid()
+            if study_uid and not study_uid.startswith("__"):
+                from echo_personal_tool.application.worklist_autofill import autofill_patient_for_study
+
+                try:
+                    filled = autofill_patient_for_study(study_uid)
+                except (OSError, ValueError):
+                    filled = None
+                if filled is not None:
+                    # worklist demographics only fill fields the study left empty
+                    patient = PatientInfo(
+                        name=patient.name or filled.name,
+                        patient_id=patient.patient_id or filled.patient_id,
+                        birth_date=patient.birth_date or filled.birth_date,
+                        age=patient.age,
+                        sex=patient.sex or filled.sex,
+                        study_date=patient.study_date or filled.study_date,
+                        height_cm=patient.height_cm,
+                        weight_kg=patient.weight_kg,
+                        bsa_m2=patient.bsa_m2,
+                        physician=patient.physician or filled.physician,
+                    )
+            page.patient_editor.set_patient(patient)
 
     def set_mode(self, enabled: bool) -> None:
         """Put the active tab into «Отчёт» (True) or back to «Изображения»."""
@@ -1239,6 +1264,128 @@ class ReportCoordinator(QObject):
             return
         if page is not None:
             page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def export_sr(self) -> None:
+        """«SR…» of the export block: TID 5200 file export or PACS send."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        from PySide6.QtWidgets import QInputDialog
+
+        mode, ok = QInputDialog.getItem(
+            self._port.dialog_parent(),
+            tr("report.interop_sr_title"),
+            tr("report.interop_mode_label"),
+            [tr("report.interop_mode_file"), tr("report.interop_mode_send")],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        if mode == tr("report.interop_mode_send"):
+            self.send_sr_to_pacs()
+            return
+        path = self._port.ask_save_path(
+            tr("report.interop_sr_title"),
+            str(Path(self.default_report_name().replace(".pdf", ".dcm"))),
+            tr("report.sr_filter"),
+        )
+        if not path:
+            return
+        try:
+            service = self._interop_service()
+            service.export_sr_file(
+                document,
+                Path(path),
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+                accession=self._accession_for(study_uid),
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_sr_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def send_sr_to_pacs(self) -> None:
+        """Send the TID 5200 SR object to the configured PACS via STOW-RS/C-STORE."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        try:
+            from echo_personal_tool.application.server_io import load_server_settings, make_upload_targets
+
+            settings = load_server_settings()
+            protocol = "stow" if settings.query_source != "dimse" and not settings.dimse_enabled else "dimse"
+            uploader, stow_client = make_upload_targets(settings, protocol)
+            service = self._interop_service()
+            ok = service.send_sr(
+                document,
+                upload_client=uploader,
+                stow_client=stow_client,
+                use_stow=(protocol == "stow"),
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+                accession=self._accession_for(study_uid),
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_sr_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.interop_sent", ack="SR") if ok else tr("report.interop_failed"))
+
+    def export_cda(self) -> None:
+        """«CDA…» of the export block: HL7 CDA R2 XML file export."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        path = self._port.ask_save_path(
+            tr("report.interop_cda_title"),
+            str(Path(self.default_report_name().replace(".pdf", ".xml"))),
+            tr("report.cda_filter"),
+        )
+        if not path:
+            return
+        try:
+            service = self._interop_service()
+            service.export_cda_file(
+                document,
+                Path(path),
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_cda_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def _accession_for(self, study_uid: str) -> str:
+        """Accession number from the worklist when the study came from an order."""
+        try:
+            store_get = getattr(self, "_worklist_lookup", None)
+            if store_get is not None:
+                item = store_get(study_uid)
+                if item is not None:
+                    return str(getattr(item, "accession_number", ""))
+        except (AttributeError, TypeError, ValueError, KeyError):
+            pass  # worklist lookup is best-effort
+        return ""
 
     def send_hl7(self) -> None:
         """Send the ORU^R01 over MLLP/MLLP+TLS to the endpoint asked at send time."""

@@ -53,6 +53,11 @@ def data_dir() -> Path:
     return Path.home() / ".local" / "share" / "sonoforge"
 
 
+def worklist_db_path() -> Path:
+    """SQLite WAL worklist + patient index for inbound interop (#626)."""
+    return data_dir() / "worklist.db"
+
+
 def measurements_dir() -> Path:
     """Durable medical results; intentionally outside the disposable cache."""
     return data_dir() / "measurements"
