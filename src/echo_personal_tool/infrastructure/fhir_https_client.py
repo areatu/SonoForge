@@ -107,7 +107,7 @@ class FhirHttpsClient:
         try:
             with self._client() as client:
                 # TLS verification is always on: the client is built with verify=True or a CA bundle.
-                # codeql[py/request-without-certificate-validation]
+                # codeql[py/request-without-cert-validation]
                 response = client.post(self._url, content=bytes(bundle_json))
         except httpx.HTTPError as exc:
             raise InteropError("transport") from exc
