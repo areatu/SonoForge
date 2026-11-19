@@ -76,6 +76,7 @@ class Hl7MllpClient:
 
     def _tls_context(self) -> ssl.SSLContext:
         context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         if not self._tls_verify:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE

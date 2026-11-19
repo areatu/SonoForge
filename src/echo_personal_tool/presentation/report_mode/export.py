@@ -91,13 +91,21 @@ class ReportExportPanel(QFrame):
         self._finish.setObjectName("reportFinish")
         self._finish.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        # Two rows leave enough width for full captions even with large fonts
-        # and translations. «Завершить» / «Новый черновик» has its own row.
+        # Rows leave enough width for full captions even with large fonts and
+        # translations. «Завершить» / «Новый черновик» has its own row.
         buttons = QGridLayout()
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setHorizontalSpacing(6)
         buttons.setVerticalSpacing(4)
-        for row, pair in enumerate(((self._pdf, self._csv), (self._json, self._print), (self._sign, self._verify))):
+        for row, pair in enumerate(
+            (
+                (self._pdf, self._csv),
+                (self._json, self._print),
+                (self._sign, self._verify),
+                (self._hl7, self._fhir),
+                (self._pacs, self._pacs),
+            )
+        ):
             for column, button in enumerate(pair):
                 buttons.addWidget(button, row, column)
         buttons.setColumnStretch(0, 1)
@@ -139,7 +147,12 @@ class ReportExportPanel(QFrame):
         self.setTabOrder(self._pdf, self._csv)
         self.setTabOrder(self._csv, self._json)
         self.setTabOrder(self._json, self._print)
-        self.setTabOrder(self._print, self._finish)
+        self.setTabOrder(self._print, self._sign)
+        self.setTabOrder(self._sign, self._verify)
+        self.setTabOrder(self._verify, self._hl7)
+        self.setTabOrder(self._hl7, self._fhir)
+        self.setTabOrder(self._fhir, self._pacs)
+        self.setTabOrder(self._pacs, self._finish)
 
         self.reload_text()
         self.apply_theme()

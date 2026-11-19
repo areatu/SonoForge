@@ -200,6 +200,11 @@ class TestDialogTabOrderAndKeyboardOnly:
             page.export.csv_button,
             page.export.json_button,
             page.export.print_button,
+            page.export.sign_button,
+            page.export.verify_button,
+            page.export.hl7_button,
+            page.export.fhir_button,
+            page.export.pacs_button,
             page.export.finish_button,
         )
         _assert_focus_chain_order(full_chain)

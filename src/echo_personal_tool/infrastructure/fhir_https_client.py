@@ -78,7 +78,10 @@ class FhirHttpsClient:
         return self._insecure
 
     def _client(self) -> httpx.Client:
-        verify: bool | str = self._tls_ca_path if (self._tls_verify and self._tls_ca_path) else self._tls_verify
+        if not self._tls_verify:
+            # Unreachable in practice: the transport policy blocks tls_verify=False at construction.
+            raise InteropError("tls_verification_disabled")
+        verify: bool | str = self._tls_ca_path if self._tls_ca_path else True
         headers = {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}
         if self._bearer:
             headers["Authorization"] = f"Bearer {self._bearer}"
