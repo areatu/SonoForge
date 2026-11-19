@@ -9,6 +9,7 @@ carry PHI, so nothing but the status code is ever logged.
 
 from __future__ import annotations
 
+import ssl
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -84,17 +85,15 @@ class FhirHttpsClient:
         headers = {"Accept": "application/fhir+json", "Content-Type": "application/fhir+json"}
         if self._bearer:
             headers["Authorization"] = f"Bearer {self._bearer}"
+        # Always a verifying SSLContext (default CAs, optionally plus a local CA bundle).
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         if self._tls_ca_path:
-            return httpx.Client(
-                timeout=self._timeout_s,
-                verify=self._tls_ca_path,
-                auth=self._auth,
-                headers=headers,
-                follow_redirects=False,
-            )
+            context.load_verify_locations(cafile=self._tls_ca_path)
+        transport = httpx.HTTPTransport(verify=context)
         return httpx.Client(
             timeout=self._timeout_s,
-            verify=True,
+            transport=transport,
             auth=self._auth,
             headers=headers,
             follow_redirects=False,
@@ -106,10 +105,7 @@ class FhirHttpsClient:
             raise InteropError("invalid_payload")
         try:
             with self._client() as client:
-                # TLS verification is always on: the client is built with verify=True or a CA bundle.
-                response = client.post(
-                    self._url, content=bytes(bundle_json)
-                )  # codeql[py/request-without-cert-validation]
+                response = client.post(self._url, content=bytes(bundle_json))
         except httpx.HTTPError as exc:
             raise InteropError("transport") from exc
         excerpt = response.text[:200].replace("\n", " ")
