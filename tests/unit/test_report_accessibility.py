@@ -58,6 +58,8 @@ class TestAccessibleNames:
             panel.hl7_button,
             panel.fhir_button,
             panel.pacs_button,
+            panel.sr_button,
+            panel.cda_button,
             panel.finish_button,
         ):
             assert isinstance(button, QPushButton)
@@ -126,7 +128,9 @@ class TestKeyboardOrder:
         assert panel.verify_button.nextInFocusChain() is panel.hl7_button
         assert panel.hl7_button.nextInFocusChain() is panel.fhir_button
         assert panel.fhir_button.nextInFocusChain() is panel.pacs_button
-        assert panel.pacs_button.nextInFocusChain() is panel.finish_button
+        assert panel.pacs_button.nextInFocusChain() is panel.sr_button
+        assert panel.sr_button.nextInFocusChain() is panel.cda_button
+        assert panel.cda_button.nextInFocusChain() is panel.finish_button
 
     def test_every_action_accepts_focus(self, qtbot) -> None:
         panel = _panel(qtbot)

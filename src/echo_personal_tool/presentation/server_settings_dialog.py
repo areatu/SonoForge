@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
+from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
@@ -250,6 +252,36 @@ class ServerSettingsForm(QWidget):
         self._stow_url_edit.setPlaceholderText(tr("server_settings.stow_url"))
         form.addRow(tr("server_settings.stow_url"), self._stow_url_edit)
 
+        # Inbound interop listeners (HL7 MLLP + MWL/MPPS), issue 626
+        listener_group = QGroupBox(tr("server_settings.inbound_listeners"))
+        listener_form = QFormLayout(listener_group)
+        self._hl7_enabled = QCheckBox(tr("server_settings.hl7_listener"))
+        listener_form.addRow(self._hl7_enabled)
+        self._hl7_host_edit = QLineEdit()
+        self._hl7_host_edit.setPlaceholderText("127.0.0.1")
+        listener_form.addRow(tr("server_settings.listen_host"), self._hl7_host_edit)
+        self._hl7_port_edit = QLineEdit()
+        self._hl7_port_edit.setPlaceholderText("6761")
+        listener_form.addRow(tr("server_settings.listen_port"), self._hl7_port_edit)
+        self._hl7_tls_check = QCheckBox(tr("server_settings.listen_tls"))
+        listener_form.addRow(self._hl7_tls_check)
+        self._mwl_enabled = QCheckBox(tr("server_settings.mwl_listener"))
+        listener_form.addRow(self._mwl_enabled)
+        self._mwl_host_edit = QLineEdit()
+        self._mwl_host_edit.setPlaceholderText("127.0.0.1")
+        listener_form.addRow(tr("server_settings.listen_host"), self._mwl_host_edit)
+        self._mwl_port_edit = QLineEdit()
+        self._mwl_port_edit.setPlaceholderText("11113")
+        listener_form.addRow(tr("server_settings.listen_port"), self._mwl_port_edit)
+        self._mwl_ae_edit = QLineEdit()
+        self._mwl_ae_edit.setPlaceholderText(tr("server_settings.scp_ae_placeholder"))
+        listener_form.addRow(tr("server_settings.scp_ae_title"), self._mwl_ae_edit)
+        self._allowed_hosts_edit = QLineEdit()
+        self._allowed_hosts_edit.setPlaceholderText("192.168.1.10, 192.168.1.11")
+        self._allowed_hosts_edit.setToolTip(tr("server_settings.allowed_hosts_hint"))
+        listener_form.addRow(tr("server_settings.allowed_hosts"), self._allowed_hosts_edit)
+        form.addRow(listener_group)
+
         # Visible transport security status banner
         self._transport_status_label = QLabel()
         self._transport_status_label.setWordWrap(True)
@@ -485,6 +517,37 @@ class ServerSettingsForm(QWidget):
             return replace(candidate, needs_confirmation=True)
         return candidate
 
+    def listener_settings(self) -> Any:
+        """Collect the inbound-listener fields (issue 626)."""
+        from echo_personal_tool.application.interop_servers import ListenerSettings
+        from echo_personal_tool.domain.models.listener_settings import DEFAULT_HL7_PORT, DEFAULT_MWL_PORT
+
+        return ListenerSettings(
+            hl7_enabled=self._hl7_enabled.isChecked(),
+            hl7_host=self._hl7_host_edit.text().strip() or "127.0.0.1",
+            hl7_port=self._parse_port(self._hl7_port_edit.text(), DEFAULT_HL7_PORT),
+            hl7_use_tls=self._hl7_tls_check.isChecked(),
+            mwl_enabled=self._mwl_enabled.isChecked(),
+            mwl_host=self._mwl_host_edit.text().strip() or "127.0.0.1",
+            mwl_port=self._parse_port(self._mwl_port_edit.text(), DEFAULT_MWL_PORT),
+            mwl_ae_title=self._mwl_ae_edit.text().strip() or "SONOFORGE",
+            allowed_hosts=self._allowed_hosts_edit.text().strip(),
+        )
+
+    def set_listener_settings(self, settings: Any) -> None:
+        from echo_personal_tool.application.interop_servers import load_listener_settings_facade
+
+        current = settings or load_listener_settings_facade()
+        self._hl7_enabled.setChecked(current.hl7_enabled)
+        self._hl7_host_edit.setText(current.hl7_host)
+        self._hl7_port_edit.setText(str(current.hl7_port))
+        self._hl7_tls_check.setChecked(current.hl7_use_tls)
+        self._mwl_enabled.setChecked(current.mwl_enabled)
+        self._mwl_host_edit.setText(current.mwl_host)
+        self._mwl_port_edit.setText(str(current.mwl_port))
+        self._mwl_ae_edit.setText(current.mwl_ae_title)
+        self._allowed_hosts_edit.setText(current.allowed_hosts)
+
     def set_settings(self, settings: ServerSettings) -> None:
         self._settings_cache = settings
         self._description_edit.setText(settings.description)
@@ -526,12 +589,33 @@ def show_server_settings_dialog(parent: QWidget | None = None) -> bool:
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
 
+_listener_settings_callbacks: list = []
+
+
+def on_listener_settings_changed(callback: Callable[[], None]) -> None:
+    """Register a callback fired after listener settings are saved (issue 626)."""
+    _listener_settings_callbacks.append(callback)
+
+
+def notify_listener_settings_changed() -> None:
+    import logging
+
+    for callback in list(_listener_settings_callbacks):
+        try:
+            callback()
+        except Exception:  # noqa: BLE001 - a broken listener callback must not block saving
+            logging.getLogger(__name__).exception("listener settings callback failed")
+
+
 class ServerSettingsDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("server_settings.title"))
 
         self._form = ServerSettingsForm(self)
+        from echo_personal_tool.application.interop_servers import load_listener_settings_facade
+
+        self._form.set_listener_settings(load_listener_settings_facade())
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
@@ -575,6 +659,10 @@ class ServerSettingsDialog(QDialog):
                     return
         status = save_server_settings(settings)
         warn_if_password_not_saved(self, status)
+        from echo_personal_tool.application.interop_servers import save_listener_settings_facade
+
+        save_listener_settings_facade(self._form.listener_settings())
+        notify_listener_settings_changed()
         self.accept()
 
 

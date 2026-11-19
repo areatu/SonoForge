@@ -3715,5 +3715,19 @@
   "report.fhir_filter": "FHIR R4 Bundle (*.fhir.json);;All files (*)",
   "a11y.report_interop_hl7_desc": "Save the report as an HL7 v2 ORU^R01 message or send it over MLLP",
   "a11y.report_interop_fhir_desc": "Save the report as a FHIR R4 Bundle or send it over HTTPS",
-  "a11y.report_interop_pacs_desc": "Send the report to PACS as a DICOM Encapsulated PDF over the configured connection"
+  "a11y.report_interop_pacs_desc": "Send the report to PACS as a DICOM Encapsulated PDF over the configured connection",
+  "report.interop_sr": "SR…",
+  "report.interop_cda": "CDA…",
+  "report.interop_sr_title": "Export DICOM SR (TID 5200)",
+  "report.interop_cda_title": "Export HL7 CDA R2",
+  "report.sr_filter": "DICOM SR (*.dcm)",
+  "report.cda_filter": "HL7 CDA XML (*.xml)",
+  "server_settings.inbound_listeners": "Inbound listeners (HL7/MWL)",
+  "server_settings.hl7_listener": "HL7 MLLP listener (ADT/ORM)",
+  "server_settings.mwl_listener": "DICOM MWL/MPPS listener",
+  "server_settings.listen_host": "Host",
+  "server_settings.listen_port": "Port",
+  "server_settings.listen_tls": "TLS (MLLP over TLS)",
+  "server_settings.allowed_hosts": "Allowed source hosts",
+  "server_settings.allowed_hosts_hint": "Comma-separated IPs/hostnames; empty = loopback only"
 }

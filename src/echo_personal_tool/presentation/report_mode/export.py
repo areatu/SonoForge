@@ -46,6 +46,8 @@ class ReportExportPanel(QFrame):
     interop_hl7_requested = Signal()
     interop_fhir_requested = Signal()
     interop_pacs_requested = Signal()
+    interop_sr_requested = Signal()
+    interop_cda_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -87,6 +89,12 @@ class ReportExportPanel(QFrame):
         self._pacs = QPushButton()
         self._pacs.setObjectName("reportExportPacs")
         self._pacs.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sr = QPushButton()
+        self._sr.setObjectName("reportExportSr")
+        self._sr.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cda = QPushButton()
+        self._cda.setObjectName("reportExportCda")
+        self._cda.setCursor(Qt.CursorShape.PointingHandCursor)
         self._finish = QPushButton()
         self._finish.setObjectName("reportFinish")
         self._finish.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -103,7 +111,8 @@ class ReportExportPanel(QFrame):
                 (self._json, self._print),
                 (self._sign, self._verify),
                 (self._hl7, self._fhir),
-                (self._pacs,),
+                (self._pacs, self._sr),
+                (self._cda,),
             )
         ):
             for column, button in enumerate(pair):
@@ -139,6 +148,8 @@ class ReportExportPanel(QFrame):
         self._hl7.clicked.connect(self.interop_hl7_requested)
         self._fhir.clicked.connect(self.interop_fhir_requested)
         self._pacs.clicked.connect(self.interop_pacs_requested)
+        self._sr.clicked.connect(self.interop_sr_requested)
+        self._cda.clicked.connect(self.interop_cda_requested)
         self._finish.clicked.connect(self._on_finish_clicked)
 
         # Reading order for the keyboard and for screen readers (S3-04): the
@@ -152,7 +163,9 @@ class ReportExportPanel(QFrame):
         self.setTabOrder(self._verify, self._hl7)
         self.setTabOrder(self._hl7, self._fhir)
         self.setTabOrder(self._fhir, self._pacs)
-        self.setTabOrder(self._pacs, self._finish)
+        self.setTabOrder(self._pacs, self._sr)
+        self.setTabOrder(self._sr, self._cda)
+        self.setTabOrder(self._cda, self._finish)
 
         self.reload_text()
         self.apply_theme()
@@ -198,6 +211,14 @@ class ReportExportPanel(QFrame):
     @property
     def fhir_button(self) -> QPushButton:
         return self._fhir
+
+    @property
+    def sr_button(self) -> QPushButton:
+        return self._sr
+
+    @property
+    def cda_button(self) -> QPushButton:
+        return self._cda
 
     @property
     def pacs_button(self) -> QPushButton:
@@ -275,6 +296,8 @@ class ReportExportPanel(QFrame):
         self._fhir.setAccessibleName(tr("report.interop_fhir_a11y"))
         self._fhir.setAccessibleDescription(tr("a11y.report_interop_fhir_desc"))
         self._pacs.setText(tr("report.interop_pacs"))
+        self._sr.setText(tr("report.interop_sr"))
+        self._cda.setText(tr("report.interop_cda"))
         self._pacs.setToolTip(tr("report.interop_pacs_hint"))
         self._pacs.setAccessibleName(tr("report.interop_pacs_a11y"))
         self._pacs.setAccessibleDescription(tr("a11y.report_interop_pacs_desc"))
@@ -301,7 +324,7 @@ class ReportExportPanel(QFrame):
                 color: {tokens["text.2"]};
             }}
             #reportExportPdf, #reportExportCsv, #reportExportJson, #reportExportPrint,
-            #reportExportSign, #reportExportVerify, #reportExportHl7, #reportExportFhir, #reportExportPacs {{
+            #reportExportSign, #reportExportVerify, #reportExportHl7, #reportExportFhir, #reportExportPacs, #reportExportSr, #reportExportCda {{
                 color: {tokens["accent.text"]};
                 border: 1px solid {tokens["line.1"]};
                 border-radius: 3px;
@@ -309,7 +332,7 @@ class ReportExportPanel(QFrame):
             }}
             #reportExportPdf:hover, #reportExportCsv:hover, #reportExportJson:hover, #reportExportPrint:hover,
             #reportExportSign:hover, #reportExportVerify:hover, #reportExportHl7:hover, #reportExportFhir:hover,
-            #reportExportPacs:hover {{
+            #reportExportPacs:hover, #reportExportSr:hover, #reportExportCda:hover {{
                 background: {tokens["surface.3"]};
             }}
             #reportFinish {{

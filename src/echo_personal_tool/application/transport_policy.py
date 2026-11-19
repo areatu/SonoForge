@@ -37,12 +37,30 @@ secrets — so a decision can be logged as is.
 
 from __future__ import annotations
 
-import ipaddress
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from urllib.parse import SplitResult, urljoin, urlsplit
+
+from echo_personal_tool.domain.services.listener_policy import (  # noqa: F401 - re-exported
+    Decision,
+    Finding,
+    HostKind,
+    TransportPolicyError,
+    Verdict,
+    classify_host,
+    evaluate_listener_bind,
+)
+
+
+class EndpointError(ValueError):
+    """The endpoint cannot be used at all; ``code`` is a stable finding code."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
 
 __all__ = [
     "Decision",
@@ -60,6 +78,7 @@ __all__ = [
     "evaluate_dicomweb_url",
     "evaluate_dimse",
     "evaluate_endpoint",
+    "evaluate_listener_bind",
     "evaluate_profile",
     "evaluate_redirect",
     "parse_dicomweb_endpoint",
@@ -67,7 +86,6 @@ __all__ = [
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 # RFC 1123 labels, plus "_" which intranet names use in practice; nothing else.
-_HOSTNAME_RE = re.compile(r"^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)*$")
 _PORT_RANGE = range(1, 65536)
 
 
@@ -76,43 +94,6 @@ class Transport(Enum):
 
     DICOMWEB = "dicomweb"
     DIMSE = "dimse"
-
-
-class HostKind(Enum):
-    """What the *parsed* host literal is — never what it might resolve to."""
-
-    #: ``127.0.0.0/8``, ``::1``, IPv4-mapped loopback, or exactly ``localhost``.
-    LOOPBACK = "loopback"
-    #: RFC1918, CGNAT, link-local, ULA, documentation ranges … — still remote.
-    PRIVATE = "private"
-    #: Any other IP literal.
-    PUBLIC = "public"
-    #: A DNS name that is not ``localhost``; remote until TLS proves otherwise.
-    NAME = "name"
-    #: Empty, unspecified (``0.0.0.0``/``::``) or syntactically impossible.
-    INVALID = "invalid"
-
-
-class Verdict(Enum):
-    ALLOW = "allow"
-    BLOCK = "block"
-
-
-class EndpointError(ValueError):
-    """The endpoint cannot be used at all; ``code`` is a stable finding code."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-
-@dataclass(frozen=True)
-class Finding:
-    """One reason behind a decision (stable ``code`` for logs/i18n, English ``message``)."""
-
-    code: str
-    message: str
 
 
 @dataclass(frozen=True)
@@ -178,43 +159,6 @@ class InsecureException:
 
 
 @dataclass(frozen=True)
-class Decision:
-    """The verdict for one endpoint (or one redirect hop)."""
-
-    verdict: Verdict
-    #: Stable code, e.g. ``allow``, ``allow-loopback``, ``allow-by-exception``,
-    #: ``block-plaintext-remote``, ``block-tls-unverified``, ``block-dimse-clear-remote``,
-    #: ``block-invalid-endpoint``, ``block-redirect-downgrade``, ``allow-redirect``,
-    #: ``allow-redirect-cross-authority``.
-    code: str
-    findings: tuple[Finding, ...] = ()
-    endpoint: Endpoint | None = None
-    #: A scoped :class:`InsecureException` for ``endpoint`` would turn this BLOCK into ALLOW.
-    requires_exception: bool = False
-    #: Allowed only because of a scoped exception: keep a visible insecure label.
-    insecure: bool = False
-    #: Redirects only: credentials / custom secret headers may accompany the next request.
-    forward_credentials: bool = False
-
-    @property
-    def allowed(self) -> bool:
-        return self.verdict is Verdict.ALLOW
-
-    @property
-    def blocked(self) -> bool:
-        return self.verdict is Verdict.BLOCK
-
-    def summary(self) -> str:
-        """Log-safe one-liner: code, transport and host kind — no host, URL or secret."""
-        if self.endpoint is None:
-            return f"transport-policy {self.code}"
-        return (
-            f"transport-policy {self.code} transport={self.endpoint.transport.value} "
-            f"flavour={self.endpoint.flavour} host={self.endpoint.host_kind.value}"
-        )
-
-
-@dataclass(frozen=True)
 class ProfileDecision:
     """All endpoints a server profile would touch, judged together."""
 
@@ -233,57 +177,7 @@ class ProfileDecision:
         return any(decision.insecure for decision in self.decisions)
 
 
-class TransportPolicyError(RuntimeError):
-    """Raised when a network operation is blocked by the transport policy."""
-
-    def __init__(self, decision: Decision, message: str = "") -> None:
-        self.decision = decision
-        if not message:
-            details = "; ".join(f.message for f in decision.findings) if decision.findings else decision.summary()
-            message = f"[{decision.code}] {details}"
-        super().__init__(message)
-
-    @property
-    def code(self) -> str:
-        return self.decision.code
-
-    @property
-    def verdict(self) -> Verdict:
-        return self.decision.verdict
-
-    @property
-    def endpoint(self) -> Endpoint | None:
-        return self.decision.endpoint
-
-
 # ── host classification ─────────────────────────────────────────────
-
-
-def classify_host(host: str) -> HostKind:
-    """Classify a host literal by parsing it; substrings and suffixes prove nothing."""
-    text = host.strip().lower()
-    if text.startswith("[") and text.endswith("]"):
-        text = text[1:-1]
-    text = text.rstrip(".")
-    if not text:
-        return HostKind.INVALID
-    literal = text.split("%", 1)[0]  # IPv6 zone id does not change the kind
-    try:
-        address = ipaddress.ip_address(literal)
-    except ValueError:
-        if text == "localhost":
-            return HostKind.LOOPBACK
-        return HostKind.NAME if _HOSTNAME_RE.match(text) else HostKind.INVALID
-    mapped = getattr(address, "ipv4_mapped", None)
-    if mapped is not None:
-        address = mapped
-    if address.is_unspecified:
-        return HostKind.INVALID
-    if address.is_loopback:
-        return HostKind.LOOPBACK
-    if address.is_global:
-        return HostKind.PUBLIC
-    return HostKind.PRIVATE
 
 
 # ── parsing ─────────────────────────────────────────────────────────
