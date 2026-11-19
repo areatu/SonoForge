@@ -8,7 +8,6 @@ Stage-3 terminology dictionary. Pure ElementTree — no I/O.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
 
 from echo_personal_tool.domain.services.interop_hl7 import InteropObservation, InteropReport
 from echo_personal_tool.domain.terminology.codes import LOINC_SYSTEM_URI, code_for
@@ -90,6 +89,5 @@ def build_cda_r2(report: InteropReport, *, title: str = "Echocardiography Study 
         _sub(csec, "code", code="51848-0", codeSystem=LOINC_SYSTEM_URI, displayName="Evaluation summary")
         _sub(csec, "title").text = "Conclusion"
         _sub(csec, "text").text = report.conclusion
-    xml_bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-    pretty = minidom.parseString(xml_bytes).toprettyxml(indent="  ", encoding="utf-8")
-    return pretty.decode("utf-8") if isinstance(pretty, bytes) else pretty
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True)
