@@ -29,3 +29,15 @@ class ReportSignatureError(RuntimeError):
     def __init__(self, code: str, message: str = "") -> None:
         super().__init__(message or code)
         self.code = code
+
+
+class InteropError(RuntimeError):
+    """Domain error for outbound interop exchange (#625).
+
+    ``code`` is a stable, allowlisted identifier safe for logs and i18n lookup;
+    it never carries patient data, credentials, UIDs or filesystem paths.
+    """
+
+    def __init__(self, code: str, message: str = "") -> None:
+        super().__init__(message or code)
+        self.code = code

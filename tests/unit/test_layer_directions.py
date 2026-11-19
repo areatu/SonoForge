@@ -44,7 +44,7 @@ def test_the_committed_inventory_matches_the_reviewed_baseline() -> None:
     assert [edge for edge in edges if edge.direction == "ui>infrastructure"] == []
     assert [edge for edge in edges if edge.direction == "constructor>infrastructure"] == []
     assert len([edge for edge in edges if edge.direction == "constructor>presentation"]) == 14
-    assert len(edges) == 25, "the AST inventory must match the exact reviewed baseline"
+    assert len(edges) == 27, "the AST inventory must match the exact reviewed baseline"
     assert all(edge.source_file.endswith(".py") and edge.line > 0 for edge in edges)
     decisions = data.get("decisions", {})
     assert isinstance(decisions, dict)

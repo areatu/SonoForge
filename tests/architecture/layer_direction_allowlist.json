@@ -28,6 +28,24 @@
     },
     {
       "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/hl7_mllp.py",
+      "imports": {
+        "echo_personal_tool.application.transport_policy": 1
+      },
+      "reason": "The MLLP adapter reads the consumer-owned, read-only transport_policy exactly like dimse_client.py; the endpoint must be judged before any socket is opened. Same historical edge, same fix path.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
+      "source": "echo_personal_tool/infrastructure/fhir_https_client.py",
+      "imports": {
+        "echo_personal_tool.application.transport_policy": 1
+      },
+      "reason": "The FHIR HTTPS adapter judges the endpoint through the consumer-owned, read-only transport_policy before opening a connection, exactly like orthanc_client.py and hl7_mllp.py.",
+      "issue": 419
+    },
+    {
+      "direction": "infrastructure>application",
       "source": "echo_personal_tool/infrastructure/measurement_codec.py",
       "imports": {
         "echo_personal_tool.application.study_measurement_session": 1

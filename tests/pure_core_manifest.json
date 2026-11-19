@@ -19,6 +19,7 @@
     "tests/unit/test_frame_cache_completeness.py",
     "tests/unit/test_frame_cache_extended.py",
     "tests/unit/test_user_models.py",
-    "tests/unit/test_report_signature_domain.py"
+    "tests/unit/test_report_signature_domain.py",
+    "tests/unit/test_interop_domain.py"
   ]
 }

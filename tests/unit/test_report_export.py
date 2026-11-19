@@ -83,9 +83,9 @@ def test_the_block_offers_only_pdf_and_print(qtbot) -> None:
     from PySide6.QtWidgets import QPushButton
 
     names = {button.objectName() for button in panel.findChildren(QPushButton)}
-    assert {"reportExportPdf", "reportExportPrint", "reportFinish"} <= names
-    # UQ-06: DICOM SR and «В PACS» are absent, not disabled stubs.
-    assert not any("dicom" in name.lower() or "pacs" in name.lower() for name in names)
+    assert {"reportExportPdf", "reportExportPrint", "reportFinish", "reportExportPacs"} <= names
+    # UQ-06: DICOM SR is absent, not a disabled stub; «В PACS…» (#625) is a real send action.
+    assert not any("dicom" in name.lower() for name in names)
 
 
 @pytest.mark.gui_smoke
@@ -253,10 +253,20 @@ def test_export_buttons_fit_narrow_report_column_in_both_states(qtbot) -> None:
                 panel.set_finished(finished)
                 panel.adjustSize()
                 qtbot.wait(10)
-                buttons = (panel.pdf_button, panel.csv_button, panel.json_button, panel.print_button)
+                buttons = (
+                    panel.pdf_button,
+                    panel.csv_button,
+                    panel.json_button,
+                    panel.print_button,
+                    panel.sign_button,
+                    panel.verify_button,
+                    panel.hl7_button,
+                    panel.fhir_button,
+                    panel.pacs_button,
+                )
                 assert all(button.width() >= button.minimumWidth() for button in buttons)
-                assert panel.print_button.geometry().right() < panel.width() - 10
-                assert panel.finish_button.geometry().top() > panel.print_button.geometry().bottom()
+                assert panel.pacs_button.geometry().right() < panel.width() - 10
+                assert panel.finish_button.geometry().top() > panel.pacs_button.geometry().bottom()
                 assert panel.finish_button.width() >= panel.finish_button.sizeHint().width()
     finally:
         set_language("en")

@@ -38,6 +38,8 @@ from echo_personal_tool.application.diagnostics import log_boundary_failure, saf
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.application.report_conclusion import ConclusionAutofillResult, autofill_conclusion
 from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
+from echo_personal_tool.application.transport_policy import TransportPolicyError
+from echo_personal_tool.domain.exceptions import InteropError
 from echo_personal_tool.domain.services.report_builder import (
     PatientInfo,
     ReportDocument,
@@ -65,6 +67,7 @@ if TYPE_CHECKING:
     from echo_personal_tool.application.user_preferences import UserPreferences
     from echo_personal_tool.domain.models import InstanceMetadata
     from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.models.report_signature import SignatureReceipt
     from echo_personal_tool.domain.services.report_template import ReportTemplate
 
 logger = logging.getLogger(__name__)
@@ -373,6 +376,9 @@ class ReportCoordinator(QObject):
             page.print_requested.connect(self.print_sheet)
             page.sign_requested.connect(self.sign_report)
             page.verify_requested.connect(self.verify_signature)
+            page.interop_hl7_requested.connect(self.export_hl7)
+            page.interop_fhir_requested.connect(self.export_fhir)
+            page.interop_pacs_requested.connect(self.send_report_to_pacs)
             page.finish_requested.connect(lambda: self.set_finished(True))
             page.draft_requested.connect(lambda: self.set_finished(False))
             page.sections.not_evaluated_changed.connect(self.refresh_marks)
@@ -1093,6 +1099,289 @@ class ReportCoordinator(QObject):
             QMessageBox.warning(
                 parent, tr("report.verify_title"), tr("report.verify_result_bad") + f": {result.reason}"
             )
+
+    # ── Outbound interop (issue 625): HL7 v2 / FHIR R4 / Encapsulated PDF ──
+
+    def _interop_service(self) -> Any:
+        """The application interop facade over the bound user session."""
+        from echo_personal_tool.application.composition import user_session_of
+        from echo_personal_tool.application.interop_export import InteropExportService
+
+        return InteropExportService(session=user_session_of(self._controller))
+
+    def _interop_document(self) -> tuple[ReportDocument, str] | None:
+        """The shown document and the current study uid, gated by EXPORT_DATA."""
+        from echo_personal_tool.application.composition import user_session_of
+        from echo_personal_tool.domain.models.user import Permission
+
+        session = user_session_of(self._controller)
+        if session is not None and not session.can(Permission.EXPORT_DATA):
+            self._port.show_status(tr("auth.status.permission_denied"))
+            return None
+        page = self._page
+        if page is None or page.document is None:
+            return None
+        study_uid = self._controller.resolve_study_uid()
+        if not study_uid or study_uid == "__default__":
+            return None
+        return page.document, study_uid
+
+    def _signed_receipt_for(self, study_uid: str) -> SignatureReceipt | None:
+        """The newest stored receipt for the study, when the protocol was signed."""
+        try:
+            from echo_personal_tool.application.composition import services_of
+            from echo_personal_tool.domain.models.report_signature import validate_receipt_history
+
+            services = services_of(self._controller)
+            repository = (
+                services.persistence.repository
+                if services is not None
+                else self._controller.measurement_persistence.repository
+            )
+            record = repository.load(study_uid)
+            if record is None:
+                return None
+            receipts = validate_receipt_history(record.get("signatures", []))
+            return receipts[-1] if receipts else None
+        except (OSError, ValueError, KeyError):  # a storage hiccup must not crash interop
+            return None
+
+    def export_hl7(self) -> None:
+        """«HL7…» of the export block: file export or MLLP send, chosen in a prompt."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        from PySide6.QtWidgets import QInputDialog
+
+        mode, ok = QInputDialog.getItem(
+            self._port.dialog_parent(),
+            tr("report.interop_hl7_title"),
+            tr("report.interop_mode_label"),
+            [tr("report.interop_mode_file"), tr("report.interop_mode_send")],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        if mode == tr("report.interop_mode_send"):
+            self.send_hl7()
+            return
+        path = self._port.ask_save_path(
+            tr("report.interop_hl7_title"),
+            str(Path(self.default_report_name().replace(".pdf", ".hl7"))),
+            tr("report.hl7_filter"),
+        )
+        if not path:
+            return
+        try:
+            service = self._interop_service()
+            service.export_hl7_file(
+                document,
+                Path(path),
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+                status="F",
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_hl7_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def export_fhir(self) -> None:
+        """«FHIR…» of the export block: file export or HTTPS send, chosen in a prompt."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        from PySide6.QtWidgets import QInputDialog
+
+        mode, ok = QInputDialog.getItem(
+            self._port.dialog_parent(),
+            tr("report.interop_fhir_title"),
+            tr("report.interop_mode_label"),
+            [tr("report.interop_mode_file"), tr("report.interop_mode_send")],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        if mode == tr("report.interop_mode_send"):
+            self.send_fhir()
+            return
+        path = self._port.ask_save_path(
+            tr("report.interop_fhir_title"),
+            str(Path(self.default_report_name().replace(".pdf", ".fhir.json"))),
+            tr("report.fhir_filter"),
+        )
+        if not path:
+            return
+        try:
+            service = self._interop_service()
+            service.export_fhir_file(
+                document,
+                Path(path),
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+                status="F",
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_fhir_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.export_done", name=Path(path).name))
+
+    def send_hl7(self) -> None:
+        """Send the ORU^R01 over MLLP/MLLP+TLS to the endpoint asked at send time."""
+        from PySide6.QtWidgets import QInputDialog
+
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        parent = self._port.dialog_parent()
+        host, ok = QInputDialog.getText(
+            parent, tr("report.interop_hl7_send_title"), tr("report.interop_host_label"), text="127.0.0.1"
+        )
+        if not ok or not host.strip():
+            return
+        port_text, ok = QInputDialog.getInt(
+            parent, tr("report.interop_hl7_send_title"), tr("report.interop_port_label"), 6000, 1, 65535
+        )
+        if not ok:
+            return
+        use_tls, ok = QInputDialog.getItem(
+            parent,
+            tr("report.interop_hl7_send_title"),
+            tr("report.interop_tls_label"),
+            [tr("report.interop_tls_yes"), tr("report.interop_tls_no")],
+            1,
+            False,
+        )
+        if not ok:
+            return
+        try:
+            from echo_personal_tool.application.interop_export import make_hl7_mllp_client
+
+            client = make_hl7_mllp_client(
+                host=host.strip(), port=port_text, use_tls=(use_tls == tr("report.interop_tls_yes"))
+            )
+            service = self._interop_service()
+            ack = service.send_hl7(
+                document,
+                client=client,
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_hl7_send_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.interop_sent", ack=ack.code) if ack.accepted else tr("report.interop_failed"))
+
+    def send_fhir(self) -> None:
+        """POST the FHIR R4 Bundle over HTTPS to the endpoint asked at send time."""
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        parent = self._port.dialog_parent()
+        url, ok = QInputDialog.getText(
+            parent,
+            tr("report.interop_fhir_send_title"),
+            tr("report.interop_url_label"),
+            text="https://127.0.0.1:8043/fhir",
+        )
+        if not ok or not url.strip():
+            return
+        token, ok = QInputDialog.getText(
+            parent, tr("report.interop_fhir_send_title"), tr("report.interop_token_label"), QLineEdit.EchoMode.Password
+        )
+        if not ok:
+            return
+        try:
+            from echo_personal_tool.application.interop_export import make_fhir_https_client
+
+            client = make_fhir_https_client(base_url=url.strip(), bearer_token=token)
+            service = self._interop_service()
+            result = service.send_fhir(
+                document,
+                client=client,
+                study_uid=study_uid,
+                physician=self._port.preferences().report_physician,
+                receipt=self._signed_receipt_for(study_uid),
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_fhir_send_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(
+                tr("report.interop_sent", ack=str(result.status_code))
+                if result.accepted
+                else tr("report.interop_failed")
+            )
+
+    def send_report_to_pacs(self) -> None:
+        """«В PACS…» of the export block: DICOM Encapsulated PDF via the configured server."""
+        interop = self._interop_document()
+        if interop is None:
+            return
+        document, study_uid = interop
+        page = self._page
+        try:
+            from echo_personal_tool.application import report_export
+            from echo_personal_tool.application.server_io import load_server_settings, make_upload_targets
+
+            receipt = self._signed_receipt_for(study_uid)
+            stamp = None
+            if receipt is not None:
+                from echo_personal_tool.domain.models.report_signature import build_stamp
+
+                stamp = build_stamp(receipt)
+            rendered = report_export.render_report(
+                document,
+                font_size=self._port.preferences().pdf_font_size,
+                template=self.template(),
+                stamp=stamp,
+            )
+            settings = load_server_settings()
+            protocol = "stow" if settings.query_source != "dimse" and not settings.dimse_enabled else "dimse"
+            uploader, stow_client = make_upload_targets(settings, protocol)
+            service = self._interop_service()
+            spec = service.build_encapsulated_pdf_spec(
+                document,
+                study_uid=study_uid,
+                pdf_bytes=rendered.pdf,
+                receipt=receipt,
+            )
+            ok = service.send_encapsulated_pdf(
+                spec, upload_client=uploader, stow_client=stow_client, use_stow=(protocol == "stow")
+            )
+        except (InteropError, TransportPolicyError, OSError, ValueError) as exc:
+            if page is not None:
+                page.set_status(tr("report.interop_failed"))
+            self._port.warn(tr("report.interop_pacs_title"), str(safe_error_category(exc)))
+            return
+        if page is not None:
+            page.set_status(tr("report.interop_sent", ack="OK") if ok else tr("report.interop_failed"))
 
     def print_sheet(self) -> None:
         """«Печать…» of the export block: the rendered sheet bytes, nothing re-rendered."""

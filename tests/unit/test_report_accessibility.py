@@ -48,7 +48,18 @@ class TestAccessibleNames:
     def test_every_action_has_a_name(self, qtbot) -> None:
         panel = _panel(qtbot)
 
-        for button in (panel.pdf_button, panel.csv_button, panel.json_button, panel.print_button, panel.finish_button):
+        for button in (
+            panel.pdf_button,
+            panel.csv_button,
+            panel.json_button,
+            panel.print_button,
+            panel.sign_button,
+            panel.verify_button,
+            panel.hl7_button,
+            panel.fhir_button,
+            panel.pacs_button,
+            panel.finish_button,
+        ):
             assert isinstance(button, QPushButton)
             assert button.accessibleName().strip(), button.objectName()
 
@@ -110,7 +121,12 @@ class TestKeyboardOrder:
         assert panel.pdf_button.nextInFocusChain() is panel.csv_button
         assert panel.csv_button.nextInFocusChain() is panel.json_button
         assert panel.json_button.nextInFocusChain() is panel.print_button
-        assert panel.print_button.nextInFocusChain() is panel.finish_button
+        assert panel.print_button.nextInFocusChain() is panel.sign_button
+        assert panel.sign_button.nextInFocusChain() is panel.verify_button
+        assert panel.verify_button.nextInFocusChain() is panel.hl7_button
+        assert panel.hl7_button.nextInFocusChain() is panel.fhir_button
+        assert panel.fhir_button.nextInFocusChain() is panel.pacs_button
+        assert panel.pacs_button.nextInFocusChain() is panel.finish_button
 
     def test_every_action_accepts_focus(self, qtbot) -> None:
         panel = _panel(qtbot)
