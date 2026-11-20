@@ -2568,11 +2568,11 @@ class MainWindow(QMainWindow):
                 # The freehand pair arms the General tool in stroke mode for
                 # this drawing; the preference itself stays untouched.
                 self._viewer.set_area_tool_mode("freehand")
-            elif spec.id in {"spline_area", "spline_volume"}:
+            elif spec.id in {"tool.area", "tool.volume"}:
                 # Plain pair: back to the stored preference after a freehand use.
                 self._viewer.set_area_tool_mode(getattr(self._user_preferences, "area_tool_mode", "click"))
             self._last_contour_button = (
-                spec.id if spec.id in {"spline_area", "spline_volume", "freehand_area", "freehand_volume"} else None
+                spec.id if spec.id in {"tool.area", "tool.volume", "freehand_area", "freehand_volume"} else None
             )
             self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
             self._sync_tool_button_active()

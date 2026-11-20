@@ -14,6 +14,7 @@ the function to keep the import graph acyclic.
 
 from __future__ import annotations
 
+
 def norm_grade_for(
     label: str,
     value: float | None,
