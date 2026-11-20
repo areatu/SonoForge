@@ -179,8 +179,14 @@ def test_handbook_bound_steps_get_a_dot_and_a_hover_card(qtbot) -> None:
     card = _card(qtbot)
     values = {key: ProjectionValue(value=10.0, origin="lv_linear") for key in ("lv.ivsd", "lv.lvedd", "lv.lvpwd")}
     card.set_progress(_lv_linear_progress(values))
-    # lv_linear steps are bound to the handbook (ivsd / lvedd / lvpwd).
-    assert set(card._step_keys.values()) == {"lv.ivsd", "lv.lvedd", "lv.lvpwd"}
+    # Every lv_linear step is bound to the handbook — derive the expectation
+    # from the spec itself instead of hardcoding the keys.
+    from echo_personal_tool.domain.services.reference_topics import PROJECTION_TO_HANDBOOK
+
+    spec = PROTOCOLS_BY_ID["lv_linear"]
+    expected = {k for st in spec.steps for k in st.satisfied_keys if k in PROJECTION_TO_HANDBOOK}
+    assert expected, "the fixture protocol must have handbook-bound steps"
+    assert set(card._step_keys.values()) == expected
     assert all(dot is not None for dot in card._step_dots.values())
     # Every bound tile has its own S2 model factory on the step hover host.
     tiles = card._steps_host.findChildren(type(card._stop))
@@ -188,8 +194,9 @@ def test_handbook_bound_steps_get_a_dot_and_a_hover_card(qtbot) -> None:
     # Dots stay hidden until the «Нормы» switch is on and a value exists.
     assert all(dot.isHidden() for dot in card._step_dots.values())
     card.set_norms_visible(True)
-    card.set_step_values({"lv.lvedd": (48.0, "мм")})
-    dot = card._step_dots[[i for i, k in card._step_keys.items() if k == "lv.lvedd"][0]]
+    measured = sorted(expected)[0]
+    card.set_step_values({measured: (10.0, "мм")})
+    dot = card._step_dots[[i for i, k in card._step_keys.items() if k == measured][0]]
     assert dot.isHidden() is False, "a measured step shows its gradation dot"
     card.set_norms_visible(False)
     assert dot.isHidden() is True, "the «Нормы» switch hides the step dots too"
@@ -199,7 +206,8 @@ def test_step_without_a_value_has_no_dot(qtbot) -> None:
     card = _card(qtbot)
     card.set_progress(_lv_linear_progress({}))
     card.set_norms_visible(True)
-    card.set_step_values({"lv.lvedd": (48.0, "мм")})
-    assert all(dot.isHidden() for index, dot in card._step_dots.items() if card._step_keys[index] != "lv.lvedd"), (
-        "steps without values carry no dot (UD-14)"
+    measured = sorted(card._step_keys.values())[0]
+    card.set_step_values({measured: (10.0, "мм")})
+    assert all(dot.isHidden() for index, dot in card._step_dots.items() if card._step_keys[index] != measured), (
+        "steps without values carry no dot"
     )
