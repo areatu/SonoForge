@@ -184,7 +184,12 @@ def test_handbook_bound_steps_get_a_dot_and_a_hover_card(qtbot) -> None:
     from echo_personal_tool.domain.services.reference_topics import PROJECTION_TO_HANDBOOK
 
     spec = PROTOCOLS_BY_ID["lv_linear"]
-    expected = {k for st in spec.steps for k in st.satisfied_keys if k in PROJECTION_TO_HANDBOOK}
+    # One dot per step: the first handbook-bound satisfied key of the step.
+    expected = {
+        next(k for k in st.satisfied_keys if k in PROJECTION_TO_HANDBOOK)
+        for st in spec.steps
+        if any(k in PROJECTION_TO_HANDBOOK for k in st.satisfied_keys)
+    }
     assert expected, "the fixture protocol must have handbook-bound steps"
     assert set(card._step_keys.values()) == expected
     assert all(dot is not None for dot in card._step_dots.values())
