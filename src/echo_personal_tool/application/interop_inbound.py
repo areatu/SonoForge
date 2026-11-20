@@ -1,11 +1,13 @@
-"""Inbound interop application facade (#626).
+"""Inbound interop application facade (#626, full report import).
 
 The MLLP listener (infrastructure) hands each decoded message to
 :meth:`InteropInboundService.handle_hl7_message`, which parses it with the pure
-domain parsers, applies it to the worklist through :class:`WorklistService`,
-and returns the synchronous ACK text. FHIR inbound polling goes through
-:meth:`poll_fhir`. Listener bind addresses are judged by
-:func:`transport_policy.evaluate_listener_bind` before any socket is opened.
+domain parsers, applies orders/demographics to the worklist through
+:class:`WorklistService` and stores ORU^R01 result reports in the imported
+report store, then returns the synchronous ACK text. FHIR inbound polling goes
+through :meth:`poll_fhir` (worklist plus DiagnosticReport documents). Listener
+bind addresses are judged by :func:`transport_policy.evaluate_listener_bind`
+before any socket is opened.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from echo_personal_tool.application.transport_policy import (
     evaluate_listener_bind,
 )
 from echo_personal_tool.application.worklist_service import WorklistService
+from echo_personal_tool.domain.models.imported_report import ImportedReport
 from echo_personal_tool.domain.models.worklist import DemographicsEvent, OrderEvent
 from echo_personal_tool.domain.services import interop_fhir_inbound, interop_inbound_hl7
 from echo_personal_tool.domain.services.interop_hl7 import DEFAULT_HL7_VERSION, FIELD_SEP, SUPPORTED_HL7_VERSIONS
@@ -39,13 +42,57 @@ def make_fhir_inbound_client(**kwargs: Any) -> Any:
 
 
 class InteropInboundService:
-    """Inbound HL7 v2 / FHIR intake for the local worklist (#626)."""
+    """Inbound HL7 v2 / FHIR intake for the worklist and imported reports."""
 
-    def __init__(self, *, worklist: WorklistService, version: str = DEFAULT_HL7_VERSION) -> None:
+    def __init__(
+        self,
+        *,
+        worklist: WorklistService,
+        reports: Any = None,
+        session: Any = None,
+        now: Any = None,
+        version: str = DEFAULT_HL7_VERSION,
+    ) -> None:
         self._worklist = worklist
+        self._reports = reports
+        self._session = session
+        self._now = now
         if version not in SUPPORTED_HL7_VERSIONS:
             raise ValueError("unsupported_version")
         self._version = version
+
+    # ── imported report storage ──────────────────────────────────────
+
+    def _import_report(self, report: ImportedReport) -> bool:
+        """Store an imported report and audit it; False when no store is wired."""
+        if self._reports is None:
+            return False
+        if self._now is not None:
+            report.received_at = self._now()
+        self._reports.save(report)
+        if self._session is not None:
+            from echo_personal_tool.domain.models.audit import AuditAction
+
+            self._session.record_study_audit(
+                AuditAction.INTEROP_RECEIVED,
+                study_key=report.accession_number[:64],
+                details={
+                    "protocol": report.source,
+                    "event": "report.imported",
+                    "report_id": report.report_id[:64],
+                    "measurements": str(len(report.measurements)),
+                    "has_pdf": str(report.pdf_bytes is not None),
+                },
+            )
+        return True
+
+    def imported_reports(self, *, patient_id: str = "") -> list[ImportedReport]:
+        """List stored imported reports, optionally filtered by patient."""
+        if self._reports is None:
+            return []
+        if patient_id:
+            return list(self._reports.list_for_patient(patient_id))
+        return list(self._reports.list_all())
 
     # ── HL7 v2 listener callback ─────────────────────────────────────
 
@@ -55,7 +102,9 @@ class InteropInboundService:
             event = interop_inbound_hl7.parse_inbound(message)
         except Hl7ParseError as exc:
             return self._ack(message, accept=False, error=str(exc.code if hasattr(exc, "code") else exc))
-        if isinstance(event, OrderEvent):
+        if isinstance(event, ImportedReport):
+            self._import_report(event)
+        elif isinstance(event, OrderEvent):
             self._worklist.apply_order(event)
         elif isinstance(event, DemographicsEvent):
             self._worklist.apply_demographics(event)
@@ -103,12 +152,23 @@ class InteropInboundService:
     # ── FHIR inbound poll ────────────────────────────────────────────
 
     def poll_fhir(self, bundle: dict[str, Any]) -> tuple[int, int, int]:
-        """Apply a polled FHIR Bundle; returns (orders, patients, priors) counts."""
+        """Apply a polled FHIR Bundle; returns (orders, patients, priors) counts.
+
+        DiagnosticReport entries that carry a document (presentedForm PDF or a
+        conclusion) are additionally imported as full reports.
+        """
         orders, patients, priors = interop_fhir_inbound.parse_bundle(bundle)
         for order in orders:
             self._worklist.apply_order(order)
         for patient in patients:
             self._worklist.apply_demographics(DemographicsEvent(event="A04", patient=patient, source="fhir"))
+        for entry in bundle.get("entry") or []:
+            resource = entry.get("resource") if isinstance(entry, dict) else None
+            if not isinstance(resource, dict) or resource.get("resourceType") != "DiagnosticReport":
+                continue
+            has_document = bool(resource.get("presentedForm")) or bool(str(resource.get("conclusion", "")).strip())
+            if has_document:
+                self._import_report(interop_fhir_inbound.parse_diagnostic_report_document(resource))
         return len(orders), len(patients), len(priors)
 
     # ── listener policy ──────────────────────────────────────────────
