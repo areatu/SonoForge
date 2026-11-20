@@ -102,6 +102,7 @@ def test_priority_order_and_in_flight_limit(qapp, tmp_path) -> None:
     assert [w.sop_instance_uid for w in pool.started] == ["first", "fg"]
     pool.started[1].signals.finished.emit("fg", QImage())
     assert [w.sop_instance_uid for w in pool.started] == ["first", "fg", "bg"]
+    pool.started[2].signals.finished.emit("bg", QImage())
     assert queue.workers == {}
 
 
