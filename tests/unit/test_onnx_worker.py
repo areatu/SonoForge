@@ -104,6 +104,7 @@ def test_worker_emits_finished_with_mask(
     tmp_path: Path,
 ) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     frame = np.zeros((16, 12), dtype=np.uint8)
     mask = np.ones((16, 12), dtype=np.uint8)
     received: list[np.ndarray] = []
@@ -133,6 +134,7 @@ def test_worker_emits_failed_on_exception(
     tmp_path: Path,
 ) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     frame = np.zeros((8, 8), dtype=np.uint8)
     errors: list[str] = []
 
@@ -163,6 +165,7 @@ def test_worker_emits_timed_out(
     tmp_path: Path,
 ) -> None:
     parent = QWidget()
+    qtbot.addWidget(parent)
     frame = np.zeros((8, 8), dtype=np.uint8)
     timed_out: list[bool] = []
 

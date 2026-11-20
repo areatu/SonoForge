@@ -85,8 +85,9 @@ class TestHoverButtonMixin:
 
 
 class TestAnimateWidgetOpacity:
-    def test_creates_animation(self, qapp_session) -> None:
+    def test_creates_animation(self, qapp_session, qtbot) -> None:
         w = QWidget()
+        qtbot.addWidget(w)
         anim = animate_widget_opacity(w, 0.0, 1.0, duration_ms=100)
         assert anim is not None
 

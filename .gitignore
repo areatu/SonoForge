@@ -57,6 +57,8 @@ logs/
 # pytest
 .pytest_cache/
 .coverage
+.mutmut-cache
+mutants/
 htmlcov/
 
 # mypy

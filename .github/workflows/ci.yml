@@ -898,6 +898,13 @@ jobs:
           python .github/scripts/check_pytest_counts.py \
             --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
           count_status=$?
+          # Issue #622 regression gate: Qt must not report a shared QObject
+          # deleted directly (wrong ownership side) anywhere in the shard log.
+          if grep -q "shared QObject was deleted directly" /tmp/pytest.log; then
+            printf '::error title=Qt shared-QObject warning::deleted directly in this GUI shard (issue 622); use qtbot.addWidget/deleteLater\n'
+            grep -n "shared QObject was deleted directly" /tmp/pytest.log | head -5
+            count_status=1
+          fi
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
             printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
             printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
@@ -1339,6 +1346,14 @@ jobs:
           coverage report --fail-under=80
           coverage report --include='src/echo_personal_tool/domain/*' --fail-under=88
           coverage report --include='src/echo_personal_tool/application/workers/*' --fail-under=82
+          # Issue #620: ratchets for the layers that had no per-layer gate.
+          # Measured on the logic-shard selection (tests/unit, not gui) at
+          # 2026-11-18: application 52%, application without workers 52%,
+          # infrastructure 72%; the GUI shards add a little more. Ceilings sit
+          # a couple of points below the measured values.
+          coverage report --include='src/echo_personal_tool/application/*' --fail-under=50
+          coverage report --include='src/echo_personal_tool/application/*' --omit='*/workers/*' --fail-under=50
+          coverage report --include='src/echo_personal_tool/infrastructure/*' --fail-under=68
           coverage xml -o coverage.xml
           python .github/scripts/check_worker_coverage.py coverage.xml \
             --min-total-percent 82 --min-module-percent 65 --github-summary
