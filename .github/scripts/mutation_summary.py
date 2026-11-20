@@ -42,10 +42,13 @@ def main() -> int:
     survived = int(stats.get("survived", 0))
     score = (100.0 * killed / total) if total else 0.0
     print(f"mutation score: {score:.1f}% ({killed}/{total} killed, {survived} survived)")
+    # Workflow command: surfaces the score as a check-run annotation, so the
+    # baseline can be established from CI even where job logs are not fetched.
+    print(f"::notice title=Mutation score::score {score:.1f}% — {killed}/{total} killed, {survived} survived")
 
     survivors = [m for m in data.get("mutants", []) if m.get("status") == "survived"]
     lines = [
-        f"### Mutation testing (domain calculations/calculators)",
+        "### Mutation testing (domain calculations/calculators)",
         f"score {score:.1f}% — {survived} surviving mutants",
         "",
     ]
