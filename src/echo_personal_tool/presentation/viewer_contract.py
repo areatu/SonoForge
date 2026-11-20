@@ -118,6 +118,13 @@ _CONTOUR_STATE_MEMBERS = {
     "upsert_stored_contour": "upsert",
 }
 
+#: Members whose owner moved from ``ViewerWidget`` to ``DebugOverlayController`` (#619).
+_DEBUG_OVERLAY_MEMBERS = {
+    "debug_overlay_label": "label",
+    "debug_overlay_visible": "visible",
+    "debug_roi_item": "roi_item",
+}
+
 
 #: Every private member exposed through the seam. Frozen by the architecture
 #: test; do not add a name without a reviewed allowlist change.
@@ -348,6 +355,9 @@ class ViewerContract:
             contour_state = getattr(self._viewer, "contour_state", None)
             if contour_state is not None and name in _CONTOUR_STATE_MEMBERS:
                 return getattr(contour_state, _CONTOUR_STATE_MEMBERS[name])
+            debug_overlay = getattr(self._viewer, "debug_overlay", None)
+            if debug_overlay is not None and name in _DEBUG_OVERLAY_MEMBERS:
+                return getattr(debug_overlay, _DEBUG_OVERLAY_MEMBERS[name])
             return getattr(self._viewer, private)
         raise AttributeError(f"ViewerContract has no member {name!r}; add it to the reviewed allowlist")
 
@@ -376,6 +386,10 @@ class ViewerContract:
             contour_state = getattr(self._viewer, "contour_state", None)
             if contour_state is not None and name in _CONTOUR_STATE_MEMBERS:
                 setattr(contour_state, _CONTOUR_STATE_MEMBERS[name], value)
+                return
+            debug_overlay = getattr(self._viewer, "debug_overlay", None)
+            if debug_overlay is not None and name in _DEBUG_OVERLAY_MEMBERS:
+                setattr(debug_overlay, _DEBUG_OVERLAY_MEMBERS[name], value)
                 return
             setattr(self._viewer, private, value)
             return

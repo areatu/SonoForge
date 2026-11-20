@@ -127,7 +127,6 @@ from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
 from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
-from echo_personal_tool.presentation.display_formats import format_dpr, format_scale_factor
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
@@ -145,6 +144,7 @@ from echo_personal_tool.presentation.viewer.compare_tools import (
 )
 from echo_personal_tool.presentation.viewer.context import ViewerContext, ViewerPaneIdentity, ViewTransform
 from echo_personal_tool.presentation.viewer.contours import ContourStateAttribute, ViewerContours
+from echo_personal_tool.presentation.viewer.debug_overlay import DebugOverlayController
 from echo_personal_tool.presentation.viewer.dicom_window_menu import add_dicom_window_actions
 from echo_personal_tool.presentation.viewer.display import ViewerDisplay
 from echo_personal_tool.presentation.viewer.doppler_controller import (
@@ -1126,15 +1126,6 @@ class ViewerWidget(QWidget):
         self._results_overlay_label.parameter_clicked.connect(self.results_overlay_parameter_clicked.emit)
         self._results_overlay_label.hide()
 
-        self._debug_overlay_visible = False
-        self._debug_overlay_label = QLabel(self)
-        self._debug_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._debug_overlay_label.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 180); color: #0f0; font-family: monospace; font-size: 11px; padding: 4px;"
-        )
-        self._debug_overlay_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._debug_overlay_label.hide()
-
         # ── QH-3 composition pilot (overlay / magnifier / context) ──────────
         # ViewerWidget stays the Qt facade; logic lives in small owner-scoped
         # controllers. Overlay widgets remain children of the viewer for Qt
@@ -1160,11 +1151,20 @@ class ViewerWidget(QWidget):
                 self._scene_pos_under_cursor() if hasattr(self, "_scene_pos_under_cursor") else None
             ),
         )
+        self.debug_overlay = DebugOverlayController(
+            parent=self,
+            view=self._view,
+            frame_provider=lambda: self._current_frame,
+            state_provider=lambda: self._current_state,
+            graphics_provider=lambda: self._graphics,
+            roi_provider=self._get_last_segment_roi,
+        )
         # Live owner-scoped controllers share the generation-scoped context (S-02, S-05).
         self._all_qh3_controllers: list[QObject] = [
             self._results_overlay_controller,
             self.tags_overlay,
             self._magnifier_controller,
+            self.debug_overlay,
         ]
 
         attach_loop_controls(self, enabled=loop_controls)
@@ -2045,59 +2045,18 @@ class ViewerWidget(QWidget):
 
     @property
     def is_debug_overlay_visible(self) -> bool:
-        return self._debug_overlay_visible
+        return self.debug_overlay.is_visible()
 
     def debug_overlay_text(self) -> str:
         """Text of the debug overlay while it is on; an empty string while it is off."""
-        return self._debug_overlay_label.text() if self._debug_overlay_visible else ""
+        return self.debug_overlay.text()
 
     @_prof
     def toggle_debug_overlay(self) -> None:
-        self._debug_overlay_visible = not self._debug_overlay_visible
-        if self._debug_overlay_visible:
-            self._update_debug_overlay()
-            self._debug_overlay_label.show()
-        else:
-            self._debug_overlay_label.hide()
-            self._draw_debug_roi_rect(None)
-        self._debug_roi_item: pg.PlotDataItem | None = None
+        self.debug_overlay.toggle()
 
     def _update_debug_overlay(self) -> None:
-        if not self._debug_overlay_visible:
-            return
-        lines: list[str] = []
-        if self._current_frame is not None:
-            h, w = self._current_frame.shape[:2]
-            lines.append(f"Native: {w}x{h}")
-        geo = self._graphics.geometry()
-        vw, vh = geo.width(), geo.height()
-        lines.append(f"Viewport: {vw}x{vh}")
-        if self._current_frame is not None:
-            h, w = self._current_frame.shape[:2]
-            if w > 0 and h > 0:
-                scale = max(vw / w, vh / h)
-                lines.append(f"Scale: {format_scale_factor(scale)}x")
-        dpr = self._graphics.devicePixelRatioF()
-        lines.append(f"DPR: {format_dpr(dpr)}")
-        if self._current_state and self._current_state.instance:
-            inst = self._current_state.instance
-            lines.append(f"Format: {inst.media_format}")
-            lines.append(f"Frames: {inst.number_of_frames}")
-        # ROI info
-        roi = self._get_last_segment_roi()
-        if roi is not None:
-            x0, y0, x1, y1 = roi
-            lines.append(f"ROI: {int(x0)},{int(y0)}-{int(x1)},{int(y1)}")
-        self._debug_overlay_label.setText("\n".join(lines))
-        self._debug_overlay_label.adjustSize()
-        geo_viewer = self._graphics.geometry()
-        self._debug_overlay_label.move(
-            geo_viewer.x() + 4,
-            geo_viewer.y() + 4,
-        )
-        self._debug_overlay_label.raise_()
-        # Draw ROI rectangle on ViewBox
-        self._draw_debug_roi_rect(roi)
+        self.debug_overlay.update()
 
     def _get_last_segment_roi(self) -> tuple[float, float, float, float] | None:
         """Get last auto-segment ROI from the controller (if a provider was wired)."""
@@ -2107,28 +2066,7 @@ class ViewerWidget(QWidget):
 
     def _draw_debug_roi_rect(self, roi: tuple[float, float, float, float] | None) -> None:
         """Draw ROI rectangle on ViewBox when debug overlay is visible."""
-        # Remove previous ROI rect
-        if hasattr(self, "_debug_roi_item") and self._debug_roi_item is not None:
-            self._view.removeItem(self._debug_roi_item)
-            self._debug_roi_item = None
-
-        if roi is None or not self._debug_overlay_visible:
-            return
-
-        x0, y0, x1, y1 = roi
-        pen = pg.mkPen(dark_theme.get_theme_tokens()["state.err"], width=1, style=Qt.PenStyle.DashLine)
-        rect_item = pg.PlotDataItem(
-            pen=pen,
-            connect="all",
-        )
-        rect_item.setZValue(25)
-        # Draw rectangle as closed polygon
-        rect_item.setData(
-            [x0, x1, x1, x0, x0],
-            [y0, y0, y1, y1, y0],
-        )
-        self._view.addItem(rect_item)
-        self._debug_roi_item = rect_item
+        self.debug_overlay.draw_roi_rect(roi)
 
     def _mark_results_overlay_custom_position(self) -> None:
         self._results_overlay_controller.mark_custom_position()
