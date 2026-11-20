@@ -166,6 +166,24 @@ def gradation_rank(name: str) -> int:
     return len(_GRADE_STEMS)
 
 
+#: Print-safe fills of the four gradations (light surface — the report sheet is
+#: paper).  The hue matches :mod:`presentation.reference_grades`; this copy
+#: stays Qt- and presentation-free so the PDF renderer (infrastructure) can
+#: paint the norm dot without importing the UI layer (issue 277).
+_GRADE_FILL_HEX: dict[str, str] = {
+    "normal": "#16a34a",
+    "mild": "#d97706",
+    "moderate": "#ea580c",
+    "severe": "#dc2626",
+}
+
+
+def grade_fill_hex(name: str) -> str | None:
+    """Print fill colour of a gradation name («Норма» → green), or ``None``."""
+    key = gradation_key(name)
+    return _GRADE_FILL_HEX.get(key)
+
+
 @dataclass(frozen=True)
 class TopicEntry:
     """One row of the left navigation: a topic and how much it holds."""

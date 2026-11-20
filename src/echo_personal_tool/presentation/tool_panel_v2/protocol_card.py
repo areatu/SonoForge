@@ -15,9 +15,9 @@ pure domain value) and emits ``protocol_selected`` / ``step_activated`` /
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -38,8 +38,12 @@ from echo_personal_tool.domain.protocols import (
     ProtocolSpec,
     StepState,
 )
+from echo_personal_tool.domain.services.reference_card import ReferenceCardModel
+from echo_personal_tool.domain.services.reference_topics import PROJECTION_TO_HANDBOOK
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
 from echo_personal_tool.presentation.rap_reference import RAP_PARAM_KEY, RapReferenceHover
+from echo_personal_tool.presentation.reference_card import card_for_row
+from echo_personal_tool.presentation.reference_grades import grade_colors
 from echo_personal_tool.presentation.theme.button_feedback import ButtonFeedback
 from echo_personal_tool.presentation.theme.controls import BUTTON_RADIUS, button_qss
 from echo_personal_tool.presentation.theme.token_restyle import TokenRestyleMixin
@@ -61,6 +65,29 @@ _STEP_GLYPH: dict[StepState, str] = {
 #: 260 px inside a 258 px viewport — the right tile («КСО · 4-кам.») was cut
 #: by the window edge (2026-10-30 Linux report, item 2).
 _TILE_COLUMNS = 2
+
+
+def protocol_card_labels() -> dict[str, str]:
+    """Localized strings of the card (title, stop, footer, reason words).
+
+    Lives next to the card (not in the panel) so the panel module stays under
+    its class-size ceiling; the panel delegates to it.
+    """
+    from echo_personal_tool.application.localization import tr
+
+    return {
+        "title": tr("panel.protocol_title"),
+        "none": tr("panel.protocol_none"),
+        "stop": tr("panel.protocol_stop"),
+        "derived": tr("panel.protocol_derived"),
+        "skipped": tr("panel.protocol_skipped"),
+        "stale": tr("panel.protocol_stale"),
+        "lock_mode": tr("panel.protocol_lock_mode"),
+        "lock_view": tr("panel.protocol_lock_view"),
+        "lock_req": tr("panel.protocol_lock_req"),
+        "auto_advance": tr("panel.auto_advance"),
+        "skip": tr("panel.protocol_skip"),
+    }
 
 
 class ProtocolCard(TokenRestyleMixin, QFrame):
@@ -91,6 +118,18 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
         self._step_columns = _TILE_COLUMNS
         self._rap_hover = RapReferenceHover(self)
         self._rap_hover.reference_requested.connect(self.rap_reference_requested.emit)
+        #: Second hover host for the handbook-bound step tiles (issue 277, §4.7):
+        #: every tile opens the S2 card of its own parameter, not RAP's.
+        self._step_hover = RapReferenceHover(self)
+        self._step_hover.reference_requested.connect(self.rap_reference_requested.emit)
+        #: step index → projection key with a handbook binding (norm dot + card).
+        self._step_keys: dict[int, str] = {}
+        self._step_dots: dict[int, QLabel] = {}
+        self._dot_tiles: dict[QLabel, QPushButton] = {}
+        #: projection key → (value in its displayed unit, unit) of the study.
+        self._step_values: dict[str, tuple[float | None, str]] = {}
+        self._norms_visible = False
+        self._sex_provider: Callable[[], str] = lambda: ""
 
         self._title = QLabel()
         self._title.setObjectName("protocolCardTitle")
@@ -279,10 +318,17 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             item = self._steps_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.removeEventFilter(self)
                 widget.deleteLater()
         self._tile_buttons.clear()
+        self._step_keys.clear()
+        self._step_dots.clear()
+        self._dot_tiles.clear()
         self._step_columns = _TILE_COLUMNS
+        self._rap_hover.detach_all()
         self._rap_hover.hide_now()
+        self._step_hover.detach_all()
+        self._step_hover.hide_now()
 
     def _fill_steps(self, progress: ProtocolProgress) -> None:
         self._clear_tiles()
@@ -308,11 +354,117 @@ class ProtocolCard(TokenRestyleMixin, QFrame):
             self._steps_layout.addWidget(row, position // _TILE_COLUMNS, position % _TILE_COLUMNS)
             self._tile_buttons.append(row)
             ButtonFeedback.install(row)
-            if RAP_PARAM_KEY in spec.steps[step.index].satisfied_keys:
+            satisfied = spec.steps[step.index].satisfied_keys
+            if RAP_PARAM_KEY in satisfied:
                 # The RAP step is a physician input: hover it for the same S2
                 # card the measurement rows show (norm, gradations, source).
                 self._rap_hover.attach(row)
+            handbook_key = next((key for key in satisfied if key in PROJECTION_TO_HANDBOOK), "")
+            if handbook_key:
+                # issue 277, §4.7: a step whose parameter the handbook binds gets a
+                # norm dot (left edge, gradation colour) and the S2 hover card.
+                self._step_keys[step.index] = handbook_key
+                dot = QLabel(row)
+                dot.setObjectName("protocolStepNormDot")
+                dot.setFixedSize(8, 8)
+                dot.hide()
+                self._step_dots[step.index] = dot
+                self._dot_tiles[dot] = row
+                row.setProperty("hasNormDot", "true")
+                # Re-evaluate the [hasNormDot] selector (the dot needs padding).
+                row.style().unpolish(row)
+                row.style().polish(row)
+                row.installEventFilter(self)
+                self._step_hover.attach(row, self._step_card_factory(handbook_key, label))
+        self._update_step_dots()
         self._reflow_steps()
+
+    # ── Norm dots and S2 cards of the step tiles (issue 277) ─────────────
+
+    def set_step_values(self, values: dict[str, tuple[float | None, str]]) -> None:
+        """Measured ``key → (value, unit)`` of the study, for dots and cards."""
+        self._step_values = dict(values or {})
+        self._update_step_dots()
+
+    def set_tool_statuses(self, statuses: Iterable) -> None:
+        """Pull the measured values out of the panel's tool statuses (issue 277).
+
+        The step tiles read the same values the measurement rows show, so a
+        step without its own row still gets its norm dot and its S2 card.
+        """
+        self.set_step_values(
+            {
+                str(getattr(status, "key", "") or ""): (
+                    getattr(status, "value", None),
+                    getattr(status, "unit", "") or "",
+                )
+                for status in statuses
+                if getattr(status, "key", "") and getattr(status, "value", None) is not None
+            }
+        )
+
+    def set_norms_visible(self, visible: bool) -> None:
+        """The panel's «Нормы» switch also drives the step dots."""
+        self._norms_visible = bool(visible)
+        self._update_step_dots()
+
+    def set_reference_sex_provider(self, provider: Callable[[], str] | None) -> None:
+        """Sex of the patient for the norms («male» / «female» / ``""``)."""
+        self._sex_provider = provider or (lambda: "")
+
+    def refresh_norm_dots(self) -> None:
+        """Re-paint the dots after a theme switch (the colour pair differs)."""
+        self._update_step_dots()
+
+    def _sex(self) -> str:
+        try:
+            return str(self._sex_provider() or "")
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return ""
+
+    def _step_card_factory(self, key: str, label: str) -> Callable[[], ReferenceCardModel]:
+        """The S2 model factory of one step tile: its own parameter and value."""
+
+        def factory() -> ReferenceCardModel:
+            value, unit = self._step_values.get(key, (None, ""))
+            return card_for_row(
+                key,
+                value=value,
+                unit=unit,
+                sex=self._sex(),
+                language=self._language,
+                label=label,
+                full_name=label,
+            )
+
+        return factory
+
+    def _update_step_dots(self) -> None:
+        """Paint every step dot with the gradation of its current value."""
+        for index, key in self._step_keys.items():
+            dot = self._step_dots.get(index)
+            if dot is None:
+                continue
+            grade = ""
+            value, unit = self._step_values.get(key, (None, ""))
+            if self._norms_visible and value is not None:
+                model = card_for_row(key, value=value, unit=unit, sex=self._sex(), language=self._language)
+                grade = model.grade.name if model.grade is not None else ""
+            colors = grade_colors(grade) if grade else None
+            if colors is None:
+                dot.hide()
+            else:
+                # The solid half of the pair: a dot has no room for a tinted fill.
+                dot.setStyleSheet(f"background: {colors[1]}; border-radius: 4px;")
+                dot.show()
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API
+        # Keep each norm dot vertically centred on the left edge of its tile.
+        if event.type() == QEvent.Type.Resize and isinstance(obj, QWidget) and obj in self._dot_tiles.values():
+            dot = next((d for d, tile in self._dot_tiles.items() if tile is obj), None)
+            if dot is not None:
+                dot.move(4, max(0, (obj.height() - dot.height()) // 2))
+        return super().eventFilter(obj, event)
 
     # ── Geometry ───────────────────────────────────────────────────
 

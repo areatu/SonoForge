@@ -140,7 +140,7 @@ def test_the_strip_touches_its_controls_only_when_the_gate_list_changed(qtbot, m
     row = ToolButtonRow()
     qtbot.addWidget(row)
     specs = row.specs()
-    caliper = row.button("caliper")
+    caliper = row.button("tool.caliper")
     assert caliper is not None
 
     refreshes: list[bool] = []
@@ -151,15 +151,15 @@ def test_the_strip_touches_its_controls_only_when_the_gate_list_changed(qtbot, m
     row.set_specs(specs)
     assert refreshes == [], "the same gates again are not a reason to repaint"
     assert rebuilds == []
-    assert row.button("caliper") is caliper
+    assert row.button("tool.caliper") is caliper
 
-    moved = tuple(replace(spec, separated=not spec.separated) if spec.id == "caliper" else spec for spec in specs)
+    moved = tuple(replace(spec, separated=not spec.separated) if spec.id == "tool.caliper" else spec for spec in specs)
     assert moved != specs, "the test must change a cell, not restate the list"
     row.set_specs(moved)
     assert refreshes == [True], "a changed cell of the same ids repaints in place"
     assert rebuilds == []
     assert row.specs() == moved
-    assert row.button("caliper") is caliper, "the control the clinician presses survives"
+    assert row.button("tool.caliper") is caliper, "the control the clinician presses survives"
 
     row.set_specs(tuple(spec for spec in specs if spec.id != "ds_markers"))
     assert rebuilds == [True], "a different set of ids is a different strip"
