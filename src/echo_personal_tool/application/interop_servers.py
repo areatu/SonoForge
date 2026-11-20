@@ -38,12 +38,14 @@ class InteropServerRunner:
     """Owns the worklist store and the two inbound listeners."""
 
     def __init__(self, *, settings: Any, store_path: Path, session: Any = None) -> None:
+        from echo_personal_tool.infrastructure.imported_report_store import ImportedReportStore
         from echo_personal_tool.infrastructure.worklist_repository import WorklistRepository
 
         self._settings = settings
         self.store = WorklistRepository(store_path)
+        self.reports = ImportedReportStore(store_path.parent / "imported_reports.json")
         self.worklist = WorklistService(store=self.store, session=session)
-        self.inbound = InteropInboundService(worklist=self.worklist)
+        self.inbound = InteropInboundService(worklist=self.worklist, reports=self.reports, session=session)
         self._hl7_server: Any = None
         self._mwl_scp: Any = None
 

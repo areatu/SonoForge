@@ -1,11 +1,15 @@
 """Pure FHIR R4 inbound parsers: ServiceRequest / Patient / DiagnosticReport /
-Observation (#626). Mirrors the outbound shapes built by ``interop_fhir``.
+Observation (#626), plus DiagnosticReport *documents* (full report import with
+presentedForm PDF and contained Observations).
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 from typing import Any
 
+from echo_personal_tool.domain.models.imported_report import ImportedMeasurement, ImportedReport
 from echo_personal_tool.domain.models.worklist import (
     OrderEvent,
     PatientDemographics,
@@ -153,3 +157,78 @@ def parse_bundle(bundle: dict[str, Any]) -> tuple[list[OrderEvent], list[Patient
         elif kind == "DiagnosticReport":
             priors.extend(parse_diagnostic_report(resource))
     return orders, patients, priors
+
+
+def parse_diagnostic_report_document(resource: dict[str, Any]) -> ImportedReport:
+    """FHIR DiagnosticReport -> :class:`ImportedReport` (full inbound document).
+
+    Reads ``presentedForm`` (Base64 PDF attachment), ``conclusion`` as the text
+    conclusion, contained/result Observations as measurements, ``code`` as the
+    procedure, ``effectiveDateTime`` as the observation time and the report
+    ``status``.  Raises :class:`FhirParseError` for non-DiagnosticReport input.
+    """
+    if resource.get("resourceType") != "DiagnosticReport":
+        raise FhirParseError("not_a_diagnostic_report")
+    report_id = str(resource.get("id", ""))
+    patient_id = _ref_id(resource.get("subject"))
+    code = resource.get("code") or {}
+    procedure_code = _coding_code(resource, ("code",))
+    procedure_description = str(code.get("text", ""))
+    status = str(resource.get("status", "final"))
+    observed_at = str(resource.get("effectiveDateTime", ""))
+    conclusion = str(resource.get("conclusion", ""))
+    pdf_bytes: bytes | None = None
+    pdf_title = ""
+    for form in resource.get("presentedForm") or []:
+        if not isinstance(form, dict):
+            continue
+        content_type = str(form.get("contentType", ""))
+        data = form.get("data")
+        if content_type == "application/pdf" and isinstance(data, str) and data:
+            try:
+                pdf_bytes = base64.b64decode(data.encode("ascii"), validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise FhirParseError("bad_presented_form") from exc
+            pdf_title = str(form.get("title", ""))
+            break
+    measurements: list[ImportedMeasurement] = []
+    for contained in resource.get("contained") or []:
+        if isinstance(contained, dict) and contained.get("resourceType") == "Observation":
+            obs = parse_observation(contained)
+            quantity_code = ""
+            value_quantity = contained.get("valueQuantity")
+            if isinstance(value_quantity, dict):
+                quantity_code = str(value_quantity.get("code", ""))
+            interpretation = ""
+            interp = contained.get("interpretation") or []
+            if interp and isinstance(interp[0], dict):
+                codings = interp[0].get("coding") or []
+                if codings and isinstance(codings[0], dict):
+                    interpretation = str(codings[0].get("code", ""))
+            measurements.append(
+                ImportedMeasurement(
+                    code=obs.loinc,
+                    text=str((contained.get("code") or {}).get("text", ""))
+                    if isinstance(contained.get("code"), dict)
+                    else "",
+                    value=obs.value,
+                    unit=quantity_code or obs.unit,
+                    norm="",
+                    flag=interpretation,
+                    status=status,
+                    datetime=obs.effective_datetime,
+                )
+            )
+    return ImportedReport(
+        report_id=report_id,
+        source="fhir",
+        patient=PatientDemographics(patient_id=patient_id) if patient_id else None,
+        procedure_code=procedure_code,
+        procedure_description=procedure_description,
+        conclusion=conclusion,
+        status=status,
+        observed_at=observed_at,
+        measurements=measurements,
+        pdf_bytes=pdf_bytes,
+        pdf_title=pdf_title,
+    )
