@@ -14,6 +14,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +195,7 @@ def unit_scale_for_label(label: str) -> float:
 
 
 @lru_cache(maxsize=1)
-def _store():
+def _store() -> ReferenceDataStore | None:
     """Lazily loaded reference data (the YAML is parsed once per process)."""
     from yaml import YAMLError
 
@@ -247,6 +251,6 @@ def norm_grade_for(
             low_ok = rng.low is None or ref_value >= rng.low
             high_ok = rng.high is None or ref_value <= rng.high
             if low_ok and high_ok:
-                return gradation.name
+                return str(gradation.name)
         return ""
     return ""

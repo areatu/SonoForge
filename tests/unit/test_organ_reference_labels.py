@@ -13,7 +13,7 @@ import pytest
 
 from echo_personal_tool.domain.measurement_catalog import MEASUREMENTS
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-from echo_personal_tool.domain.services.report_builder import _LABEL_TO_PARAM_ID
+from echo_personal_tool.domain.services.report_norm_lookup import LABEL_TO_PARAM_ID as _LABEL_TO_PARAM_ID
 
 #: Measurement id → handbook parameter id, for the measurements the organ
 #: profiles added (and the ones they share with the abdominal study).
