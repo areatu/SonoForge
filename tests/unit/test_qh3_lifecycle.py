@@ -47,18 +47,19 @@ class TestQH3Lifecycle:
         # Context is created even before first state
         assert hasattr(w, "_viewer_context")
         assert hasattr(w, "_all_qh3_controllers")
-        assert len(w._all_qh3_controllers) == 3
+        assert len(w._all_qh3_controllers) == 4
         names = w.qh3_controller_inventory()
         assert names == [
             "ResultsOverlayController",
             "TagsOverlayController",
             "MagnifierController",
+            "DebugOverlayController",
         ]
         # issue 420 + issue 466 (dead/unwired owner cleanup): removed outright,
-        # never dispatched to by ViewerWidget.
+        # never dispatched to by ViewerWidget. DebugOverlayController is back as
+        # a live owner since the debug-overlay extraction (#619).
         for removed in (
             "FrameOverlayController",
-            "DebugOverlayController",
             "ToolInteractionController",
             "ContourEditingController",
             "CalibrationController",
@@ -69,7 +70,7 @@ class TestQH3Lifecycle:
         w.dispose_viewer_resources()
         w.dispose_viewer_resources()
         # Controllers still exist but their signals are disconnected
-        assert len(w._all_qh3_controllers) == 3
+        assert len(w._all_qh3_controllers) == 4
         w.close()
         qtbot.waitUntil(lambda: not w.isVisible(), timeout=1000)
 
@@ -82,7 +83,7 @@ class TestQH3Lifecycle:
             qtbot.waitExposed(w, timeout=2000)
             # Touch a generation (triggers context propagation to controllers)
             w._sync_viewer_context()
-            assert len(w.qh3_controller_inventory()) == 3
+            assert len(w.qh3_controller_inventory()) == 4
             # Teardown path that 500-cycle harness uses
             w.dispose_viewer_resources()
             w.close()

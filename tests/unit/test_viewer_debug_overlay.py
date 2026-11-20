@@ -29,7 +29,10 @@ from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 pytestmark = pytest.mark.gui
 
 
-def _controller(qtbot, roi=None) -> DebugOverlayController:
+def _controller(qtbot, roi=None) -> tuple[QWidget, DebugOverlayController]:
+    # The host must stay referenced for the whole test: pytest-qt tracks
+    # widgets by weakref and a parentless QWidget is deleted with its C++
+    # object (and the child label) as soon as the last Python ref is gone.
     host = QWidget()
     qtbot.addWidget(host)
     graphics = SimpleNamespace(
@@ -44,7 +47,7 @@ def _controller(qtbot, roi=None) -> DebugOverlayController:
         graphics_provider=lambda: graphics,
         roi_provider=lambda: roi,
     )
-    return controller
+    return host, controller
 
 
 class _FakeView:
@@ -62,7 +65,7 @@ class _FakeView:
 @pytest.mark.gui
 class TestDebugOverlayOwner:
     def test_toggle_flips_visibility_and_label(self, qtbot) -> None:
-        controller = _controller(qtbot)
+        _host, controller = _controller(qtbot)
         assert controller.is_visible() is False
         assert controller.text() == ""
         assert controller.label.isHidden()
@@ -81,13 +84,13 @@ class TestDebugOverlayOwner:
         assert controller.label.isHidden()
 
     def test_update_is_a_no_op_while_hidden(self, qtbot) -> None:
-        controller = _controller(qtbot)
+        _host, controller = _controller(qtbot)
         controller.update()
         assert controller.label.text() == ""
         assert controller.is_visible() is False
 
     def test_roi_rect_drawn_only_while_visible(self, qtbot) -> None:
-        controller = _controller(qtbot, roi=(1.0, 2.0, 30.0, 40.0))
+        _host, controller = _controller(qtbot, roi=(1.0, 2.0, 30.0, 40.0))
         controller.toggle()
         assert controller.roi_item is not None
         assert "ROI: 1,2-30,40" in controller.text()
@@ -96,7 +99,7 @@ class TestDebugOverlayOwner:
         assert controller.roi_item is None
 
     def test_dispose_hides_label_and_clears_roi(self, qtbot) -> None:
-        controller = _controller(qtbot, roi=(0.0, 0.0, 5.0, 5.0))
+        _host, controller = _controller(qtbot, roi=(0.0, 0.0, 5.0, 5.0))
         controller.toggle()
         assert controller.roi_item is not None
         controller.dispose()
