@@ -20,6 +20,10 @@ class ReportValue:
     unit: str = ""
     norm: str = ""
     pathological: bool = False
+    #: Gradation of ``value`` against the handbook norm («Норма» …; issue 277).
+    #: Empty when the row has no handbook binding or no value — the norm dot
+    #: then stays off, exactly as on the panel rows.
+    norm_grade: str = ""
     group: str = GROUP_OTHER
     #: Number of repeats that actually contributed to an averaged value (D-23).
     #: Kept separate from ``value`` so norms and machine consumers still see

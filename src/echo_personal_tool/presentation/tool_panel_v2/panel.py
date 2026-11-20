@@ -1833,6 +1833,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             row.set_norm_grade(self._norm_grade_of(status))
             if status.state is not ToolState.NONE:
                 row.set_status(glyphs[status.state], status.reason)
+        self._protocol_card.set_tool_statuses(statuses)
 
     # ── S2 norm card and norm dots (UI-5) ──────────────────────────
 
@@ -1889,6 +1890,7 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         protocol_card = getattr(self, "_protocol_card", None)
         if protocol_card is not None:
             protocol_card._rap_hover.hide_now()
+            protocol_card._step_hover.hide_now()
         from echo_personal_tool.application.localization import get_language
 
         label = row.tool.label(get_language())
@@ -1956,12 +1958,14 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
         protocol_card = getattr(self, "_protocol_card", None)
         if protocol_card is not None:
             protocol_card._rap_hover.hide_now()
+            protocol_card._step_hover.hide_now()
         self._suppress_row_tooltips(None)
 
     def _on_norms_toggled(self, checked: bool) -> None:
         self._norms_visible = bool(checked)
         for row in self._rows.values():
             row.set_norms_visible(self._norms_visible)
+        self._protocol_card.set_norms_visible(self._norms_visible)
         self.norms_toggled.emit(self._norms_visible)
 
     def norms_visible(self) -> bool:
@@ -1982,21 +1986,9 @@ class ToolPanelV2(TokenRestyleMixin, QWidget):
             row.set_norm_grade(row.norm_grade)
 
     def _protocol_labels(self) -> dict[str, str]:
-        from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.presentation.tool_panel_v2.protocol_card import protocol_card_labels
 
-        return {
-            "title": tr("panel.protocol_title"),
-            "none": tr("panel.protocol_none"),
-            "stop": tr("panel.protocol_stop"),
-            "derived": tr("panel.protocol_derived"),
-            "skipped": tr("panel.protocol_skipped"),
-            "stale": tr("panel.protocol_stale"),
-            "lock_mode": tr("panel.protocol_lock_mode"),
-            "lock_view": tr("panel.protocol_lock_view"),
-            "lock_req": tr("panel.protocol_lock_req"),
-            "auto_advance": tr("panel.auto_advance"),
-            "skip": tr("panel.protocol_skip"),
-        }
+        return protocol_card_labels()
 
     def _language(self) -> str:
         from echo_personal_tool.application.localization import get_language

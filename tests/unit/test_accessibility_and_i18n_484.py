@@ -144,7 +144,7 @@ class TestMainWorkflowAccessibleDescriptions:
 
         # Open -> Calibration -> Contour/Area -> Results overlay -> Report/PDF
         cal_btn = rail.button("calibration")
-        area_btn = rail.button("spline_area")
+        area_btn = rail.button("tool.area")
         assert cal_btn is not None and area_btn is not None
 
         workflow_controls = (

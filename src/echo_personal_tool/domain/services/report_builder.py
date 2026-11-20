@@ -19,8 +19,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
-    from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-
 from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
 from echo_personal_tool.domain.calculations.right_atrial_pressure import rap_from_ivc_pair
@@ -81,12 +79,13 @@ from echo_personal_tool.domain.services.organ_volumes import (
     organ_volume_ml,
     thyroid_lobe_volume_ml,
 )
-from echo_personal_tool.domain.services.reference_data_store import register_cache_invalidator
+from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore, register_cache_invalidator
 from echo_personal_tool.domain.services.report_document import PatientInfo as PatientInfo
 from echo_personal_tool.domain.services.report_document import ReportDocument as ReportDocument
 from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
 from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
 from echo_personal_tool.domain.services.report_document import without_values as without_values
+from echo_personal_tool.domain.services.report_grades import norm_grade_for
 from echo_personal_tool.domain.services.report_provenance import (
     LVEDD_ALIASES,
     LVESD_ALIASES,
@@ -603,6 +602,7 @@ def _value(
     if value is None:
         return None
     pathological, norm_text = is_pathological(label, value, sex, norm_label=norm_label, scale=scale)
+    grade = norm_grade_for(label, value, sex, norm_label=norm_label, scale=scale) if norm_text else ""
     resolved = group or group_for_label(label)
     if resolved == GROUP_OTHER and default_group is not None:
         resolved = default_group
@@ -613,6 +613,7 @@ def _value(
         unit=unit,
         norm=norm_text,
         pathological=pathological,
+        norm_grade=grade,
         group=resolved,
         sample_count=sample_count,
         repeat_sd=f"{repeat_sd:.2f}" if repeat_sd is not None else "",

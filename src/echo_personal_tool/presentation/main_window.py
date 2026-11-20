@@ -1724,8 +1724,8 @@ class MainWindow(QMainWindow):
             "guide": self._open_user_guide,
             "about": self._show_about,
             "caliper": lambda: self._on_caliper_requested(),
-            "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
-            "tool_spline_volume": lambda: self._on_tool_button_requested("spline_volume"),
+            "tool_spline_area": lambda: self._on_tool_button_requested("tool.area"),
+            "tool_spline_volume": lambda: self._on_tool_button_requested("tool.volume"),
             "tool_manual_contour": lambda: self._on_tool_button_requested("manual_contour"),
             "tool_model_contour": lambda: self._on_tool_button_requested("model_contour"),
             "tool_vti_trace": lambda: self._on_tool_button_requested("vti_trace"),
@@ -2720,7 +2720,7 @@ class MainWindow(QMainWindow):
             return "model_contour"
         # Both are Qt properties of the viewer, not methods.
         if getattr(viewer, "is_linear_caliper_active", False):
-            return "caliper"
+            return "tool.caliper"  # the strip button carries the catalog id (variant В, issue 275)
         if getattr(viewer, "is_contour_mode_active", False):
             # Three contour tools share one flag on the viewer; its kind says
             # which button was pressed.  A closed contour (area / volume) has no
