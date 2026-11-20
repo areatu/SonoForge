@@ -104,5 +104,5 @@ def install_tooltip_wrapping(widget: QObject) -> TooltipWrapFilter:
         return existing
     wrapped = TooltipWrapFilter(widget)
     widget.installEventFilter(wrapped)
-    widget._tooltip_wrap_filter = wrapped
+    setattr(widget, "_tooltip_wrap_filter", wrapped)
     return wrapped

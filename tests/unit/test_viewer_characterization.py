@@ -409,6 +409,7 @@ def test_qh3_owner_inventory_is_stable_across_disposal(qtbot) -> None:
         "ResultsOverlayController",
         "TagsOverlayController",
         "MagnifierController",
+        "DebugOverlayController",
     ]
 
     viewer.dispose_viewer_resources()

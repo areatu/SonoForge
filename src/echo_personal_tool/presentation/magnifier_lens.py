@@ -201,7 +201,7 @@ class MagnifierLens(QWidget):
         # Single white rim + crosshair + badge.
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor(240, 244, 248, 245), 2.0))
-        p.drawEllipse(cx - radius, cy - radius, radius * 2, radius * 2)
+        p.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
         p.setPen(QPen(QColor(255, 255, 255, 210), 1.0))
         p.drawLine(int(cx - 10), int(cy), int(cx + 10), int(cy))
         p.drawLine(int(cx), int(cy - 10), int(cx), int(cy + 10))

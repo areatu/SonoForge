@@ -2,8 +2,8 @@
   "comment": "Ratcheted ceiling of mypy --strict errors in presentation modules not yet in [tool.mypy].files (#476). Counts may only decrease; modules reaching 0 errors (with clean presentation imports) graduate to [tool.mypy].files via --fix.",
   "origin_issue": 476,
   "python_version": "3.11",
-  "total_files": 67,
-  "total_errors": 797,
+  "total_files": 63,
+  "total_errors": 793,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -43,12 +43,6 @@
     },
     "src/echo_personal_tool/presentation/feedback_dialog.py": {
       "arg-type": 3
-    },
-    "src/echo_personal_tool/presentation/focus_widgets.py": {
-      "union-attr": 1
-    },
-    "src/echo_personal_tool/presentation/magnifier_lens.py": {
-      "call-overload": 1
     },
     "src/echo_personal_tool/presentation/main_window.py": {
       "arg-type": 18,
@@ -121,9 +115,6 @@
       "no-untyped-def": 20,
       "type-var": 2,
       "union-attr": 4
-    },
-    "src/echo_personal_tool/presentation/protocol_step_bar.py": {
-      "no-untyped-def": 1
     },
     "src/echo_personal_tool/presentation/pyqtgraph_export.py": {
       "no-untyped-def": 2
@@ -277,9 +268,6 @@
     "src/echo_personal_tool/presentation/tool_settings_2.py": {
       "no-untyped-def": 9,
       "union-attr": 1
-    },
-    "src/echo_personal_tool/presentation/tooltip_text.py": {
-      "attr-defined": 1
     },
     "src/echo_personal_tool/presentation/user_preferences_dialog.py": {
       "arg-type": 3,

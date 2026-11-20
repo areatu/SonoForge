@@ -16,7 +16,7 @@ static — no animation — so the ``reduce_motion`` setting needs no branching.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, SignalInstance
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -118,7 +118,7 @@ class ProtocolStepBar(QFrame):
 
     # ── Construction helpers ───────────────────────────────────────
 
-    def _make_button(self, name: str, signal) -> QPushButton:
+    def _make_button(self, name: str, signal: SignalInstance) -> QPushButton:
         button = QPushButton()
         button.setObjectName(name)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
