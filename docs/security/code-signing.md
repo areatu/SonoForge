@@ -473,6 +473,11 @@ To activate:
    file, on the project site, and ideally in a `KEYS` file, so users can pin it out of
    band. A fingerprint only published next to the signature it validates is worthless.
 4. Upload the public key to a keyserver (`keyserver.ubuntu.com`) so `gpg --recv-keys` works.
+5. Optional but recommended once the key exists: set the repository **variable**
+   `GPG_SIGNING_REQUIRED=true` (**Settings → Secrets and variables → Actions → Variables**).
+   From then on a release run **fails** instead of publishing an unsigned `SHA256SUMS`
+   if `GPG_PRIVATE_KEY` is missing or broken — the dormant-notice behaviour becomes
+   fail-closed (issue #421).
 
 Trade-off worth stating plainly: this introduces a long-lived private key into CI, which is
 exactly the risk class attestations were adopted to avoid. The signature is worth it for
