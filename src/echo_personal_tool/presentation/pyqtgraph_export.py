@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pyqtgraph import exporters as pg_exporters
 from pyqtgraph.exporters.CSVExporter import CSVExporter
 from pyqtgraph.exporters.HDF5Exporter import HDF5Exporter
@@ -32,7 +34,7 @@ def patch_pyqtgraph_export_dialog() -> None:
     original_update_format_list = dialog_cls.updateFormatList
     original_export_clicked = dialog_cls.exportClicked
 
-    def update_format_list(self) -> None:
+    def update_format_list(self: Any) -> None:
         current = self.ui.formatList.currentItem()
         tree_item = self.ui.itemTree.currentItem()
         gitem = tree_item.gitem if tree_item is not None else self.scene
@@ -55,7 +57,7 @@ def patch_pyqtgraph_export_dialog() -> None:
         if not got_current and self.ui.formatList.count() > 0:
             self.ui.formatList.setCurrentRow(0)
 
-    def export_clicked(self) -> None:
+    def export_clicked(self: Any) -> None:
         self.selectBox.hide()
         if self.currentExporter is None:
             return

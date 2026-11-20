@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QWidget
 
 from echo_personal_tool.application.localization import tr
 
@@ -25,7 +25,7 @@ def doppler_manual_calibration_hint_style() -> str:
 class DopplerManualCalibrationHint(QLabel):
     """Centered label that must never steal calibration clicks."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("dopplerManualCalibrationHint")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -40,7 +40,7 @@ class DopplerManualCalibrationHint(QLabel):
         self.setText(tr(DOPPLER_MANUAL_CALIBRATION_HINT_KEY))
         self.adjustSize()
 
-    def event(self, event) -> bool:
+    def event(self, event: QEvent) -> bool:
         # Belt and braces: even a direct delivery must not consume a click.
         if event.type() in {
             QEvent.Type.MouseButtonPress,

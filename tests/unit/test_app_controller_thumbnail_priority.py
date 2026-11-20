@@ -269,13 +269,13 @@ def test_pending_thumbnail_set_replaced_by_scheduler_state(
     thread_pool = _RecordingThreadPool()
     controller = AppController(thread_pool=thread_pool, thumbnail_max_in_flight=1)
     dup = _thumbnail_instance("dup-state", tmp_path)
-    assert controller._thumbnail_max_in_flight == 1
+    assert controller._thumbnail_queue.max_in_flight == 1
 
     controller.request_thumbnail_preview(dup, ThumbnailPriority.P1_NEAR_VISIBLE)
     controller.request_thumbnail_preview(dup, ThumbnailPriority.P0_VISIBLE_SELECTED)
     controller.request_thumbnail_previews([dup, dup], ThumbnailPriority.P0_VISIBLE_SELECTED)
 
-    assert controller._thumbnail_in_flight == {"dup-state": ThumbnailPriority.P1_NEAR_VISIBLE}
+    assert controller._thumbnail_queue.in_flight == {"dup-state": ThumbnailPriority.P1_NEAR_VISIBLE}
     started_dup_workers = [
         worker
         for worker in thread_pool.started
@@ -287,7 +287,7 @@ def test_pending_thumbnail_set_replaced_by_scheduler_state(
         "dup-state",
         QImage(4, 4, QImage.Format.Format_Grayscale8),
     )
-    assert controller._thumbnail_in_flight == {}
+    assert controller._thumbnail_queue.in_flight == {}
 
 
 def test_thumbnail_failure_releases_slot_and_dispatches_next(
@@ -379,13 +379,13 @@ def test_old_folder_completion_never_overwrites_new_preview_or_exceeds_limit(qap
     assert len(pool.started) == 2
     pool.started[1].signals.finished.emit("same-uid", QImage())
     assert len(emitted) == 1
-    assert controller._thumbnail_workers == {}
+    assert controller._thumbnail_queue.workers == {}
 
 
 def test_production_preview_pool_is_separate_and_bounded(qapp):
     controller = AppController()
-    assert controller._thumbnail_pool is not controller._thread_pool
-    assert controller._thumbnail_pool.maxThreadCount() == 2
+    assert controller._thumbnail_queue.pool is not controller._thread_pool
+    assert controller._thumbnail_queue.pool.maxThreadCount() == 2
 
 
 def test_thumbnail_preview_box_follows_the_gallery_provider(qapp, monkeypatch, tmp_path):

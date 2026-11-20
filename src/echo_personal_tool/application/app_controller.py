@@ -43,6 +43,7 @@ from echo_personal_tool.application.study_measurement_session import (
     report_measurement_sources,
 )
 from echo_personal_tool.application.tab_clinical_memory import TabClinicalMemory, adopt_loaded_bsa
+from echo_personal_tool.application.thumbnail_queue_coordinator import ThumbnailQueueCoordinator
 from echo_personal_tool.application.thumbnail_scheduler import (
     ThumbnailPriority,
     ThumbnailScheduler,
@@ -288,26 +289,24 @@ class AppController(QObject):
         self._decode_request_id = 0
         self._pending_decode_id = 0
         self._pending_emit_after_decode = False
-        self._thumbnail_max_in_flight = thumbnail_max_in_flight
-        self._thumbnail_preview_size_provider: Callable[[], int] | None = None
         self._playback_speed_multiplier = 1.0
         #: Session-scoped FPS overrides set from the transport's «FPS» label
         #: (double-click); keyed by SOP Instance UID and re-applied on every
         #: load of that clip for this run.
         self._frame_time_overrides: dict[str, float] = {}
-        self._thumbnail_scheduler = (
-            thumbnail_scheduler
-            if thumbnail_scheduler is not None
-            else ThumbnailScheduler(max_in_flight=self._thumbnail_max_in_flight)
+        # The thumbnail priority queue lives in its own coordinator (#619);
+        # the worker class is resolved through this closure at call time so
+        # tests can still monkeypatch app_controller.ThumbnailLoaderWorker.
+        self._thumbnail_queue = ThumbnailQueueCoordinator(
+            parent=self,
+            max_in_flight=thumbnail_max_in_flight,
+            scheduler=thumbnail_scheduler,
+            thread_pool=thread_pool,
+            worker_factory=lambda path, uid, **kwargs: ThumbnailLoaderWorker(path, uid, parent=self, **kwargs),
+            pending_decode_provider=lambda: self._pending_decode_id,
+            is_playing_provider=lambda: self._state_manager.snapshot.is_playing,
         )
-        # Thumbnails use their own pool; tests may still inject one.
-        self._thumbnail_pool = thread_pool if thread_pool is not None else QThreadPool(self)
-        if thread_pool is None:
-            self._thumbnail_pool.setMaxThreadCount(thumbnail_max_in_flight)
-        self._thumbnail_generation = 0
-        self._thumbnail_workers: dict[tuple[int, str], ThumbnailLoaderWorker] = {}
-        self._thumbnail_instances: dict[str, InstanceMetadata] = {}
-        self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
+        self._thumbnail_queue.thumbnail_loaded.connect(self.thumbnail_loaded.emit)
         self._current_frame_pixels: np.ndarray | None = None
         # Cine ROI probe key; detection costs 14-38 ms at 720p.
         self._cine_roi_probe_key: tuple[str, str | None] | None = None
@@ -356,7 +355,6 @@ class AppController(QObject):
         self._fusion_processed: set[int] = set()  # tracks done/failed frames
         self._fusion_result: TemporalFusionResult | None = None
         self._scan_started_at: float | None = None
-        self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
         self._state_manager.state_changed.connect(self._on_state_changed)
 
@@ -452,7 +450,6 @@ class AppController(QObject):
         self._reset_thumbnail_queue()
         self._current_study_uid = None
         self._scan_started_at = perf_counter()
-        self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
         logger.info("scan_start")
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
@@ -498,7 +495,6 @@ class AppController(QObject):
         n_inst = sum(len(s.instances) for st in studies for s in st.series)
         logger.info("[CTRL] load_pre_scanned_studies: %d studies, %d instances", len(studies), n_inst)
         self._current_study_uid = None
-        self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
         self._studies = studies
         self.status_message.emit(tr_plural("status.studies_loaded", len(studies)))
@@ -803,129 +799,41 @@ class AppController(QObject):
 
         self._request_frame_if_needed(self._state_manager.snapshot)
 
+    # ── Thumbnail queue facade (#619: logic lives in ThumbnailQueueCoordinator) ──
+
     def load_thumbnail(
         self,
         instance: InstanceMetadata,
         priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
     ) -> None:
-        # Keep the gallery's viewport priority: otherwise file 114 lags behind 1–113.
-        self.request_thumbnail_preview(instance, priority)
+        self._thumbnail_queue.load_thumbnail(instance, priority)
 
     def _reset_thumbnail_queue(self) -> None:
-        self._thumbnail_generation += 1
-        self._thumbnail_scheduler.reset()
-        self._thumbnail_instances.clear()
-        self._thumbnail_in_flight.clear()
-        # Keep old workers counted until their completion reaches the GUI thread,
-        # including on repeated folder switches; the global in-flight limit still holds.
-        for worker in self._thumbnail_workers.values():
-            worker.cancel()
-
-    def _thumbnail_completed(self, generation: int, uid: str, result: object, *, failed: bool) -> None:
-        self._thumbnail_workers.pop((generation, uid), None)
-        if generation != self._thumbnail_generation:
-            self._pump_thumbnail_queue()
-            return
-        if failed:
-            self._on_thumbnail_failed(uid, str(result))
-        else:
-            self._on_thumbnail_loaded(uid, cast(QImage, result))
+        self._thumbnail_queue.reset()
 
     def set_thumbnail_preview_size_provider(self, provider: Callable[[], int] | None) -> None:
         """Let the gallery decide the decode box (logical thumb × screen DPR, Э4)."""
-        self._thumbnail_preview_size_provider = provider
+        self._thumbnail_queue.set_preview_size_provider(provider)
 
     def _thumbnail_preview_box(self) -> int:
-        provider = self._thumbnail_preview_size_provider
-        if provider is None:
-            return 96
-        try:
-            return max(96, int(provider()))
-        except Exception as exc:  # noqa: BLE001 - a bad probe must not break thumbnails
-            log_boundary_failure(logger, "thumbnail.size_probe", exc, code="invalid", level=logging.DEBUG)
-            return 96
+        return self._thumbnail_queue.preview_box()
 
     def request_thumbnail_preview(
         self,
         instance: InstanceMetadata,
         priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
     ) -> None:
-        if instance.path is None:
-            return
-        uid = instance.sop_instance_uid
-        self._thumbnail_instances[uid] = instance
-        self._thumbnail_scheduler.enqueue(uid, priority)
-        self._pump_thumbnail_queue()
+        self._thumbnail_queue.request_preview(instance, priority)
 
     def request_thumbnail_previews(
         self,
         instances: list[InstanceMetadata],
         priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
     ) -> None:
-        uids: list[str] = []
-        for instance in instances:
-            if instance.path is None:
-                continue
-            uid = instance.sop_instance_uid
-            self._thumbnail_instances[uid] = instance
-            uids.append(uid)
-        if not uids:
-            return
-        self._thumbnail_scheduler.reprioritize(uids, priority)
-        self._pump_thumbnail_queue()
+        self._thumbnail_queue.request_previews(instances, priority)
 
     def _pump_thumbnail_queue(self) -> None:
-        # Let at most the already running previews finish. Don't keep replenishing
-        # background decode while the user waits for the first frame or presses Play.
-        if self._pending_decode_id or self._state_manager.snapshot.is_playing:
-            return
-        while True:
-            slots = self._thumbnail_max_in_flight - len(self._thumbnail_workers)
-            batch = self._thumbnail_scheduler.next_batch(limit=slots)
-            if not batch:
-                return
-            for task in batch:
-                instance = self._thumbnail_instances.get(task.sop_instance_uid)
-                if instance is None or instance.path is None:
-                    self._thumbnail_scheduler.mark_failed(task.sop_instance_uid)
-                    self._thumbnail_instances.pop(task.sop_instance_uid, None)
-                    continue
-                worker = ThumbnailLoaderWorker(
-                    instance.path,
-                    task.sop_instance_uid,
-                    number_of_frames=instance.number_of_frames,
-                    media_format=instance.media_format,
-                    preview_size=self._thumbnail_preview_box(),
-                    parent=self,
-                )
-                generation = self._thumbnail_generation
-                worker.signals.finished.connect(
-                    partial(self._thumbnail_completed, generation, failed=False), Qt.ConnectionType.QueuedConnection
-                )
-                worker.signals.failed.connect(
-                    partial(self._thumbnail_completed, generation, failed=True), Qt.ConnectionType.QueuedConnection
-                )
-                self._thumbnail_in_flight[task.sop_instance_uid] = task.priority
-                self._thumbnail_workers[(generation, task.sop_instance_uid)] = worker
-                self._thumbnail_pool.start(worker)
-
-    def _on_thumbnail_loaded(self, sop_instance_uid: str, image: QImage) -> None:
-        self._thumbnail_scheduler.mark_done(sop_instance_uid)
-        self._thumbnail_in_flight.pop(sop_instance_uid, None)
-        self._thumbnail_instances.pop(sop_instance_uid, None)
-        if not self._first_preview_emitted:
-            self._first_preview_emitted = True
-            from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
-
-            logger.info("first_preview_emitted uid=%s", sanitize_uid(sop_instance_uid))
-        self.thumbnail_loaded.emit(sop_instance_uid, image)
-        self._pump_thumbnail_queue()
-
-    def _on_thumbnail_failed(self, sop_instance_uid: str, _message: str) -> None:
-        self._thumbnail_scheduler.mark_failed(sop_instance_uid)
-        self._thumbnail_in_flight.pop(sop_instance_uid, None)
-        self._thumbnail_instances.pop(sop_instance_uid, None)
-        self._pump_thumbnail_queue()
+        self._thumbnail_queue.pump()
 
     def load_first_instance_of_series(self, study: StudyMetadata, series_uid: str) -> None:
         for series in study.series:
