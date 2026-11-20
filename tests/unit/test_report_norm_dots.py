@@ -12,7 +12,7 @@ from __future__ import annotations
 from echo_personal_tool.domain.services.reference_topics import grade_fill_hex
 from echo_personal_tool.domain.services.report_builder import _value
 from echo_personal_tool.domain.services.report_document import ReportGroup, ReportValue
-from echo_personal_tool.domain.services.report_grades import norm_grade_for
+from echo_personal_tool.domain.services.report_norm_lookup import norm_grade_for
 
 
 def test_norm_grade_for_returns_the_handbook_gradation() -> None:

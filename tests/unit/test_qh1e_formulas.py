@@ -220,7 +220,7 @@ def test_disk_restore_structured_document_and_real_pdf_rounding(tmp_path, langua
     path = export_report_document_pdf(document, tmp_path / "report.pdf")
     with pymupdf.open(path) as pdf:
         pdf_text = "\n".join(page.get_text() for page in pdf)
-    assert f"{vmax_label}\n2.8 m/s" in pdf_text
+    assert f"{vmax_label}\n● 2.8 m/s" in pdf_text  # norm dot of the gradation (#277)
     assert f"{pgmax_label}\n31 mmHg" in pdf_text
     assert "TR PGmax\n31 mmHg" in pdf_text
     # #482: every clinical surface formats from MEASUREMENTS (tr.vmax=1 dec, tr.pg=0 dec).

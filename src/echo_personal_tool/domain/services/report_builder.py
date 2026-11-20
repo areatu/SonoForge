@@ -85,7 +85,14 @@ from echo_personal_tool.domain.services.report_document import ReportDocument as
 from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
 from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
 from echo_personal_tool.domain.services.report_document import without_values as without_values
-from echo_personal_tool.domain.services.report_grades import norm_grade_for
+from echo_personal_tool.domain.services.report_norm_lookup import (
+    LABEL_TO_PARAM_ID,
+    UNIT_SCALE,
+    norm_grade_for,
+)
+from echo_personal_tool.domain.services.report_norm_lookup import (
+    unit_scale_for_label as _scale_for,
+)
 from echo_personal_tool.domain.services.report_provenance import (
     LVEDD_ALIASES,
     LVESD_ALIASES,
@@ -123,172 +130,6 @@ from echo_personal_tool.domain.services.report_groups import GROUP_THYROID as GR
 from echo_personal_tool.domain.services.report_groups import GROUP_TRICUSPID_VALVE as GROUP_TRICUSPID_VALVE
 from echo_personal_tool.domain.services.report_groups import GROUP_VESSELS as GROUP_VESSELS
 
-#: App measurement label → parameter id in the structured reference data.
-_LABEL_TO_PARAM_ID = {
-    "lvedd": "lvedd",
-    "lvesd": "lvesd",
-    "ivsd": "ivsd",
-    "lvpwd": "lvpwd",
-    "lvm": "lvm",
-    "lvmi": "lvmi_hyp",
-    "rwt": "rwt_hyp",
-    "lvef": "lvef",
-    "ef lv": "lvef",
-    "фв лж": "lvef",
-    "edvi": "lvedvi",
-    "esvi": "lvesvi",
-    # Lang 2015 volumes: absolute (mL) and indexed (mL/m²), sex-specific. The
-    # rows look these up by their norm label ("LVEDV" / "LVEDVi"…).
-    "lvedv": "lvedv",
-    "lvesv": "lvesv",
-    "lvedvi": "lvedvi",
-    "lvesvi": "lvesvi",
-    "lav": "lav",
-    "lavi": "lavi",
-    "la area": "la_area",
-    "площадь лп": "la_area",
-    "s лп": "la_area",
-    "ra area": "ra_area",
-    "площадь пп": "ra_area",
-    "rav": "ra_volume",
-    "ravi": "ra_vol_index",
-    "иопп": "ra_vol_index",
-    "s ra": "ra_area",
-    "s pp": "ra_area",
-    "rv basal": "rvd1",
-    "rv mid": "rvd2",
-    "tapse": "tapss",
-    "fac": "fac_rv",
-    "s' rv": "s_prime_rv",
-    "gls": "gls",
-    "la": "la_antpost",
-    "lal": "la_antpost",
-    "tr vmax": "tr_vmax",
-    "ivrt": "ivrt",
-    "e' sept": "e_prime_sept",
-    "e' lat": "e_prime_lat",
-    "e/e'": "e_e_prime_avg",
-    "e/e' mean": "e_e_prime_avg",
-    "e/e'mean": "e_e_prime_avg",
-    # Same parameters under the catalog labels (TP-1 PR-1b, rule D-11).
-    "e′ септ.": "e_prime_sept",
-    "e′ septal": "e_prime_sept",
-    "e′ лат.": "e_prime_lat",
-    "e′ lateral": "e_prime_lat",
-    "e/e′ ср.": "e_e_prime_avg",
-    "mv average e/e′": "e_e_prime_avg",
-    "vmax тр": "tr_vmax",
-    "trmax vel": "tr_vmax",
-    "кдр лж": "lvedd",
-    "lvidd": "lvedd",
-    "кср лж": "lvesd",
-    "lvids": "lvesd",
-    "мжп": "ivsd",
-    "зслж": "lvpwd",
-    "mv": "ms_area",
-    "mv area": "ms_area",
-    "pht": "ms_pht",
-    # IVC diameter («НПВ» / "IVC"): the reference norm is ≤21 mm. Both keys —
-    # rows look up norms by their localized display label.
-    "нпв": "ivc_diameter",
-    "ivc": "ivc_diameter",
-    # Aorta segments (item 6 of the 2026-11-18 list): the sex-specific
-    # 2022 ACC/AHA ranges of the handbook instead of the sex-agnostic
-    # fallback constants.
-    "ao sinus": "asc_aorta",
-    "ao junction": "sinotubular",
-    "prox ao": "ascending_aorta",
-    # Organ measurements (item 2) — the same catalog labels in both display languages.
-    "квр печени": "liver_size",
-    "liver kvr": "liver_size",
-    "толщина лд печени": "liver_left_lobe_thickness",
-    "liver ll": "liver_left_lobe_thickness",
-    "толщина пд печени": "liver_right_lobe_thickness",
-    "liver rl": "liver_right_lobe_thickness",
-    "ожп": "common_bile_duct_diameter",
-    "cbd": "common_bile_duct_diameter",
-    "длина жп": "gallbladder_length",
-    "gb length": "gallbladder_length",
-    "ширина жп": "gallbladder_width",
-    "gb width": "gallbladder_width",
-    "стенка жп": "gallbladder_wall_thickness",
-    "gb wall": "gallbladder_wall_thickness",
-    "воротная вена": "portal_vein_diameter",
-    "portal vein": "portal_vein_diameter",
-    "головка пж": "pancreas_head_diameter",
-    "pancreas head": "pancreas_head_diameter",
-    "тело пж": "pancreas_body_diameter",
-    "pancreas body": "pancreas_body_diameter",
-    "хвост пж": "pancreas_tail_diameter",
-    "pancreas tail": "pancreas_tail_diameter",
-    "проток пж": "pancreatic_duct_width",
-    "pancreatic duct": "pancreatic_duct_width",
-    "брюшная аорта": "aorta_diameter_ant",
-    "abdominal aorta": "aorta_diameter_ant",
-    "почка п длина": "kidney_length",
-    "почка л длина": "kidney_length",
-    "r kidney length": "kidney_length",
-    "l kidney length": "kidney_length",
-    "почка п ширина": "kidney_width",
-    "почка л ширина": "kidney_width",
-    "r kidney width": "kidney_width",
-    "l kidney width": "kidney_width",
-    "почка п паренхима": "kidney_cortex_thickness",
-    "почка л паренхима": "kidney_cortex_thickness",
-    "r kidney parenchyma": "kidney_cortex_thickness",
-    "l kidney parenchyma": "kidney_cortex_thickness",
-    # Third and fifth linear sizes of the kidney profile: the thickness of the
-    # whole organ and the echogenic sinus — neither of them is the parenchyma.
-    "почка п толщина": "kidney_thickness",
-    "почка л толщина": "kidney_thickness",
-    "r kidney thickness": "kidney_thickness",
-    "l kidney thickness": "kidney_thickness",
-    "почка п синус": "kidney_sinus",
-    "почка л синус": "kidney_sinus",
-    "r kidney sinus": "kidney_sinus",
-    "l kidney sinus": "kidney_sinus",
-    # Urinary bladder dimensions and the volume derived from them.
-    "мп длина": "bladder_length",
-    "bladder length": "bladder_length",
-    "мп ширина": "bladder_width",
-    "bladder width": "bladder_width",
-    "мп глубина": "bladder_depth",
-    "мп высота": "bladder_depth",  # the former name of the third dimension
-    "bladder depth": "bladder_depth",
-    "bladder height": "bladder_depth",
-    "мп стенка": "bladder_wall_thickness",
-    "bladder wall": "bladder_wall_thickness",
-    "объём мп": "bladder_volume",
-    "bladder volume": "bladder_volume",
-    # Thyroid lobe and isthmus sizes (item 3) — the same catalog labels in both display languages.
-    "щж п ширина": "thyroid_lobe_width",
-    "щж л ширина": "thyroid_lobe_width",
-    "r lobe width": "thyroid_lobe_width",
-    "l lobe width": "thyroid_lobe_width",
-    "щж п высота": "thyroid_lobe_length",
-    "щж л высота": "thyroid_lobe_length",
-    "r lobe height": "thyroid_lobe_length",
-    "l lobe height": "thyroid_lobe_length",
-    "щж п толщина": "thyroid_lobe_thickness",
-    "щж л толщина": "thyroid_lobe_thickness",
-    "r lobe thickness": "thyroid_lobe_thickness",
-    "l lobe thickness": "thyroid_lobe_thickness",
-    "перешеек": "thyroid_isthmus_thickness",
-    "isthmus": "thyroid_isthmus_thickness",
-    # Total thyroid volume from both lobes (Brunn coefficient, see organ_volumes).
-    "объём щж": "thyroid_volume",
-    "thyroid volume": "thyroid_volume",
-    # Carotid intima-media thickness (item 4): one reference parameter for both sides.
-    "ким оса правая": "cca_imt",
-    "ким оса левая": "cca_imt",
-    "r cca imt": "cca_imt",
-    "l cca imt": "cca_imt",
-}
-
-#: Reference data unit → app unit conversion for a few parameters whose stored
-#: norm is expressed in another unit than the app reports.
-_UNIT_SCALE = {"tr_vmax": 0.01, "liver_size": 0.1}  # tr_vmax: cm/s→m/s; liver_size: mm→cm
-
 
 def reference_unit_scale(param_id: str) -> float:
     """App → reference conversion of one handbook parameter (UI-5 PR-1).
@@ -296,7 +137,7 @@ def reference_unit_scale(param_id: str) -> float:
     The card of a norm reads the same table as the report instead of keeping
     its own copy: a value in cm/s must meet the m/s ranges of ``tr_vmax``.
     """
-    return _UNIT_SCALE.get(param_id or "", 1.0)
+    return UNIT_SCALE.get(param_id or "", 1.0)
 
 
 @lru_cache(maxsize=1)
@@ -317,7 +158,7 @@ register_cache_invalidator(_reference_store.cache_clear)
 
 def _sex_norm(label: str, sex: str) -> NormRange | None:
     """Norm range for an app label, or None when the reference has none."""
-    param_id = _LABEL_TO_PARAM_ID.get(label.casefold().strip())
+    param_id = LABEL_TO_PARAM_ID.get(label.casefold().strip())
     if param_id is None:
         return None
     store = _reference_store()
@@ -339,11 +180,6 @@ def norm_range_for(label: str, sex: str = "") -> NormRange | None:
     if norm is not None:
         return norm
     return linear_norm_for_label(label)
-
-
-def _scale_for(label: str) -> float:
-    param_id = _LABEL_TO_PARAM_ID.get(label.casefold().strip())
-    return _UNIT_SCALE.get(param_id or "", 1.0)
 
 
 def _norm_decimals(*values: float) -> int:
