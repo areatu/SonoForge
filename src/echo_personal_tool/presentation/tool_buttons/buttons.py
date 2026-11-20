@@ -16,7 +16,11 @@ The module is Qt-free so the table can be tested without a widget:
 * a measurement button is an entry of the tool catalog (``source="catalog"``),
   so its caption, its availability in the current context and its payload come
   from the catalog rather than from a copy of it (UD-15: the caption of a
-  catalog tool is the menu key the catalog already names);
+  catalog tool is the menu key the catalog already names).  Variant В of the
+  2026-10-17 decision (issue 275): the button's own ``id`` *is* the catalog
+  id (``id == ref``), so ``action_requested`` reports the catalog identity and
+  the rail can never drift from the catalog — the visible set, order, captions
+  and icons are unchanged;
 * a mode button is an entry of the shortcut registry (``source="shortcut"``),
   so its key badge and its tooltip are read from the registry and pressing it
   calls the handler the key itself calls;
@@ -62,7 +66,10 @@ class ToolButtonSpec:
     :data:`~echo_personal_tool.domain.measurement_catalog.CATALOG` or a
     shortcut id of the registry.  ``id`` is the stable identity the widget
     reports in :attr:`ToolButtonSignals.action_requested`, so a later move of a
-    button inside the table does not change what the window listens for.
+    button inside the table does not change what the window listens for.  For
+    a catalog button ``id`` **is** the catalog id (variant В, issue 275) — the
+    strip and the panel then speak one identity; only mode variants (the
+    freehand pair) keep an id of their own.
     """
 
     id: str
@@ -82,6 +89,11 @@ class ToolButtonSpec:
     #: from :func:`visible_buttons`, not dimmed — the row must close the gap
     #: instead of leaving an empty cell (item 5 of the 2026-11-06 list).
     flags: frozenset[str] = frozenset()
+
+    @property
+    def catalog_id(self) -> str:
+        """The catalog id behind the button, when it is a catalog tool (В, issue 275)."""
+        return self.ref if self.source == SOURCE_CATALOG else ""
 
     @property
     def shortcut_id(self) -> str:
@@ -127,9 +139,12 @@ TOOL_BUTTON_STATE_EMPTY: Final = ToolButtonState()
 
 #: The row / the rail, in display order (§4.2).
 TOOL_BUTTONS: Final[tuple[ToolButtonSpec, ...]] = (
-    ToolButtonSpec("caliper", SOURCE_CATALOG, "tool.caliper", icon="activity_caliper"),
-    ToolButtonSpec("spline_area", SOURCE_CATALOG, "tool.area", icon="activity_area"),
-    ToolButtonSpec("spline_volume", SOURCE_CATALOG, "tool.volume", icon="activity_lv2d"),
+    # Catalog buttons carry the catalog id as their own id (variant В, issue 275):
+    # the strip reports «tool.caliper» / «tool.area» / «tool.volume» in
+    # action_requested, exactly what the panel rows and the Measures menu use.
+    ToolButtonSpec("tool.caliper", SOURCE_CATALOG, "tool.caliper", icon="activity_caliper"),
+    ToolButtonSpec("tool.area", SOURCE_CATALOG, "tool.area", icon="activity_area"),
+    ToolButtonSpec("tool.volume", SOURCE_CATALOG, "tool.volume", icon="activity_lv2d"),
     ToolButtonSpec(
         # Same General tools as the panel rows, but armed in freehand mode
         # (2026-10-25: replaced the Contour / Model pair on user request).
@@ -347,13 +362,17 @@ def visible_buttons(
 
     A button is dropped rather than dimmed when its own ``pref:`` gate is off:
     an experimental tool that the settings hide on purpose must not occupy a
-    cell of a compact row (item 5 of the 2026-11-06 list).  The state still
-    takes part — a caller may narrow the list further per frame.
+    cell of a compact row (item 5 of the 2026-11-06 list).  A catalog button
+    whose id the catalog no longer knows is dropped the same way (variant В,
+    issue 275): with an empty catalog the rail keeps only its mode buttons and the
+    panels toggle instead of painting buttons that answer nothing.  The state
+    still takes part — a caller may narrow the list further per frame.
     """
     del state
-    if preferences is None:
-        return TOOL_BUTTONS
-    return tuple(spec for spec in TOOL_BUTTONS if _flags_ok(spec.flags, preferences))
+    specs = TOOL_BUTTONS
+    if preferences is not None:
+        specs = tuple(spec for spec in specs if _flags_ok(spec.flags, preferences))
+    return tuple(spec for spec in specs if spec.source != SOURCE_CATALOG or spec.ref in CATALOG)
 
 
 def _flags_ok(flags: frozenset[str], preferences: object) -> bool:

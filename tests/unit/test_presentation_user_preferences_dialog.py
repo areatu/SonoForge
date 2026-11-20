@@ -37,6 +37,7 @@ def _setup_qapp():
                     feedback.detach_effect()
                 elif child.graphicsEffect() is not None:
                     child.setGraphicsEffect(None)
+            widget.hide()
             widget.close()
             widget.deleteLater()
             # Drain only the dialog owned by this fixture.  A global
@@ -166,13 +167,14 @@ class TestUserPreferencesDialogValues:
         assert dlg._playback_spin.value() == 2.0
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_crosshair_checkbox(self, mock_load):
+    def test_crosshair_checkbox(self, mock_load, qtbot):
         prefs = _default_prefs()
         prefs.show_crosshair = False
         mock_load.return_value = prefs
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog()
+        qtbot.addWidget(dlg)
         assert not dlg._show_crosshair.isChecked()
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
@@ -266,11 +268,12 @@ class TestOnAccept:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
-    def test_on_apply_none_no_error(self, mock_load, mock_save_pref, mock_save_srv):
+    def test_on_apply_none_no_error(self, mock_load, mock_save_pref, mock_save_srv, qtbot):
         mock_load.return_value = _default_prefs()
         from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
 
         dlg = UserPreferencesDialog(on_apply=None)
+        qtbot.addWidget(dlg)
         with patch.object(dlg, "accept") as mock_accept:
             dlg._on_accept()  # Should not raise
 

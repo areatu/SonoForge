@@ -15,9 +15,12 @@ the RAP card cannot reuse (and fight over) the same window.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QEvent, QObject, QRect, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QWidget
 
+from echo_personal_tool.domain.services.reference_card import ReferenceCardModel
 from echo_personal_tool.presentation.reference_card import (
     HOVER_DELAY_MS,
     RAP_PARAM_KEY,
@@ -49,6 +52,7 @@ class RapReferenceHover(QObject):
         self._host = parent
         self._card: ReferenceCard | None = None
         self._anchors: list[QWidget] = []
+        self._factories: dict[QWidget, Callable[[], ReferenceCardModel]] = {}
         self._pending: QWidget | None = None
         self._show_timer = QTimer(self)
         self._show_timer.setSingleShot(True)
@@ -59,10 +63,22 @@ class RapReferenceHover(QObject):
         self._hide_timer.setInterval(_HIDE_GRACE_MS)
         self._hide_timer.timeout.connect(self._hide_if_idle)
 
-    def attach(self, widget: QWidget) -> None:
+    def attach(self, widget: QWidget, model_factory: Callable[[], ReferenceCardModel] | None = None) -> None:
+        """Hover *widget*; *model_factory* builds its card model (RAP default)."""
         if widget is not None and widget not in self._anchors:
             self._anchors.append(widget)
+            if model_factory is not None:
+                self._factories[widget] = model_factory
             widget.installEventFilter(self)
+
+    def detach_all(self) -> None:
+        """Forget every anchor (the host rebuilt its tiles)."""
+        for anchor in self._anchors:
+            anchor.removeEventFilter(self)
+        self._anchors.clear()
+        self._factories.clear()
+        self._pending = None
+        self._show_timer.stop()
 
     @property
     def card(self) -> ReferenceCard | None:
@@ -92,7 +108,8 @@ class RapReferenceHover(QObject):
         self._pending = None
         if anchor_widget is None:
             return
-        model = rap_card_model()
+        factory = self._factories.get(anchor_widget)
+        model = factory() if factory is not None else rap_card_model()
         if not model.has_norm:
             # Honest answer: never show an empty «no norms» popup.
             return

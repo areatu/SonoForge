@@ -143,6 +143,22 @@ class ReportValueCard(QFrame):
         self._method.setObjectName("reportValueCardMethod")
         self._method.setWordWrap(True)
 
+        #: Norm line of the row (issue 277, §4.7): the range plus its gradation dot,
+        #: the same scale the sheet's value dot and the panel rows show.
+        self._norm_dot = QLabel()
+        self._norm_dot.setObjectName("reportValueCardNormDot")
+        self._norm_dot.setFixedSize(8, 8)
+        self._norm = QLabel()
+        self._norm.setObjectName("reportValueCardNorm")
+        self._norm.setWordWrap(True)
+        self._norm_host = QWidget()
+        norm_row = QHBoxLayout(self._norm_host)
+        norm_row.setContentsMargins(0, 0, 0, 0)
+        norm_row.setSpacing(6)
+        norm_row.addWidget(self._norm_dot)
+        norm_row.addWidget(self._norm)
+        norm_row.addStretch(1)
+
         self._identity = QLabel()
         self._identity.setObjectName("reportValueCardIdentity")
         self._identity.setWordWrap(True)
@@ -299,6 +315,27 @@ class ReportValueCard(QFrame):
         self.setVisible(False)
 
     # ── content ──────────────────────────────────────────────────────
+
+    def _fill_norm(self, value: ReportValue) -> None:
+        """Norm range plus the gradation dot of the row (issue 277, §4.7).
+
+        A row without a handbook norm hides the line instead of showing an
+        empty one — the same honest answer the S2 card gives.
+        """
+        from echo_personal_tool.presentation.reference_grades import grade_colors
+
+        if not value.norm:
+            self._norm_host.setVisible(False)
+            return
+        colors = grade_colors(value.norm_grade) if value.norm_grade else None
+        if colors is None:
+            self._norm_dot.hide()
+        else:
+            # The solid half of the pair: a dot has no room for a tinted fill.
+            self._norm_dot.setStyleSheet(f"background: {colors[1]}; border-radius: 4px;")
+            self._norm_dot.show()
+        self._norm.setText(f"{tr('report.col_norm')}: {value.norm}")
+        self._norm_host.setVisible(True)
 
     def _fill_identity(self, origin: ValueOrigin | None) -> None:
         text = ""
@@ -472,8 +509,14 @@ class ReportValueCard(QFrame):
             #reportValueCardAuto:hover {{
                 text-decoration: underline;
             }}
+            #reportValueCardNorm {{
+                color: {tokens["text.2"]};
+            }}
             """
         )
+        if self._value is not None:
+            # The gradation dot has its own colour pair per theme surface.
+            self._fill_norm(self._value)
 
 
 def _title_text(value: ReportValue) -> str:

@@ -1724,8 +1724,8 @@ class MainWindow(QMainWindow):
             "guide": self._open_user_guide,
             "about": self._show_about,
             "caliper": lambda: self._on_caliper_requested(),
-            "tool_spline_area": lambda: self._on_tool_button_requested("spline_area"),
-            "tool_spline_volume": lambda: self._on_tool_button_requested("spline_volume"),
+            "tool_spline_area": lambda: self._on_tool_button_requested("tool.area"),
+            "tool_spline_volume": lambda: self._on_tool_button_requested("tool.volume"),
             "tool_manual_contour": lambda: self._on_tool_button_requested("manual_contour"),
             "tool_model_contour": lambda: self._on_tool_button_requested("model_contour"),
             "tool_vti_trace": lambda: self._on_tool_button_requested("vti_trace"),
@@ -2568,11 +2568,11 @@ class MainWindow(QMainWindow):
                 # The freehand pair arms the General tool in stroke mode for
                 # this drawing; the preference itself stays untouched.
                 self._viewer.set_area_tool_mode("freehand")
-            elif spec.id in {"spline_area", "spline_volume"}:
+            elif spec.id in {"tool.area", "tool.volume"}:
                 # Plain pair: back to the stored preference after a freehand use.
                 self._viewer.set_area_tool_mode(getattr(self._user_preferences, "area_tool_mode", "click"))
             self._last_contour_button = (
-                spec.id if spec.id in {"spline_area", "spline_volume", "freehand_area", "freehand_volume"} else None
+                spec.id if spec.id in {"tool.area", "tool.volume", "freehand_area", "freehand_volume"} else None
             )
             self._on_measure_action(payload.action, payload.view, payload.phase, payload.extra)
             self._sync_tool_button_active()
@@ -2720,7 +2720,7 @@ class MainWindow(QMainWindow):
             return "model_contour"
         # Both are Qt properties of the viewer, not methods.
         if getattr(viewer, "is_linear_caliper_active", False):
-            return "caliper"
+            return "tool.caliper"  # the strip button carries the catalog id (variant В, issue 275)
         if getattr(viewer, "is_contour_mode_active", False):
             # Three contour tools share one flag on the viewer; its kind says
             # which button was pressed.  A closed contour (area / volume) has no

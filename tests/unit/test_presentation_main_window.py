@@ -436,7 +436,7 @@ class TestMainWindow:
 
     def test_on_tool_button_requested_catalog_caliper(self, main_window):
         with patch.object(main_window, "_on_measure_action") as mock:
-            main_window._on_tool_button_requested("caliper")
+            main_window._on_tool_button_requested("tool.caliper")
             assert mock.call_count == 1
             action, view, phase, extra = mock.call_args.args
             assert view and phase

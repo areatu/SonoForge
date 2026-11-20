@@ -149,7 +149,7 @@ def test_plain_area_restores_the_preference_mode_after_freehand(qtbot) -> None:
     window = _window(qtbot)
     window._on_tool_button_requested("freehand_area")
     assert window._viewer.area_tool_mode() == "freehand"
-    window._on_tool_button_requested("spline_area")
+    window._on_tool_button_requested("tool.area")
     assert window._viewer.area_tool_mode() == window._user_preferences.area_tool_mode
 
 
@@ -182,9 +182,9 @@ def test_measure_action_accepts_the_catalog_payload_string(qtbot, monkeypatch) -
 @pytest.mark.parametrize(
     ("button_id", "handler"),
     [
-        ("caliper", "_on_caliper_requested"),
-        ("spline_area", "_on_spline_area_requested"),
-        ("spline_volume", "_on_spline_volume_requested"),
+        ("tool.caliper", "_on_caliper_requested"),
+        ("tool.area", "_on_spline_area_requested"),
+        ("tool.volume", "_on_spline_volume_requested"),
     ],
 )
 def test_the_first_three_buttons_arm_their_tool(qtbot, monkeypatch, button_id, handler) -> None:

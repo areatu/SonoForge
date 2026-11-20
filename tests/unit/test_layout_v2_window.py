@@ -230,14 +230,14 @@ def test_both_views_route_one_button_to_one_sink(qtbot, monkeypatch) -> None:
     monkeypatch.setattr(window, "_on_measure_action", lambda *payload: emitted.append(payload))
     row = window._tool_row
     assert row is not None
-    assert row.button("caliper").isEnabled()
-    row.button("caliper").click()
+    assert row.button("tool.caliper").isEnabled()
+    row.button("tool.caliper").click()
     assert emitted == [("caliper", "A4C", "ED", "")]
 
     window._on_layout_tool_buttons_selected("rail")
     rail = window._tool_rail
     assert rail is not None
-    rail.button("spline_area").click()
+    rail.button("tool.area").click()
     assert emitted[-1] == ("spline_area", "A4C", "ED", "")
 
 
@@ -302,7 +302,7 @@ def test_buttons_dim_with_a_reason_when_no_clip_is_loaded(qtbot) -> None:
         control = row.button(spec.id)
         assert not control.isEnabled()
         assert tr("toolbtn.reason.no_clip") in control.toolTip()
-    assert row.button("caliper").isVisibleTo(window)
+    assert row.button("tool.caliper").isVisibleTo(window)
 
 
 def test_open_logo_menu_syncs_preset_selection(qtbot) -> None:

@@ -36,6 +36,7 @@ from reportlab.platypus import (
 )
 
 from echo_personal_tool.domain.models.report_signature import SignatureStamp
+from echo_personal_tool.domain.services.reference_topics import grade_fill_hex
 from echo_personal_tool.domain.services.report_builder import ReportDocument, ReportGroup, format_sex
 from echo_personal_tool.domain.services.report_template import (
     FIELD_AGE,
@@ -670,6 +671,12 @@ def _group_table(
         text = _xml_escape(value.display_value)
         if value.unit:
             text = f"{text} {_xml_escape(value.unit)}"
+        if value.norm_grade:
+            # The norm dot of the value, coloured by its gradation (issue 277, §4.7):
+            # the same scale the panel rows and the S2 card show.
+            fill = grade_fill_hex(value.norm_grade)
+            if fill:
+                text = f"<font color='{fill}'>●</font> {text}"
         if value.pathological:
             text = f"<font color='#C0392B'><b>{text}</b></font>"
             pathology_rows.append(index)
