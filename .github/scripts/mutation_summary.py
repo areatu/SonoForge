@@ -48,7 +48,7 @@ def main() -> int:
 
     survivors = [m for m in data.get("mutants", []) if m.get("status") == "survived"]
     lines = [
-        f"### Mutation testing (domain calculations/calculators)",
+        "### Mutation testing (domain calculations/calculators)",
         f"score {score:.1f}% — {survived} surviving mutants",
         "",
     ]
