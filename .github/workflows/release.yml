@@ -654,12 +654,20 @@ jobs:
         id: gpg
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          # Issue #421: the owner can set the repository variable
+          # GPG_SIGNING_REQUIRED=true to make a release FAIL instead of
+          # publishing an unsigned SHA256SUMS once the key is provisioned.
+          GPG_SIGNING_REQUIRED: ${{ vars.GPG_SIGNING_REQUIRED }}
         run: |
           if [ -n "$GPG_PRIVATE_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::GPG_PRIVATE_KEY is not set - publishing SHA256SUMS unsigned. Build-provenance attestations still cover authenticity; see docs/security/code-signing.md (plan step 2)."
+            echo "::warning::GPG_PRIVATE_KEY is not set - publishing SHA256SUMS unsigned. Build-provenance attestations still cover authenticity; see docs/security/code-signing.md (plan step 2)."
+            if [ "$GPG_SIGNING_REQUIRED" = "true" ]; then
+              echo "::error::GPG_SIGNING_REQUIRED=true but GPG_PRIVATE_KEY is not set - refusing to publish an unsigned SHA256SUMS manifest."
+              exit 1
+            fi
           fi
 
       - name: Sign checksum manifest with GPG
