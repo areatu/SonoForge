@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 RoiRect = tuple[float, float, float, float]
 
+
 def _overlay_style() -> str:
     """Debug overlay stylesheet built from theme tokens (no raw colour literals)."""
     return (
