@@ -19,7 +19,7 @@ from echo_personal_tool.domain.models.orthanc import (
     StudyInfo,
     StudyStatistics,
 )
-from echo_personal_tool.domain.models.view_recognition import RecognizedView
+from echo_personal_tool.domain.models.view_recognition import RecognizedView, ViewDecision
 
 
 class IWorklistSink(Protocol):
@@ -321,3 +321,15 @@ class IViewRecognizer(Protocol):
     """
 
     def recognize(self, frames: Sequence[np.ndarray]) -> RecognizedView: ...
+
+
+class IViewDecisionStore(Protocol):
+    """Persists the user's view choice per study series (#639 step 4).
+
+    Implemented in infrastructure (JSON store). The workflow depends only on
+    this protocol; the concrete storage stays swappable.
+    """
+
+    def load(self, study_uid: str, series_uid: str) -> ViewDecision | None: ...
+
+    def save(self, decision: ViewDecision) -> None: ...

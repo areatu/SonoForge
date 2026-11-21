@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `feat(view-recognition)`: #639 шаг 4 — UI-хук авто-распознавания вида клипа: бейдж вида/уверенности, ручная override, сохранение решений, схема манифеста датасета (v1/v2 с консолидацией меток) ([полностью](changelog.d/016-feat-view-recognition-ui-639.md))
 - `feat(view-recognition)`: #639 шаг 3 / PR-A — доменный каркас авто-распознавания вида клипа: порт IViewRecognizer, ViewRecognitionService, загрузчик корпуса по манифесту, 10 unit-тестов без Qt ([полностью](changelog.d/015-feat-view-recognition-core-639.md))
 - `fix(persistence)`: #160 — достоверный результат повторного shutdown ([полностью](changelog.d/014-fix-persistence-shutdown-result-160.md))
 - `feat(report)`: UI-батч из 15 пунктов кардиолога: половые нормы guidelines и индексы аорты, режим «Все измерения» в «Показателях отчёта», выбор измерения в карточке происхождения по наведению, компоновка таблиц и заключения ([полностью](changelog.d/014-feat-report-batch-15-items.md))

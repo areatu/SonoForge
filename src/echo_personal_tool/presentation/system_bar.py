@@ -413,6 +413,14 @@ class SystemBar(CaptionDragMixin, QWidget):
         for candidate, action in self._study_profile_actions.items():
             action.setChecked(candidate == chosen)
 
+    def add_view_badge(self, badge) -> None:  # type: ignore[no-untyped-def]
+        """Place the view-recognition badge next to the study-profile button."""
+        layout = self.layout()
+        if layout is None:
+            return
+        # Profile button sits at index 3; the badge goes right after it.
+        layout.insertWidget(4, badge, 0)
+
     def _reload_study_profile_text(self) -> None:
         """Re-translate the profile button and its menu after a language switch."""
         from echo_personal_tool.application.localization import tr
