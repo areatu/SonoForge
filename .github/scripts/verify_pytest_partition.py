@@ -48,6 +48,7 @@ _ISOLATED_GUI_TESTS = 1
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--logic", required=True, type=Path)
+    parser.add_argument("--require-nodeids", action="store_true", help="also prove the exact nodeid partition")
     parser.add_argument("--gui", required=True, type=Path, nargs="+", help="one metrics JSON per GUI shard")
     parser.add_argument(
         "--expected",
@@ -113,6 +114,23 @@ def main() -> int:
         logic_selected["total"] + gui_selected["total"] + _ISOLATED_GUI_TESTS == eligible["total"],
         "the partition dropped or duplicated tests",
     )
+
+    if args.require_nodeids:
+        _check(args.expected is not None, "exact nodeid verification requires --expected")
+        expected_ids = _read(args.expected).get("eligible_nodeids")
+        _check(isinstance(expected_ids, list) and bool(expected_ids), "inventory gate has no eligible nodeids")
+        _check(len(set(expected_ids)) == len(expected_ids), "inventory gate has duplicate nodeids")
+        _check(set(logic.get("eligible_nodeids", [])) == set(expected_ids), "logic disagrees with gate nodeids")
+        seen: set[str] = set()
+        for inventory in [logic, *shards]:
+            nodes = inventory.get("selected_nodeids")
+            _check(isinstance(nodes, list), "missing selected nodeids")
+            _check(len(nodes) == len(set(nodes)) == inventory["selected"]["total"], "selected nodeid count mismatch")
+            _check(not seen.intersection(nodes), "a test was selected by more than one partition")
+            seen.update(nodes)
+        isolated = {"tests/unit/test_layout_v2_window.py::test_preset_switch_fits_the_300ms_budget"}
+        _check(not seen.intersection(isolated), "isolated timing-budget test was also selected by a shard")
+        _check(seen | isolated == set(expected_ids), "nodeid partition dropped or added tests")
 
     sys.stdout.write(
         "Verified pytest partition: "

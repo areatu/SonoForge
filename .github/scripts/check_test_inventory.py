@@ -289,7 +289,12 @@ def main(argv: list[str] | None = None) -> int:
         head = collect(REPO_ROOT)
         if args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            payload = {"eligible_not_interactive": dict(head.counts), "head": head_sha, "base": base_sha}
+            payload = {
+                "eligible_not_interactive": dict(head.counts),
+                "eligible_nodeids": sorted(head.nodeids),
+                "head": head_sha,
+                "base": base_sha,
+            }
             args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         base = head if base_sha == head_sha else collect_base(base_sha)
         reasons = declared_reasons(commit_messages(base_sha))

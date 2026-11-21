@@ -79,6 +79,9 @@ jobs:
           # developer machine.
           pip install \
             "ruff==$(python .github/scripts/locked_version.py ruff)" \
+            "pytest==$(python .github/scripts/locked_version.py pytest)" \
+            "pytest-xdist==$(python .github/scripts/locked_version.py pytest-xdist)" \
+            "pytest-timeout==$(python .github/scripts/locked_version.py pytest-timeout)" \
             "mypy==$(python .github/scripts/locked_version.py mypy)" \
             "PySide6==$(python .github/scripts/locked_version.py PySide6)" \
             "numpy==$(python .github/scripts/locked_version.py numpy)" \
@@ -89,6 +92,10 @@ jobs:
         run: python -m unittest discover -s .github/tests -v
       - name: Website and citation checks
         run: python -m unittest discover -s site/tests -v
+      - name: Documentation hygiene regression tests (no Qt fixtures)
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest --noconftest -p pytest_timeout -o addopts= tests/unit/test_docs_links.py -q
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
@@ -324,9 +331,13 @@ jobs:
   # Linux logic, platform compatibility, GUI, and bench run independently.
   # The logic and GUI selections combine to the full unit-test coverage.
   test_logic:
-    name: test-logic (ubuntu-latest, 3.11)
+    name: test-logic (ubuntu-latest, 3.11, shard ${{ matrix.shard }}/3)
     needs: [test_inventory]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -384,7 +395,8 @@ jobs:
           rm -f /tmp/pytest.log /tmp/pytest-last-node* /tmp/pytest-metrics.json /tmp/pytest-junit.xml
           uv run --no-sync pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
-            -m "not gui and not interactive" --durations=25 \
+            -m "not gui and not interactive" --durations=50 \
+            --ci-shard-index ${{ matrix.shard }} --ci-shard-count 3 \
             --junitxml=/tmp/pytest-junit.xml \
             --cov=src/echo_personal_tool --cov-report= \
             > /tmp/pytest.log 2>&1
@@ -394,14 +406,11 @@ jobs:
           python .github/scripts/check_pytest_counts.py \
             --junit /tmp/pytest-junit.xml --metrics /tmp/pytest-metrics.json
           count_status=$?
-          python .github/scripts/check_required_tests.py \
-            --metrics /tmp/pytest-metrics.json --required .github/required-tests/formulas.txt
-          formulas_status=$?
           if [ "$status" -ne 0 ] && [ -s /tmp/pytest-last-node ]; then
             printf '::error title=pytest recorded active node::%s\n' "$(head -n 1 /tmp/pytest-last-node)"
             printf '::error title=pytest abort::recorded active node (not proof of crash cause): %s\n' "$(head -n 1 /tmp/pytest-last-node)"
           fi
-          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ] || [ "$formulas_status" -ne 0 ]; then
+          if [ "$status" -ne 0 ] || [ "$count_status" -ne 0 ]; then
             exit 1
           fi
           exit 0
@@ -410,7 +419,7 @@ jobs:
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: pytest-logic-diagnostics
+          name: pytest-logic-diagnostics-ubuntu-latest-py3.11-shard-${{ matrix.shard }}
           path: |
             /tmp/pytest.log
             /tmp/pytest-metrics.json
@@ -427,7 +436,7 @@ jobs:
         if: success() && runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-data-logic
+          name: coverage-data-logic-shard-${{ matrix.shard }}
           path: coverage-logic.data
           retention-days: 1
 
@@ -444,9 +453,9 @@ jobs:
   # docs/reviews/2026-10-22-dependabot-alerts-ru.md); Linux/3.11 stays covered
   # by test_logic/coverage.
   test_compat:
-    name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }})
+    name: test-logic (${{ matrix.os }}, ${{ matrix.python-version }}, shard ${{ matrix.shard }}/3)
     needs: [test_inventory]
-    # Preserve the check name while pinning an available ARM64 macOS image.
+    # Keep the platform identity while pinning an available ARM64 macOS image.
     runs-on: ${{ matrix.os == 'macos-latest' && 'macos-15' || matrix.os }}
     strategy:
       fail-fast: false
@@ -454,12 +463,40 @@ jobs:
         include:
           - os: macos-latest
             python-version: "3.11"
+            shard: 0
+          - os: macos-latest
+            python-version: "3.11"
+            shard: 1
+          - os: macos-latest
+            python-version: "3.11"
+            shard: 2
           - os: windows-latest
             python-version: "3.11"
+            shard: 0
+          - os: windows-latest
+            python-version: "3.11"
+            shard: 1
+          - os: windows-latest
+            python-version: "3.11"
+            shard: 2
           - os: ubuntu-latest
             python-version: "3.12"
+            shard: 0
+          - os: ubuntu-latest
+            python-version: "3.12"
+            shard: 1
+          - os: ubuntu-latest
+            python-version: "3.12"
+            shard: 2
           - os: ubuntu-latest
             python-version: "3.13"
+            shard: 0
+          - os: ubuntu-latest
+            python-version: "3.13"
+            shard: 1
+          - os: ubuntu-latest
+            python-version: "3.13"
+            shard: 2
     steps:
       - name: Verify macOS Apple Silicon runner
         if: runner.os == 'macOS'
@@ -509,7 +546,8 @@ jobs:
           rm -f pytest.log pytest-last-node* pytest-metrics.json pytest-junit.xml
           uv run --no-sync pytest tests/unit/ -n auto --dist loadfile --max-worker-restart=2 \
             -vv -p pytest_current_node -p pytest_ci_metrics --tb=line --no-header \
-            -m "not gui and not interactive" --durations=25 \
+            -m "not gui and not interactive" --durations=50 \
+            --ci-shard-index ${{ matrix.shard }} --ci-shard-count 3 \
             --junitxml=pytest-junit.xml > pytest.log 2>&1
           status=$?
           cat pytest.log
@@ -526,7 +564,7 @@ jobs:
           fi
           exit 0
       - name: Run Windows path compatibility suite
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.shard == 0
         shell: bash
         env:
           PYTHONFAULTHANDLER: "1"
@@ -538,13 +576,48 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: pytest-logic-diagnostics-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: pytest-logic-diagnostics-${{ matrix.os }}-py${{ matrix.python-version }}-shard-${{ matrix.shard }}
           path: |
             pytest.log
             pytest-metrics.json
             pytest-junit.xml
             pytest-last-node*
           if-no-files-found: ignore
+          retention-days: 3
+
+  # All OS/Python cells retain the full non-GUI inventory across three shards.
+  # Required formulas are checked only AFTER merging the complete Linux run.
+  logic_evidence:
+    name: Verify logic shards and required formulas
+    needs: [test_inventory, test_logic, test_compat]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: pytest-logic-diagnostics-*
+          path: logic-input
+      - name: Verify every platform partition and publish timing summaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for cell in ubuntu-latest-py3.11 ubuntu-latest-py3.12 ubuntu-latest-py3.13 windows-latest-py3.11 macos-latest-py3.11; do
+            python .github/scripts/merge_logic_shards.py \
+              --inputs logic-input/pytest-logic-diagnostics-$cell-shard-*/pytest-metrics.json \
+              --shards 3 --output logic-merged/$cell.json --github-summary
+          done
+          python .github/scripts/check_required_tests.py \
+            --metrics logic-merged/ubuntu-latest-py3.11.json \
+            --required .github/required-tests/formulas.txt
+          cp logic-merged/ubuntu-latest-py3.11.json logic-merged/pytest-metrics.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pytest-logic-diagnostics
+          path: logic-merged/
+          if-no-files-found: error
           retention-days: 3
 
   # S3-01 (#310): regression and migration suites join the PR gate on Linux.
@@ -1247,7 +1320,7 @@ jobs:
   coverage:
     name: Combined Linux coverage
     runs-on: ubuntu-latest
-    needs: [test_inventory, test_logic, test_gui]
+    needs: [test_inventory, test_logic, logic_evidence, test_gui]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -1259,7 +1332,7 @@ jobs:
       # Pin the patched download action to an explicit release.
       - uses: actions/download-artifact@v8.0.2
         with:
-          name: coverage-data-logic
+          pattern: coverage-data-logic-shard-*
           path: coverage-input/logic
       - uses: actions/download-artifact@v8.0.2
         with:
@@ -1321,7 +1394,7 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage
         run: |
-          python .github/scripts/verify_pytest_partition.py \
+          python .github/scripts/verify_pytest_partition.py --require-nodeids \
             --expected coverage-input/inventory/pytest-inventory.json \
             --logic coverage-input/metrics-logic/pytest-metrics.json \
             --gui coverage-input/metrics-gui-0/pytest-metrics.json \
@@ -1331,7 +1404,13 @@ jobs:
                   coverage-input/metrics-gui-4/pytest-metrics.json \
                   coverage-input/metrics-gui-5/pytest-metrics.json
           mkdir -p coverage-input/data
-          cp coverage-input/logic/coverage-logic.data coverage-input/data/.coverage.logic
+          # Fail on missing/extra shard artifacts; never silently combine less coverage.
+          logic_data=(coverage-input/logic/coverage-data-logic-shard-*/coverage-logic.data)
+          [ "${#logic_data[@]}" -eq 3 ]
+          for shard in 0 1 2; do
+            cp "coverage-input/logic/coverage-data-logic-shard-$shard/coverage-logic.data" \
+              "coverage-input/data/.coverage.logic$shard"
+          done
           cp coverage-input/gui-0/coverage-gui-shard-0.data coverage-input/data/.coverage.gui0
           cp coverage-input/gui-1/coverage-gui-shard-1.data coverage-input/data/.coverage.gui1
           cp coverage-input/gui-2/coverage-gui-shard-2.data coverage-input/data/.coverage.gui2
@@ -1385,7 +1464,7 @@ jobs:
     # This job only checks the results of the native platform jobs above;
     # it must not consume another scarce macOS runner to evaluate booleans.
     runs-on: ubuntu-latest
-    needs: [test_logic, test_compat, test_gui, test_bench, test_security, security_audit, test_acceptance, test_exploratory, ui_colors, lint, package_smoke, coverage, typecheck]
+    needs: [test_logic, test_compat, test_gui, logic_evidence, test_bench, test_security, security_audit, test_acceptance, test_exploratory, ui_colors, lint, package_smoke, coverage, typecheck]
     if: always()
     strategy:
       fail-fast: false
@@ -1405,6 +1484,7 @@ jobs:
           # in lint; the aggregate must not go green without them.
           LINT_RESULT: ${{ needs.lint.result }}
           LOGIC_RESULT: ${{ needs.test_logic.result }}
+          LOGIC_EVIDENCE_RESULT: ${{ needs.logic_evidence.result }}
           COMPAT_RESULT: ${{ needs.test_compat.result }}
           EXPLORATORY_RESULT: ${{ needs.test_exploratory.result }}
           GUI_RESULT: ${{ needs.test_gui.result }}
@@ -1419,6 +1499,7 @@ jobs:
         run: |
           if [[ "$LINT_RESULT" != "success" \
             || "$LOGIC_RESULT" != "success" || "$COMPAT_RESULT" != "success" \
+            || "$LOGIC_EVIDENCE_RESULT" != "success" \
             || "$EXPLORATORY_RESULT" != "success" \
             || "$GUI_RESULT" != "success" || "$BENCH_RESULT" != "success" \
             || "$SECURITY_RESULT" != "success" || "$SECURITY_AUDIT_RESULT" != "success" \
@@ -1427,7 +1508,7 @@ jobs:
             || "$PACKAGE_SMOKE_RESULT" != "success" \
             || "$COVERAGE_RESULT" != "success" \
             || "$TYPECHECK_RESULT" != "success" ]]; then
-            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT compat=$COMPAT_RESULT exploratory=$EXPLORATORY_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
+            echo "::error title=CI test gate::lint=$LINT_RESULT logic=$LOGIC_RESULT logic_evidence=$LOGIC_EVIDENCE_RESULT compat=$COMPAT_RESULT exploratory=$EXPLORATORY_RESULT gui=$GUI_RESULT bench=$BENCH_RESULT security=$SECURITY_RESULT security_audit=$SECURITY_AUDIT_RESULT acceptance=$ACCEPTANCE_RESULT ui_colors=$UI_COLORS_RESULT package_smoke=$PACKAGE_SMOKE_RESULT coverage=$COVERAGE_RESULT typecheck=$TYPECHECK_RESULT"
             exit 1
           fi
           echo "Lint ratchets, all logic, platform compatibility (macOS/Windows on the requires-python floor), exploratory/Hypothesis, GUI, benchmark, security, security-audit, acceptance, colour-ratchet, package-smoke, coverage, and the 3.11–3.13 mypy matrix gates passed."
