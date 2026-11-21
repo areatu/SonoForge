@@ -1,4 +1,4 @@
-"""View-recognition UI glue for the system bar (#639 step 4).
+"""View-recognition UI glue for the system bar (issue 639, step 4).
 
 ``ViewRecognitionUi`` owns the badge, the override dialog and the
 controller/coordinator connections, so ``MainWindow`` stays thin. It binds

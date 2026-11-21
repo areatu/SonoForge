@@ -19,7 +19,7 @@ class ViewBadgeWidget(QToolButton):
 
     override_requested = Signal()
 
-    def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]  # Qt parent=None convention
         super().__init__(parent)
         self.setObjectName("viewBadge")
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)

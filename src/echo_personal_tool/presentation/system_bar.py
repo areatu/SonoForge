@@ -414,7 +414,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         for candidate, action in self._study_profile_actions.items():
             action.setChecked(candidate == chosen)
 
-    def add_view_badge(self, badge) -> None:  # type: ignore[no-untyped-def]
+    def add_view_badge(self, badge) -> None:  # type: ignore[no-untyped-def]  # badge widget contract is untyped
         """Place the view-recognition badge next to the study-profile button."""
         layout = self.layout()
         if layout is None:

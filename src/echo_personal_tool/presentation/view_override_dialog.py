@@ -24,7 +24,7 @@ from echo_personal_tool.domain.services.view_recognition_workflow import ViewSug
 class ViewOverrideDialog(QDialog):
     """Choose / confirm the view of the loaded series."""
 
-    def __init__(self, suggestion: ViewSuggestion, parent=None) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, suggestion: ViewSuggestion, parent=None) -> None:  # type: ignore[no-untyped-def]  # Qt parent=None convention
         super().__init__(parent)
         self.setObjectName("viewOverrideDialog")
         self.setWindowTitle(tr("view_recognition.override_title"))

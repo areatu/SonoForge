@@ -52,7 +52,8 @@ class ViewRecognitionWorker(QRunnable):
                 study_uid=self._study_uid,
                 series_uid=self._series_uid,
             )
-        except Exception as exc:  # noqa: BLE001 - surface a stable message to the UI
+        except (RuntimeError, ValueError, OSError, TypeError) as exc:
+            # surface a stable message to the UI instead of dying the worker thread
             self.signals.failed.emit(f"view_recognition_failed: {type(exc).__name__}")
             return
         self.signals.suggestion_ready.emit(suggestion)
