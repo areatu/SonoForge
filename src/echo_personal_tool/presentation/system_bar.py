@@ -23,11 +23,12 @@ the same behaviour the title bar uses.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QFrame,
     QHBoxLayout,
@@ -412,6 +413,15 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._btn_study_profile.setToolTip(tr("system_bar.study_profile_tooltip"))
         for candidate, action in self._study_profile_actions.items():
             action.setChecked(candidate == chosen)
+
+    def add_view_badge(self, badge) -> None:  # type: ignore[no-untyped-def]  # badge widget contract is untyped
+        """Place the view-recognition badge next to the study-profile button."""
+        layout = self.layout()
+        if layout is None:
+            return
+        # The bar layout is a QBoxLayout; the stub declares insertWidget there.
+        # Profile button sits at index 3; the badge goes right after it.
+        cast(QBoxLayout, layout).insertWidget(4, badge, 0)
 
     def _reload_study_profile_text(self) -> None:
         """Re-translate the profile button and its menu after a language switch."""

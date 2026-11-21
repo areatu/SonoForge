@@ -281,6 +281,8 @@ files = [
     "src/echo_personal_tool/presentation/user_login_dialog.py",
     "src/echo_personal_tool/presentation/user_management_dialog.py",
     "src/echo_personal_tool/presentation/vessel_sensitivity_overlay.py",
+    "src/echo_personal_tool/presentation/view_badge_widget.py",
+    "src/echo_personal_tool/presentation/view_override_dialog.py",
     "src/echo_personal_tool/presentation/viewer/__init__.py",
     "src/echo_personal_tool/presentation/viewer/commands.py",
     "src/echo_personal_tool/presentation/viewer/compare_tools.py",
