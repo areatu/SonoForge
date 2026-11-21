@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -19,6 +19,7 @@ from echo_personal_tool.domain.models.orthanc import (
     StudyInfo,
     StudyStatistics,
 )
+from echo_personal_tool.domain.models.view_recognition import RecognizedView
 
 
 class IWorklistSink(Protocol):
@@ -310,3 +311,13 @@ class SignerPort(Protocol):
     def verify(self, payload: bytes, signature: ReportSignature) -> bool:
         """Return True if *signature* is valid for *payload* (offline check)."""
         ...
+
+
+class IViewRecognizer(Protocol):
+    """Classifies the echocardiographic view of a cine clip.
+
+    Implemented in infrastructure (e.g. an ONNX-backed classifier). The domain
+    layer depends only on this protocol, never on a concrete inference engine.
+    """
+
+    def recognize(self, frames: Sequence[np.ndarray]) -> RecognizedView: ...
