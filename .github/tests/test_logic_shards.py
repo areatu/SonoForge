@@ -257,6 +257,13 @@ class RealPytestTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
+    def test_documentation_contracts_run_in_fast_lint_without_qt(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        lint = workflow.split("  lint:\n", 1)[1].split("  typecheck:\n", 1)[0]
+        self.assertIn('"pytest-timeout==$(python .github/scripts/locked_version.py pytest-timeout)"', lint)
+        self.assertIn('PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"', lint)
+        self.assertIn("--noconftest -p pytest_timeout -o addopts= tests/unit/test_docs_links.py -q", lint)
+
     def test_all_five_cells_have_three_required_shards(self):
         import re
 

@@ -81,6 +81,7 @@ jobs:
             "ruff==$(python .github/scripts/locked_version.py ruff)" \
             "pytest==$(python .github/scripts/locked_version.py pytest)" \
             "pytest-xdist==$(python .github/scripts/locked_version.py pytest-xdist)" \
+            "pytest-timeout==$(python .github/scripts/locked_version.py pytest-timeout)" \
             "mypy==$(python .github/scripts/locked_version.py mypy)" \
             "PySide6==$(python .github/scripts/locked_version.py PySide6)" \
             "numpy==$(python .github/scripts/locked_version.py numpy)" \
@@ -91,6 +92,10 @@ jobs:
         run: python -m unittest discover -s .github/tests -v
       - name: Website and citation checks
         run: python -m unittest discover -s site/tests -v
+      - name: Documentation hygiene regression tests (no Qt fixtures)
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest --noconftest -p pytest_timeout -o addopts= tests/unit/test_docs_links.py -q
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
       - name: Function-length ratchet (200-line limit)
