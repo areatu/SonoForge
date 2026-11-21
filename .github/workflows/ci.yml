@@ -993,8 +993,10 @@ jobs:
           exit 1
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --python 3.11
-      - name: Run 720p cine playback bench (Linux)
-        run: xvfb-run -a uv run --no-sync pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+      - name: Run 720p cine playback + view-recognition benches (Linux)
+        env:
+          ECHO_BENCH: "1"
+        run: xvfb-run -a uv run --no-sync pytest tests/bench/test_cine_playback_e2e_ci.py tests/bench/test_view_recognition_bench.py -q --tb=short --no-header
 
   # Security suite (QH-2a.1 part 2, S-12). Everything under tests/security is
   # mocked — no PACS, no network, no model download — so it runs on every PR.
