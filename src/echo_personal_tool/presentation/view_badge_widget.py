@@ -1,4 +1,4 @@
-"""View-recognition badge for the system bar (#639 step 4).
+"""View-recognition badge for the system bar (issue 639, step 4).
 
 A compact clickable badge showing the recognised view and confidence of the
 loaded series. Clicking it opens the override dialog (handled by the caller);

@@ -54,9 +54,6 @@ from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
-from echo_personal_tool.application.workers.view_recognition_worker import (
-    ViewRecognitionWorker,
-)
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements, resolve_bsa_basis
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber, confirmed_biplane_index_ml_m2
 from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
@@ -225,10 +222,6 @@ class AppController(QObject):
     #: Проекция исследования (S-11) изменилась: измерения, калибровка, рост/вес
     #: или ручные входы калькулятора. Дребезг 50–100 мс (спека TP §8.6).
     study_projection_changed = Signal(object)
-    #: View-recognition (#639 step 4): suggestion for the loaded series.
-    view_suggestion_ready = Signal(object)  # ViewSuggestion
-    #: A persisted view decision changed (override applied / restored).
-    view_decision_changed = Signal(object)  # ViewDecision
 
     def __init__(
         self,
@@ -315,9 +308,6 @@ class AppController(QObject):
         )
         self._thumbnail_queue.thumbnail_loaded.connect(self.thumbnail_loaded.emit)
         self._current_frame_pixels: np.ndarray | None = None
-        # View recognition (#639 step 4): workflow + one-shot-per-series guard.
-        self._view_workflow = resolved_services.view_workflow
-        self._view_attempted: set[tuple[str, str]] = set()
         # Cine ROI probe key; detection costs 14-38 ms at 720p.
         self._cine_roi_probe_key: tuple[str, str | None] | None = None
         self._leading_static_frames: dict[Path, int] = {}
@@ -3047,96 +3037,6 @@ class AppController(QObject):
         self._current_frame_pixels = pixels
         self._frame_cache.put(frame_index, pixels)
         self.frame_loaded.emit(pixels)
-        self._maybe_start_view_recognition()
-
-    def _maybe_start_view_recognition(self) -> None:
-        """Run view recognition once per loaded series (#639 step 4).
-
-        Triggered by the first decoded frame of a series. The clip is sampled
-        from the frame cache (up to ``_VIEW_RECOGNITION_FRAMES`` frames); the
-        recognition itself runs on the thread pool via
-        :class:`ViewRecognitionWorker` so a future ONNX classifier never
-        blocks the UI.
-        """
-        instance = self._current_instance
-        if instance is None or instance.path is None:
-            return
-        if instance.clip_mode != "2d":
-            return  # view recognition applies to 2D cine clips only
-        study_uid = self._resolve_study_uid(instance)
-        key = (study_uid, instance.series_uid)
-        if key in self._view_attempted:
-            return
-        self._view_attempted.add(key)
-        frames = self._sample_recognition_frames(instance.path)
-        if not frames:
-            return
-        worker = ViewRecognitionWorker(
-            self._view_workflow,
-            frames,
-            study_uid=study_uid,
-            series_uid=instance.series_uid,
-            parent=self,
-        )
-        worker.signals.suggestion_ready.connect(self._on_view_suggestion)
-        worker.signals.failed.connect(self._on_view_recognition_failed)
-        self._thread_pool.start(worker)
-
-    #: Frames sampled for one recognition run (clip-level context).
-    _VIEW_RECOGNITION_FRAMES = 8
-
-    def _sample_recognition_frames(self, path: Path) -> list[np.ndarray]:
-        """Up to ``_VIEW_RECOGNITION_FRAMES`` frames of ``path`` from the cache.
-
-        Uses the stacked cine when the full clip is already decoded, otherwise
-        the frames currently cached (at least the frame just loaded).
-        """
-        del path  # sampling reads the frame cache, not the file
-        stacked = self._frame_cache.frames
-        if stacked is not None and stacked.ndim >= 3 and stacked.shape[0] > 0:
-            total = int(stacked.shape[0])
-            if total <= self._VIEW_RECOGNITION_FRAMES:
-                return [stacked[i] for i in range(total)]
-            step = total / self._VIEW_RECOGNITION_FRAMES
-            return [
-                stacked[min(total - 1, int(i * step))]
-                for i in range(self._VIEW_RECOGNITION_FRAMES)
-            ]
-        cached = self._current_frame_pixels
-        return [cached] if cached is not None else []
-
-    def _on_view_suggestion(self, suggestion: object) -> None:
-        self.view_suggestion_ready.emit(suggestion)
-
-    def _on_view_recognition_failed(self, message: str) -> None:
-        self.status_message.emit(message)
-
-    def apply_view_decision(self, decision: object) -> None:
-        """Persist a user-chosen view and notify the UI (#639 step 4)."""
-        from echo_personal_tool.domain.models.view_recognition import ViewDecision
-
-        if not isinstance(decision, ViewDecision):
-            raise TypeError("Expected ViewDecision")
-        self._view_workflow.save_decision(decision)
-        self.view_decision_changed.emit(decision)
-        self.status_message.emit(f"view_decision: {decision.view}")
-
-    def choose_view(self, view: str) -> None:
-        """Override the view of the currently loaded series (#639 step 4).
-
-        Persists the manual decision through the workflow and notifies the UI;
-        the next load of this series restores the choice without re-running
-        the classifier.
-        """
-        instance = self._current_instance
-        if instance is None:
-            return
-        decision = self._view_workflow.apply_override(
-            view,
-            study_uid=self._resolve_study_uid(instance),
-            series_uid=instance.series_uid,
-        )
-        self.apply_view_decision(decision)
 
     def _on_scroll_target_loaded(
         self,

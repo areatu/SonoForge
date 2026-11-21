@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from PySide6.QtCore import QByteArray, QEvent, QPoint, QRect, QSignalBlocker, Qt, QThreadPool, QTimer
@@ -171,8 +171,7 @@ from echo_personal_tool.presentation.tool_buttons.row import ToolButtonRow
 from echo_personal_tool.presentation.tool_context import sync_tool_panel_context
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
-from echo_personal_tool.presentation.view_badge_widget import ViewBadgeWidget
-from echo_personal_tool.presentation.view_override_dialog import ViewOverrideDialog
+from echo_personal_tool.presentation.view_recognition_ui import ViewRecognitionUi
 from echo_personal_tool.presentation.viewer.compare_tools import start_hint
 from echo_personal_tool.presentation.viewer_column import ViewerColumn
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget, spacing_for_points
@@ -274,6 +273,7 @@ class MainWindow(QMainWindow):
         *,
         user_preferences: UserPreferences | None = None,
         services: AppServices | None = None,
+        view_coordinator: Any = None,
     ) -> None:
         super().__init__()
         ctrl, deps = resolve_window_dependencies(controller, services=services, user_preferences=user_preferences)
@@ -419,14 +419,8 @@ class MainWindow(QMainWindow):
         self._system_bar.set_multiview_checked(self._multiview_mode)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
-        # View recognition (#639 step 4): badge + override wiring.
-        self._view_badge = ViewBadgeWidget(self._system_bar)
-        self._view_badge.override_requested.connect(self._open_view_override)
-        self._system_bar.add_view_badge(self._view_badge)
-        self._controller.view_suggestion_ready.connect(self._on_view_suggestion)
-        self._controller.view_decision_changed.connect(self._on_view_decision_changed)
-        # (§4.1): the caption owns the tabs, the «+», the command
-        # field and the window controls; the strip below the bar is gone.
+        ViewRecognitionUi(view_coordinator, self._system_bar, self._show_status) if view_coordinator else None
+        # (§4.1): the caption owns the tabs, the «+», the command field; strip gone.
         self._title_bar = WindowTitleBar()
         self._title_bar.set_app_menu(self._build_app_menu())
         self._title_bar.set_window_controls_visible(not self.is_native_window_frame())
@@ -572,10 +566,8 @@ class MainWindow(QMainWindow):
         self._controller.state_manager.state_changed.connect(self._on_state_changed)
         self._wire_ui()
         self._viewer.installEventFilter(self)
-        self._viewer._graphics.installEventFilter(self)
-        self._viewer._view.installEventFilter(self)
-        # the radial wheel — the window owns the controller, the viewer
-        # only forwards press/move/release (spec §4.4, Q-09).
+        for _ef in (self._viewer._graphics, self._viewer._view):
+            _ef.installEventFilter(self)
         from echo_personal_tool.presentation.radial_menu import RadialMenuController
 
         self._radial = RadialMenuController(
@@ -4682,71 +4674,6 @@ class MainWindow(QMainWindow):
                 scroll_active,
                 (perf_counter() - _ft0) * 1000,
             )
-
-    def _on_view_suggestion(self, suggestion: object) -> None:
-        """Show the recognition badge; ask the user when not confident."""
-        from echo_personal_tool.domain.services.view_recognition_workflow import (
-            ViewSuggestion,
-        )
-
-        if not isinstance(suggestion, ViewSuggestion):
-            return
-        self._view_badge.set_suggestion(suggestion)
-        if suggestion.is_confident:
-            if suggestion.profile_id:
-                self._show_status(
-                    tr(
-                        "view_recognition.detected_profile",
-                        view=suggestion.view,
-                        profile=suggestion.profile_id,
-                    )
-                )
-        else:
-            # Low confidence: the badge alone is not enough — ask immediately.
-            self._open_view_override(suggestion)
-
-    def _on_view_decision_changed(self, decision: object) -> None:
-        from echo_personal_tool.domain.models.view_recognition import (
-            ViewDecision,
-            view_category,
-        )
-        from echo_personal_tool.domain.services.view_recognition_workflow import (
-            ViewSuggestion,
-        )
-
-        if not isinstance(decision, ViewDecision):
-            return
-        self._view_badge.set_suggestion(
-            ViewSuggestion(
-                view=decision.view,
-                confidence=decision.confidence,
-                category=view_category(decision.view),
-                profile_id=decision.profile_id,
-                source=decision.source,
-            )
-        )
-
-    def _open_view_override(self, suggestion: object = None) -> None:  # type: ignore[no-untyped-def]
-        """Open the override dialog for the current suggestion."""
-        from echo_personal_tool.domain.models.view_recognition import ViewDecisionSource
-        from echo_personal_tool.domain.services.view_recognition_workflow import (
-            ViewSuggestion,
-        )
-
-        if not isinstance(suggestion, ViewSuggestion):
-            suggestion = ViewSuggestion(
-                view="UNKNOWN",
-                confidence=0.0,
-                category="unknown",
-                profile_id=None,
-                source=ViewDecisionSource.AUTO,
-            )
-        dialog = ViewOverrideDialog(suggestion, self)
-        if dialog.exec() != dialog.Accepted:
-            return
-        chosen = dialog.chosen_view()
-        if chosen:
-            self._controller.choose_view(chosen)
 
     def _on_slider_frame_selected(self, index: int) -> None:
         if (

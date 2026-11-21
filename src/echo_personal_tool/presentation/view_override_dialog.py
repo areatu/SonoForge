@@ -1,4 +1,4 @@
-"""Override dialog for a view-recognition suggestion (#639 step 4).
+"""Override dialog for a view-recognition suggestion (issue 639, step 4).
 
 Shows the classifier suggestion (view + confidence + proposed profile) and
 lets the user pick a view from the canonical list. The choice is returned to
