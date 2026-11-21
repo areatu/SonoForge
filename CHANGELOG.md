@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `perf(ci)`: три lossless logic-shards на каждой OS/Python-комбинации, проверка точного набора тестов и объединённого coverage, пофазные тайминги ([полностью](changelog.d/017-perf-ci-logic-shards.md))
 - `feat(view-recognition)`: #639 шаг 4 — UI-хук авто-распознавания вида клипа: бейдж вида/уверенности, ручная override, сохранение решений, схема манифеста датасета (v1/v2 с консолидацией меток) ([полностью](changelog.d/016-feat-view-recognition-ui-639.md))
 - `feat(view-recognition)`: #639 шаг 3 / PR-A — доменный каркас авто-распознавания вида клипа: порт IViewRecognizer, ViewRecognitionService, загрузчик корпуса по манифесту, 10 unit-тестов без Qt ([полностью](changelog.d/015-feat-view-recognition-core-639.md))
 - `fix(persistence)`: #160 — достоверный результат повторного shutdown ([полностью](changelog.d/014-fix-persistence-shutdown-result-160.md))

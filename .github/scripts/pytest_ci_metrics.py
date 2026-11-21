@@ -1,15 +1,17 @@
 """Write a machine-readable inventory for split pytest CI selections.
 
-Two sections are produced in ``$PYTEST_CI_METRICS_FILE``:
+The following sections are produced in ``$PYTEST_CI_METRICS_FILE``:
 
 * ``collected`` / ``eligible_not_interactive`` / ``selected`` — the item
   inventory, snapshotted before marker deselection and compared with the
   selected list afterwards.  Under pytest-xdist worker gw0 writes it; every
   worker repeats collection by design.
-* ``eligible_nodeids`` — only when ``$PYTEST_CI_NODEIDS`` is ``1``: the sorted
-  node ids of the eligible (non-interactive) items.  The test-inventory gate
-  (``check_test_inventory.py``, issue #473) uses them to name the tests that
-  disappeared against the base commit; the regular jobs leave the file small.
+* ``eligible_nodeids`` / ``eligible_logic_nodeids`` / ``selected_nodeids`` —
+  exact identities, used by the inventory gate and the logic/GUI partition
+  checks. Optional ``--ci-shard-index/--ci-shard-count`` partition selected
+  files deterministically; each shard still records the full eligible set.
+* ``durations`` — setup/call/teardown seconds for every node, received by the
+  xdist controller; ``elapsed_seconds`` records the process wall-clock.
 * ``outcomes`` / ``skip_reasons`` / ``collection_errors`` / ``exit_status`` —
   the per-node run evidence (QH-2a.1, S-12).  The controller (or the plain
   single-process run) owns these: it receives every worker's test reports.
@@ -22,6 +24,8 @@ from __future__ import annotations
 
 import json
 import os
+import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +35,45 @@ import pytest
 _OUTCOMES: dict[str, str] = {}
 _SKIP_REASONS: dict[str, str] = {}
 _COLLECTION_ERRORS: list[str] = []
+_DURATIONS: dict[str, dict[str, float]] = {}
+_STARTED = time.perf_counter()
+
+
+def shard_files(nodeids: list[str], count: int) -> dict[str, int]:
+    """Keep files intact; greedily balance their actual collected item counts.
+
+    Largest files first, stable filename/index tie breaks. No cache or external
+    service is needed, so all xdist workers/platforms derive the same plan.
+    Timings recorded below allow a later measured, duration-weighted plan.
+    """
+    if count < 1:
+        raise ValueError("shard count must be positive")
+    weights = Counter(nodeid.split("::", 1)[0] for nodeid in nodeids)
+    loads = [0] * count
+    assignments: dict[str, int] = {}
+    for filename in sorted(weights, key=lambda name: (-weights[name], name)):
+        index = min(range(count), key=lambda index: (loads[index], index))
+        assignments[filename] = index
+        loads[index] += weights[filename]
+    return assignments
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    group = parser.getgroup("CI file sharding")
+    group.addoption("--ci-shard-index", type=int, default=None)
+    group.addoption("--ci-shard-count", type=int, default=None)
+
+
+def _shard_settings(config: pytest.Config) -> tuple[int, int] | None:
+    # CLI options (propagated by xdist), not environment variables: nested
+    # pytest subprocesses in tests must not accidentally shard themselves.
+    index = config.getoption("--ci-shard-index")
+    count = config.getoption("--ci-shard-count")
+    if index is None and count is None:
+        return None
+    if index is None or count is None or not 0 <= index < count:
+        raise pytest.UsageError("require 0 <= --ci-shard-index < --ci-shard-count; supply both options")
+    return index, count
 
 
 def _has_marker(item: Any, name: str) -> bool:
@@ -77,9 +120,19 @@ def _is_xdist_worker() -> bool:
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[Any]):
     """Record all collected items and the marker-filtered selection."""
-    del session, config
+    del session
     collected = tuple(items)
     yield
+
+    # Marker/-k deselection has finished. Shard on EVERY worker before xdist
+    # compares their collections; only gw0 writes the complete inventory.
+    settings = _shard_settings(config)
+    if settings is not None:
+        index, count = settings
+        assignments = shard_files([item.nodeid for item in items], count)
+        removed = [item for item in items if assignments[item.nodeid.split("::", 1)[0]] != index]
+        items[:] = [item for item in items if assignments[item.nodeid.split("::", 1)[0]] == index]
+        config.hook.pytest_deselected(items=removed)
 
     # xdist's controller does not run collection hooks on a collected item
     # list. Each worker does; gw0 publishes the identical complete inventory,
@@ -100,8 +153,13 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
         "eligible_not_interactive": eligible_counts,
         "selected": selected_counts,
     }
-    if os.environ.get("PYTEST_CI_NODEIDS") == "1":
-        inventory["eligible_nodeids"] = sorted(item.nodeid for item in eligible)
+    # Exact identities prevent equal counts from hiding a dropped test and a
+    # duplicate elsewhere. Each logic shard retains the same FULL inventory.
+    inventory["eligible_nodeids"] = sorted(item.nodeid for item in eligible)
+    inventory["eligible_logic_nodeids"] = sorted(item.nodeid for item in eligible if not _has_marker(item, "gui"))
+    inventory["selected_nodeids"] = sorted(item.nodeid for item in selected)
+    if settings is not None:
+        inventory["shard"] = {"index": settings[0], "count": settings[1]}
     _write_inventory(inventory)
 
 
@@ -139,6 +197,8 @@ def pytest_runtest_logreport(report: Any) -> None:
     """Keep the final outcome of every executed node (controller-side under xdist)."""
     if _is_xdist_worker():
         return
+    phases = _DURATIONS.setdefault(report.nodeid, {})
+    phases[report.when] = phases.get(report.when, 0.0) + float(report.duration)
     outcome = _classify(report)
     if outcome is None:
         return
@@ -175,4 +235,6 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     payload["skip_reasons"] = dict(sorted(_SKIP_REASONS.items()))
     payload["collection_errors"] = list(_COLLECTION_ERRORS)
     payload["exit_status"] = int(exitstatus)
+    payload["durations"] = dict(sorted(_DURATIONS.items()))
+    payload["elapsed_seconds"] = time.perf_counter() - _STARTED
     _write_json(path, payload)
