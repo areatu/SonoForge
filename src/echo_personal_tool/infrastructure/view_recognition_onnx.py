@@ -1,0 +1,213 @@
+"""ONNX view-recognition inference (Infrastructure).
+
+The ONNX-backed implementation of :class:`~echo_personal_tool.domain.ports.IViewRecognizer`
+for a trained view classifier (#639 step 2). Mirrors
+:class:`OnnxInferenceEngine`: model path and I/O names are resolved from
+``model_manifest.json`` (its own ``view_recognition`` section), integrity is
+verified against the manifest SHA256, and a clip is turned into a
+``(N, 3, H, W)`` batch via the pure domain helpers
+(:mod:`echo_personal_tool.domain.services.view_recognition_inference`).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any, cast
+
+logger = logging.getLogger(__name__)
+
+import numpy as np
+
+try:  # optional dependency — absent in the Presenter (lite) profile
+    import onnxruntime as ort
+except ImportError:  # pragma: no cover - depends on installed extras
+    ort = None
+
+from echo_personal_tool.domain.models.view_recognition import KNOWN_VIEWS, RecognizedView
+from echo_personal_tool.domain.services.view_recognition_inference import (
+    aggregate_predictions,
+    batch_to_channels,
+    clip_to_batch,
+)
+from echo_personal_tool.infrastructure.paths import models_dirs_for_read
+
+#: Manifest section used by this adapter, so the classifier's slot does not
+#: collide with the segmentation models' ``inference`` / ``la_inference``.
+MANIFEST_SECTION = "view_recognition"
+
+
+def _default_models_dir() -> Path:
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        candidate = Path(meipass) / "models"
+        if (candidate / "model_manifest.json").is_file():
+            return candidate
+    for user_models in models_dirs_for_read():
+        if (user_models / "model_manifest.json").is_file():
+            return user_models
+    for ancestor in Path(__file__).resolve().parents:
+        manifest_path = ancestor / "models" / "model_manifest.json"
+        if manifest_path.is_file():
+            return manifest_path.parent
+    return Path(__file__).resolve().parents[3] / "models"
+
+
+def _load_manifest(models_dir: Path) -> dict[str, Any] | None:
+    manifest_path = models_dir / "model_manifest.json"
+    if not manifest_path.is_file():
+        return None
+    with manifest_path.open(encoding="utf-8") as handle:
+        return cast(dict[str, Any], json.load(handle))
+
+
+def _resolve_model_path(models_dir: Path, manifest: dict[str, Any]) -> Path | None:
+    section = manifest.get(MANIFEST_SECTION, {})
+    active_model = section.get("active_model") if isinstance(section, dict) else None
+    if not active_model:
+        return None
+    entry = (manifest.get("models", {}) or {}).get(str(active_model))
+    if not isinstance(entry, dict):
+        return None
+    filename = entry.get("filename")
+    if not filename:
+        return None
+    return models_dir / str(filename)
+
+
+def _resolve_io_names(manifest: dict[str, Any]) -> tuple[str, str]:
+    section = manifest.get(MANIFEST_SECTION, {})
+    onnx_meta: dict[str, Any] = {}
+    if isinstance(section, dict):
+        active_model = section.get("active_model")
+        if active_model:
+            entry = (manifest.get("models", {}) or {}).get(str(active_model), {})
+            onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
+    return (
+        str(onnx_meta.get("input_name", "input")),
+        str(onnx_meta.get("output_name", "logits")),
+    )
+
+
+def _resolve_input_size(manifest: dict[str, Any]) -> int:
+    section = manifest.get(MANIFEST_SECTION, {})
+    onnx_meta: dict[str, Any] = {}
+    if isinstance(section, dict):
+        active_model = section.get("active_model")
+        if active_model:
+            entry = (manifest.get("models", {}) or {}).get(str(active_model), {})
+            onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
+    shape = onnx_meta.get("input_shape", [1, 3, 224, 224])
+    if isinstance(shape, (list, tuple)) and len(shape) >= 3:
+        return int(shape[2])
+    return 224
+
+
+def _resolve_sha256(manifest: dict[str, Any]) -> str | None:
+    section = manifest.get(MANIFEST_SECTION, {})
+    if not isinstance(section, dict):
+        return None
+    active_model = section.get("active_model")
+    if not active_model:
+        return None
+    entry = (manifest.get("models", {}) or {}).get(str(active_model), {})
+    if not isinstance(entry, dict):
+        return None
+    sha = entry.get("sha256")
+    return str(sha) if sha else None
+
+
+def _verify_model_integrity(model_path: Path, expected_sha256: str | None) -> None:
+    """Check SHA256 of the ONNX model against the manifest entry."""
+    if not expected_sha256:
+        return
+    actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        raise RuntimeError(
+            f"Model integrity check failed for {model_path.name}: expected {expected_sha256[:16]}…, got {actual[:16]}…"
+        )
+
+
+def _create_session(model_path: Path) -> Any:
+    if ort is None:
+        raise RuntimeError("onnxruntime is not available in this build")
+    return ort.InferenceSession(
+        str(model_path),
+        providers=["CPUExecutionProvider"],
+    )
+
+
+class OnnxViewRecognizer:
+    """Infrastructure implementation of :class:`IViewRecognizer` over ONNX.
+
+    When the model section is missing, the model file is absent, or the
+    manifest checksum does not match, construction still succeeds with
+    ``is_available() == False`` so the caller can fall back to
+    :class:`DisabledViewRecognizer`; only an actual inference call on an
+    unavailable model raises.
+    """
+
+    def __init__(
+        self,
+        *,
+        models_dir: Path | None = None,
+        session: Any | None = None,
+        class_names: Sequence[str] = KNOWN_VIEWS,
+    ) -> None:
+        self._models_dir = models_dir or _default_models_dir()
+        self._class_names = tuple(class_names)
+        self._manifest = _load_manifest(self._models_dir)
+        self._model_path = _resolve_model_path(self._models_dir, self._manifest) if self._manifest is not None else None
+        if self._manifest is not None:
+            self._input_name, self._output_name = _resolve_io_names(self._manifest)
+            self._input_size = _resolve_input_size(self._manifest)
+        else:
+            self._input_name, self._output_name = "input", "logits"
+            self._input_size = 224
+
+        if session is not None:
+            self._session = session
+        elif ort is not None and self._model_path is not None and self._model_path.is_file():
+            expected_sha256 = _resolve_sha256(self._manifest) if self._manifest else None
+            _verify_model_integrity(self._model_path, expected_sha256)
+            self._session = _create_session(self._model_path)
+        else:
+            self._session = None
+
+    def is_available(self) -> bool:
+        return (
+            ort is not None
+            and self._manifest is not None
+            and self._model_path is not None
+            and self._model_path.is_file()
+            and self._session is not None
+        )
+
+    @property
+    def input_size(self) -> int:
+        return self._input_size
+
+    def recognize(self, frames: Sequence[np.ndarray]) -> RecognizedView:
+        """Classify a cine clip's frames into a single :class:`RecognizedView`."""
+        if self._session is None:
+            raise RuntimeError("ONNX view-recognition model is not available")
+        batch = batch_to_channels(clip_to_batch(frames, self._input_size))
+        probs = self._softmax_logits(batch)
+        return aggregate_predictions(probs, self._class_names)
+
+    def _softmax_logits(self, batch: np.ndarray) -> np.ndarray:
+        outputs = self._session.run(
+            [self._output_name],
+            {self._input_name: batch},
+        )
+        logits = np.asarray(outputs[0], dtype=np.float64)
+        if logits.ndim == 1:
+            logits = logits[np.newaxis, :]
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        probs: np.ndarray = exp / exp.sum(axis=1, keepdims=True)
+        return probs
