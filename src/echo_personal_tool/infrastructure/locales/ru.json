@@ -3757,5 +3757,11 @@
   "server_settings.mp_error_not_portable": "Мастер-пароль доступен только в portable-режиме",
   "server_settings.mp_error_write_failed": "Не удалось записать на носитель",
   "server_settings.mp_error_lock_invalid": "Файл master.lock повреждён",
-  "server_settings.mp_error_key_invalid": "Зашифрованный ключ повреждён"
+  "server_settings.mp_error_key_invalid": "Зашифрованный ключ повреждён",
+  "view_recognition.override_title": "Выбор вида исследования",
+  "view_recognition.detected": "Распознанный вид",
+  "view_recognition.needs_choice": "Выберите вид исследования",
+  "view_recognition.confidence": "Уверенность",
+  "view_recognition.profile": "Профиль",
+  "view_recognition.detected_profile": "Распознан вид {view}; предлагаемый профиль: {profile}"
 }

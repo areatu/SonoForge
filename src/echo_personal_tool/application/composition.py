@@ -61,11 +61,16 @@ from echo_personal_tool.application.user_preferences import (
 from echo_personal_tool.application.user_session import UserSessionService
 from echo_personal_tool.domain.models.audit import AuditAction
 from echo_personal_tool.domain.models.user import Permission
-from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.models.view_recognition import RecognizedView
+from echo_personal_tool.domain.ports import IOnnxSegmenter, IViewRecognizer
+from echo_personal_tool.domain.services.view_recognition_workflow import (
+    ViewRecognitionWorkflow,
+)
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
+from echo_personal_tool.infrastructure.view_decision_store import JsonViewDecisionStore
 
 
 def make_ctmr_slice_requests() -> CtMrSliceRequests:
@@ -187,6 +192,19 @@ class DisabledOnnxSegmenter:
 
 
 @dataclass(frozen=True)
+class DisabledViewRecognizer:
+    """No-op :class:`IViewRecognizer` until the ONNX classifier (step 2) lands.
+
+    Returns ``UNKNOWN`` with zero confidence, so the step-4 UI hook stays
+    wired end-to-end (badge, override, persist) without a trained model.
+    """
+
+    def recognize(self, frames: Sequence[np.ndarray]) -> RecognizedView:
+        del frames
+        return RecognizedView("UNKNOWN", 0.0)
+
+
+@dataclass(frozen=True)
 class _HermeticRecentEntry:
     path: str
     pinned: bool = False
@@ -297,6 +315,17 @@ class AppServices:
     user_session: UserSessionService | None = None
     analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
     segmentation_jobs: SegmentationJobs = field(default_factory=SegmentationJobs)
+    #: View classifier behind the ``IViewRecognizer`` port (PR-A). Disabled
+    #: until the ONNX adapter (#639 step 2) lands.
+    view_recognizer: IViewRecognizer = field(default_factory=DisabledViewRecognizer)
+    #: Step-4 workflow: suggest / override / restore view decisions.
+    view_workflow: ViewRecognitionWorkflow = field(
+        default_factory=lambda: ViewRecognitionWorkflow(
+            DisabledViewRecognizer(), JsonViewDecisionStore(Path(tempfile.gettempdir()))
+        )
+    )
+    #: Persistence directory of the view-decision store.
+    view_decisions_dir: Path | None = None
 
     @property
     def cache_budget(self) -> FrameCacheBudget:
@@ -556,6 +585,14 @@ def build_app_services(
     else:
         resolved_segmenter = DisabledOnnxSegmenter()
 
+    # View recognition (#639): the ONNX classifier adapter is step 2; until it
+    # lands the workflow runs on the disabled recognizer, but the full
+    # suggest/override/persist flow is wired end-to-end.
+    view_recognizer: IViewRecognizer = DisabledViewRecognizer()
+    view_decisions_dir = resolved_paths.measurements_dir / "view-decisions"
+    view_decision_store = JsonViewDecisionStore(view_decisions_dir)
+    view_workflow = ViewRecognitionWorkflow(view_recognizer, view_decision_store)
+
     io_facades = _build_io_facades(
         capabilities=capabilities,
         resolved_paths=resolved_paths,
@@ -579,6 +616,9 @@ def build_app_services(
         segmenter=resolved_segmenter,
         io=io_facades,
         user_session=user_session,
+        view_recognizer=view_recognizer,
+        view_workflow=view_workflow,
+        view_decisions_dir=view_decisions_dir,
     )
 
 
