@@ -585,10 +585,18 @@ def build_app_services(
     else:
         resolved_segmenter = DisabledOnnxSegmenter()
 
-    # View recognition (#639): the ONNX classifier adapter is step 2; until it
-    # lands the workflow runs on the disabled recognizer, but the full
-    # suggest/override/persist flow is wired end-to-end.
-    view_recognizer: IViewRecognizer = DisabledViewRecognizer()
+    # View recognition (#639 step 2): the ONNX classifier adapter is used
+    # when a trained model is present in the models dir; otherwise the workflow
+    # falls back to the disabled recognizer, but the full suggest/override/
+    # persist flow stays wired end-to-end either way.
+    from echo_personal_tool.infrastructure.view_recognition_onnx import (
+        OnnxViewRecognizer,
+    )
+
+    view_recognizer_impl = OnnxViewRecognizer(models_dir=resolved_paths.models_dir)
+    view_recognizer: IViewRecognizer = (
+        view_recognizer_impl if view_recognizer_impl.is_available() else DisabledViewRecognizer()
+    )
     view_decisions_dir = resolved_paths.measurements_dir / "view-decisions"
     view_decision_store = JsonViewDecisionStore(view_decisions_dir)
     view_workflow = ViewRecognitionWorkflow(view_recognizer, view_decision_store)
