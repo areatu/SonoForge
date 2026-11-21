@@ -29,6 +29,7 @@
 ## Unreleased
 
 - `feat(view-recognition)`: #639 шаг 3 / PR-A — доменный каркас авто-распознавания вида клипа: порт IViewRecognizer, ViewRecognitionService, загрузчик корпуса по манифесту, 10 unit-тестов без Qt ([полностью](changelog.d/015-feat-view-recognition-core-639.md))
+- `perf(ci)`: три lossless logic-shards на каждой OS/Python-комбинации, проверка точного набора тестов и объединённого coverage, пофазные тайминги ([полностью](changelog.d/017-perf-ci-logic-shards.md))
 - `fix(persistence)`: #160 — достоверный результат повторного shutdown ([полностью](changelog.d/014-fix-persistence-shutdown-result-160.md))
 - `feat(report)`: UI-батч из 15 пунктов кардиолога: половые нормы guidelines и индексы аорты, режим «Все измерения» в «Показателях отчёта», выбор измерения в карточке происхождения по наведению, компоновка таблиц и заключения ([полностью](changelog.d/014-feat-report-batch-15-items.md))
 - `fix(imt)`: #558 — инвалидация проверки КИМ и регрессии редактирования/загрузки ([полностью](changelog.d/013-fix-imt-review-invalidation-558.md))
