@@ -4,7 +4,7 @@
   "totals": {
     "ignores": 57,
     "bare": 0,
-    "unexplained": 3
+    "unexplained": 0
   },
   "files": {
     "echo_personal_tool/application/measurement_persistence.py": {
@@ -90,7 +90,7 @@
     "echo_personal_tool/presentation/system_bar.py": {
       "ignores": 1,
       "bare": 0,
-      "unexplained": 1
+      "unexplained": 0
     },
     "echo_personal_tool/presentation/theme/token_restyle.py": {
       "ignores": 1,
@@ -105,12 +105,12 @@
     "echo_personal_tool/presentation/view_badge_widget.py": {
       "ignores": 1,
       "bare": 0,
-      "unexplained": 1
+      "unexplained": 0
     },
     "echo_personal_tool/presentation/view_override_dialog.py": {
       "ignores": 1,
       "bare": 0,
-      "unexplained": 1
+      "unexplained": 0
     },
     "echo_personal_tool/presentation/viewer/overlay_controller.py": {
       "ignores": 5,
