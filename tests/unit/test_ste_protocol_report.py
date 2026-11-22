@@ -372,3 +372,97 @@ class TestWindowAdoptsTheStudy:
             assert window._study.gls_average() == pytest.approx(-20.0)
         finally:
             window.close()
+
+
+class TestMyocardialWorkProjection:
+    """А.9 (issue #647): cuff BP turns the stored curves into MW rows."""
+
+    def test_without_blood_pressure_mw_stays_empty(self) -> None:
+        report = strain_report_from_study(_study(_result("A4C", -19.0)))
+        assert report is not None
+        assert report.mw_by_view == ()
+        assert report.gwe_percent is None
+        assert report.blood_pressure_mmhg is None
+
+    def test_blood_pressure_produces_per_view_work(self) -> None:
+        study = _study(_result("A4C", -19.0), _result("A2C", -20.0))
+        report = strain_report_from_study(study, blood_pressure=(120.0, 80.0))
+        assert report is not None
+        assert report.blood_pressure_mmhg == (120.0, 80.0)
+        assert {row[0] for row in report.mw_by_view} == {"A4C", "A2C"}
+        for _view, gwi, gcw, gww, gwe in report.mw_by_view:
+            assert gcw > 0.0
+            assert gwe > 50.0  # the fixture curve is a clean shortening ramp
+            assert gwi == pytest.approx(gcw - gww, abs=0.5)
+
+    def test_mean_over_views_is_the_reported_value(self) -> None:
+        report = strain_report_from_study(
+            _study(_result("A4C", -19.0), _result("A2C", -20.0)), blood_pressure=(120.0, 80.0)
+        )
+        assert report is not None
+        mean_gwe = float(np.mean([row[4] for row in report.mw_by_view]))
+        assert report.gwe_percent == pytest.approx(mean_gwe, rel=1e-9)
+
+    def test_unusable_curve_is_skipped_without_others_breaking(self) -> None:
+        flat = _result("A4C", -18.0)
+        flat = replace(flat, longitudinal=np.zeros(12), gls=0.0)
+        study = _study(flat, _result("A2C", -20.0))
+        report = strain_report_from_study(study, blood_pressure=(120.0, 80.0))
+        assert report is not None
+        assert {row[0] for row in report.mw_by_view} == {"A2C"}
+        assert report.gwe_percent is not None
+
+
+@pytest.mark.gui
+class TestMyocardialWorkWindow:
+    """А.9: the strain window previews the loop from a typed cuff BP."""
+
+    def test_bp_produces_mw_rows_and_loop(self, qapp) -> None:
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        window = StrainWindow()
+        try:
+            window.show_result(_result("A4C", -19.0))
+            assert window._summary._rows["gwi"][1].text() == "--"
+            window._summary._sbp_edit.setText("120")
+            window._summary._dbp_edit.setText("80")
+            window._summary._emit_bp()
+            gwi_text = window._summary._rows["gwi"][1].text()
+            gwe_text = window._summary._rows["gwe"][1].text()
+            assert gwi_text != "--" and float(gwi_text) > 0.0
+            assert gwe_text != "--" and 0.0 < float(gwe_text) <= 100.0
+            assert not window._summary._rows["gwi"][0].text().endswith("⚠")
+            # The active panel carries the closed loop; the others stay clean.
+            assert not window._curves_view._panel_a4c._loop_plot.isHidden()
+            assert window._curves_view._panel_a2c._loop_plot.isHidden()
+        finally:
+            window.close()
+
+    def test_junk_bp_clears_the_rows(self, qapp) -> None:
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        window = StrainWindow()
+        try:
+            window.show_result(_result("A4C", -19.0))
+            window._on_blood_pressure_edited("120", "80")
+            window._on_blood_pressure_edited("abc", "80")
+            assert window._blood_pressure is None
+            assert window._summary._rows["gwi"][1].text() == "--"
+            assert window._curves_view._panel_a4c._loop_plot.isHidden()
+        finally:
+            window.close()
+
+    def test_refused_beat_marks_a_warning_instead_of_a_number(self, qapp) -> None:
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        flat = replace(_result("A4C", -18.0), longitudinal=np.zeros(12), gls=0.0)
+        window = StrainWindow()
+        try:
+            window.show_result(flat)
+            window._on_blood_pressure_edited("120", "80")
+            label, value, _unit = window._summary._rows["gwi"]
+            assert value.text() == "--"
+            assert label.text().endswith("⚠")
+            assert label.toolTip()  # the refusal reason is human-readable
+        finally:
+            window.close()

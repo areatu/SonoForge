@@ -89,6 +89,11 @@ class PatientInfo:
     indication: str = ""
     conclusion: str = ""
     equipment: str = ""
+    #: Cuff brachial pressure (mmHg) — the amplitude input of the Myocardial
+    #: Work loop (plan А.9). ``None`` means "not filled in": the MW section is
+    #: then absent from the protocol instead of showing an invented loop.
+    systolic_bp_mmhg: float | None = None
+    diastolic_bp_mmhg: float | None = None
 
 
 @dataclass(frozen=True)

@@ -40,6 +40,7 @@ from echo_personal_tool.application.report_conclusion import ConclusionAutofillR
 from echo_personal_tool.application.report_phrases import ReportPhraseStore, make_report_phrase_store
 from echo_personal_tool.application.transport_policy import TransportPolicyError
 from echo_personal_tool.domain.exceptions import InteropError
+from echo_personal_tool.domain.models.ste_analysis import StrainStudy, strain_report_from_study
 from echo_personal_tool.domain.services.report_builder import (
     PatientInfo,
     ReportDocument,
@@ -139,8 +140,27 @@ def ask_report_printer(parent: QWidget) -> Any | None:
     return printer
 
 
+def _parse_mmhg(raw: object) -> float | None:
+    """Parse a header BP field ("120", "120.0") to mmHg; junk → ``None``.
+
+    A cleared or malformed field means "no pressure": the Myocardial Work
+    section then disappears from the protocol instead of showing a loop built
+    from a stale or invented number.
+    """
+    text = str(raw or "").strip().replace(",", ".")
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if 0.0 < value < 400.0 else None
+
+
 class ReportCoordinator(QObject):
     """Owns the report page of the window and every reaction of the report mode."""
+
+    #: The two header fields the coordinator parses into mmHg floats itself
+    #: (plan А.9) instead of applying them as raw strings like the rest.
+    _BP_FIELD_NAMES = ("systolic_bp_mmhg", "diastolic_bp_mmhg")
 
     def __init__(self, controller: AppController, port: ReportWindowPort, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -272,8 +292,18 @@ class ReportCoordinator(QObject):
         )
 
         tab = self._active_tab()
-        overrides = getattr(tab, "report_patient_fields", {}) if tab is not None else {}
-        return replace(patient, **overrides)
+        raw_overrides = dict(getattr(tab, "report_patient_fields", {}) or {})
+        overrides = dict(raw_overrides)
+        sbp = _parse_mmhg(overrides.pop("systolic_bp_mmhg", None))
+        dbp = _parse_mmhg(overrides.pop("diastolic_bp_mmhg", None))
+        patient = replace(patient, **overrides)
+        if "systolic_bp_mmhg" in raw_overrides:
+            patient = replace(patient, systolic_bp_mmhg=sbp)
+        if "diastolic_bp_mmhg" in raw_overrides:
+            # A touched field that did not parse (cleared or junk) means "no
+            # pressure": it must not resurrect the header value.
+            patient = replace(patient, diastolic_bp_mmhg=dbp)
+        return patient
 
     def default_report_name(self) -> str:
         """Suggested file name of an exported report."""
@@ -312,6 +342,27 @@ class ReportCoordinator(QObject):
             # The draft lives in the tab and is part of the document, so the
             # sheet and the PDF can never print two different conclusions.
             patient = replace(patient, conclusion=conclusion)
+        if (
+            snapshot is not None
+            and snapshot.strain is not None
+            and patient.systolic_bp_mmhg is not None
+            and patient.diastolic_bp_mmhg is not None
+        ):
+            # А.9: the cuff pressure turns the stored strain study into
+            # pressure-strain loops; the projection re-runs so the sheet and
+            # the header can never disagree about the inputs. Only a real
+            # StrainStudy is adopted — a duck-typed stand-in (test double or
+            # stubbed controller) must not reach the projection, exactly as
+            # in ``StrainWindow.set_study``.
+            provider = getattr(self._controller, "strain_study", None)
+            candidate = provider() if callable(provider) else None
+            if isinstance(candidate, StrainStudy):
+                reprojected = strain_report_from_study(
+                    candidate,
+                    blood_pressure=(patient.systolic_bp_mmhg, patient.diastolic_bp_mmhg),
+                )
+                if reprojected is not None:
+                    snapshot = replace(snapshot, strain=reprojected)
         document = build_report_document(
             snapshot,
             patient,
@@ -490,10 +541,14 @@ class ReportCoordinator(QObject):
 
     def set_patient_field(self, name: str, value: str) -> None:
         """One field of the patient header edited on the page (per tab)."""
-        from echo_personal_tool.presentation.report_mode.patient import FIELDS
+        from echo_personal_tool.presentation.report_mode.patient import BP_FIELDS, FIELDS
 
         tab = self._active_tab()
-        if tab is None or tab.report_finished or name not in {key for key, _ in FIELDS} | {"sex"}:
+        if (
+            tab is None
+            or tab.report_finished
+            or name not in {key for key, _ in FIELDS} | {key for key, _ in BP_FIELDS} | {"sex"}
+        ):
             return
         tab.report_patient_fields[name] = value
         if self._page is not None:

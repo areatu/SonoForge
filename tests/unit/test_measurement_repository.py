@@ -92,6 +92,32 @@ def complete_data():
     )
 
 
+def test_myocardial_work_round_trips_and_stays_off_the_wire_when_absent():
+    """А.9 (#647): MW rows persist with the strain record; no pressure → no keys."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_mw = replace(
+        strain,
+        mw_by_view=(("A4C", 2100.0, 2400.0, 300.0, 88.9),),
+        gwi_mmhg_pct=2100.0,
+        gcw_mmhg_pct=2400.0,
+        gww_mmhg_pct=300.0,
+        gwe_percent=88.9,
+        blood_pressure_mmhg=(120.0, 80.0),
+    )
+    data = replace(complete_data(), strain=with_mw)
+    payload = dumps(record(data))
+    loaded = loads(payload)["data"]
+    assert loaded.strain.mw_by_view == with_mw.mw_by_view
+    assert loaded.strain.blood_pressure_mmhg == (120.0, 80.0)
+    assert loaded.strain.gwe_percent == pytest.approx(88.9)
+
+    plain = dumps(record(complete_data()))
+    assert b"mw_by_view" not in plain
+    assert b"gwi_mmhg_pct" not in plain
+    assert b"blood_pressure_mmhg" not in plain
+
+
 def test_round_trip_all_fields_precision_and_no_patient_paths():
     original = record(complete_data())
     payload = dumps(original)
