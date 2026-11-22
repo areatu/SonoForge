@@ -41,12 +41,11 @@ for clips without a strip overlap).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
 
 import numpy as np
 
 from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.speckle import SpeckleConfig, TrackingKernel
+from echo_personal_tool.domain.models.speckle import LaStrainMetrics, SpeckleConfig, TrackingKernel
 from echo_personal_tool.domain.services.speckle_tracking import track_cine_bidirectional
 from echo_personal_tool.domain.services.strain_computation import lagrangian_strain_pct
 
@@ -57,28 +56,6 @@ MIN_ARC_POINTS = 3
 A_ONSET_FALLBACK_FRACTION = 0.6
 #: Minimum reservoir→end span (frames) for conduit/booster to be measurable.
 MIN_DIASTOLE_FRAMES = 4
-
-
-@dataclass(frozen=True)
-class LaStrainMetrics:
-    """The three clinical LA strain numbers of one beat, plus their provenance.
-
-    All percentages are positive magnitudes (LASr ≈ 25-45 %, LAScd ≈ 15-25 %,
-    LASct ≈ 12-22 % in health). ``conduit_pct``/``booster_pct`` stay ``None``
-    when the A-wave onset could not be measured or estimated — the panel shows
-    the gap, never a fabricated number.
-    """
-
-    reservoir_pct: float
-    conduit_pct: float | None
-    booster_pct: float | None
-    reservoir_index: int
-    a_onset_index: int | None
-    #: How the A-onset was found: ``"curve"`` (measured morphology) or
-    #: ``"window_fraction"`` (stated fallback) or ``"none"``.
-    a_onset_source: str = "curve"
-    booster_min_index: int | None = None
-    warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 def build_la_arc_kernels(arc_points: np.ndarray, *, kernel_radius: int) -> list[TrackingKernel]:

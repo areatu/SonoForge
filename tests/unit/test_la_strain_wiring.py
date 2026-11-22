@@ -116,8 +116,7 @@ class TestStrainChain:
     """StrainResult → StrainAnalysis → StrainReport keeps the LA numbers."""
 
     def _result(self):
-        from echo_personal_tool.domain.models.speckle import StrainResult
-        from echo_personal_tool.domain.services.la_strain import LaStrainMetrics
+        from echo_personal_tool.domain.models.speckle import LaStrainMetrics, StrainResult
 
         curve = np.linspace(0.0, 20.0, 12)
         return StrainResult(

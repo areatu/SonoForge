@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import numpy as np
-
-if TYPE_CHECKING:  # runtime import would be circular (la_strain → speckle_tracking → models)
-    from echo_personal_tool.domain.services.la_strain import LaStrainMetrics
 
 
 @dataclass(frozen=True)
@@ -35,6 +31,28 @@ class MyocardialZone:
     def __post_init__(self) -> None:
         object.__setattr__(self, "endo_points", self.endo_points.copy())
         object.__setattr__(self, "epi_points", self.epi_points.copy())
+
+
+@dataclass(frozen=True)
+class LaStrainMetrics:
+    """The three clinical LA strain numbers of one beat, plus their provenance.
+
+    All percentages are positive magnitudes (LASr ≈ 25-45 %, LAScd ≈ 15-25 %,
+    LASct ≈ 12-22 % in health). ``conduit_pct``/``booster_pct`` stay ``None``
+    when the A-wave onset could not be measured or estimated — the panel shows
+    the gap, never a fabricated number.
+    """
+
+    reservoir_pct: float
+    conduit_pct: float | None
+    booster_pct: float | None
+    reservoir_index: int
+    a_onset_index: int | None
+    #: How the A-onset was found: ``"curve"`` (measured morphology) or
+    #: ``"window_fraction"`` (stated fallback) or ``"none"``.
+    a_onset_source: str = "curve"
+    booster_min_index: int | None = None
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
