@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication
 
 pytest.importorskip("pytestqt")
 
+
 from echo_personal_tool.application.workers.speckle_worker import (
     SPECKLE_FAILURE_CODE,
     SpeckleTrackingSignals,
@@ -83,6 +84,20 @@ def _make_frames(n=10, h=32, w=32):
 
 
 # ── _embed_window_curve edge cases ─────────────────────────────────
+
+
+def _fake_phase_decision(ed: int = 0, es: int = 5, n: int = 10):
+    """Canned А.4 decision: the routing contract without running the router."""
+    from echo_personal_tool.domain.models.ecg import EcEDFrameMapping
+    from echo_personal_tool.domain.services.phase_source import PhaseDecision
+
+    return PhaseDecision(
+        source="image",
+        mapping=EcEDFrameMapping(ed, es, min(ed, es), max(ed, es), source="image"),
+        confidence=0.8,
+        heart_rate_bpm=None,
+        warnings=(),
+    )
 
 
 class TestEmbedWindowCurveExtended:
@@ -212,7 +227,7 @@ class TestSpeckleTrackingWorkerRun:
         n_kernels = 2
 
         patches = {
-            "detect_ed_es_from_frames": MagicMock(return_value=(0, 5)),
+            "resolve_phase_source": MagicMock(return_value=_fake_phase_decision()),
             "track_cine_incremental": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
             "track_cine_sequential": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
             "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
@@ -238,8 +253,8 @@ class TestSpeckleTrackingWorkerRun:
 
         with (
             patch(
-                "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
-                patches["detect_ed_es_from_frames"],
+                "echo_personal_tool.application.workers.speckle_worker.resolve_phase_source",
+                patches["resolve_phase_source"],
             ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.track_cine_incremental",
@@ -374,8 +389,8 @@ class TestSpeckleTrackingWorkerRun:
         with ExitStack() as stack:
             stack.enter_context(
                 patch(
-                    "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
-                    MagicMock(return_value=(0, 5)),
+                    "echo_personal_tool.application.workers.speckle_worker.resolve_phase_source",
+                    MagicMock(return_value=_fake_phase_decision()),
                 )
             )
             stack.enter_context(
@@ -487,8 +502,8 @@ class TestResultCarriesCineAndEcg:
             )
             stack.enter_context(
                 patch(
-                    "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
-                    MagicMock(return_value=(0, 5)),
+                    "echo_personal_tool.application.workers.speckle_worker.resolve_phase_source",
+                    MagicMock(return_value=_fake_phase_decision()),
                 )
             )
             stack.enter_context(

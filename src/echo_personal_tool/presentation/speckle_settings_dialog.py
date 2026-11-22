@@ -19,8 +19,35 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
+from echo_personal_tool.domain.services.phase_source import get_forced_phase_source
 from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
+
+
+def phase_source_label(source: str) -> str:
+    """Human word for an ED/ES route («ecg» → «ЭКГ»); unknown stays raw.
+
+    The А.4 indicator must be honest even for a source this build does not
+    know (forward compatibility), so an untranslated key falls back to the
+    raw route string rather than a placeholder.
+    """
+    route = str(source or "").strip().lower()
+    if not route:
+        return "—"
+    label = tr(f"phase.gating.{route}")
+    return route if label == f"phase.gating.{route}" else label
+
+
+def ste_phase_gating_hint(last_result: object) -> str:
+    """Settings-dialog hint: the last honest route, or the А.4 doctrine.
+
+    Shows what actually gated the previous run (the router decides per clip
+    and reports why) instead of a static source chain.
+    """
+    source = getattr(last_result, "ed_es_source", None)
+    if isinstance(source, str) and source:
+        return tr("status.phase_gating_last", source=phase_source_label(source))
+    return tr("dialog.speckle_settings.phase_source_hint_auto")
 
 
 class SpeckleSettingsDialog(QDialog):
@@ -36,6 +63,7 @@ class SpeckleSettingsDialog(QDialog):
         n_frames: int = 0,
         ed_es_hint: str | None = None,
         initial_view: str = "A4C",
+        phase_source_pref: str | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.speckle_settings.title"))
@@ -114,6 +142,21 @@ class SpeckleSettingsDialog(QDialog):
         self._ed_auto_check.toggled.connect(lambda checked: self._ed_spin.setEnabled(not checked))
         self._es_auto_check.toggled.connect(lambda checked: self._es_spin.setEnabled(not checked))
 
+        # А.4 phase gating (issue #642): which source resolves ED/ES when the
+        # anchors are not pinned manually. "auto" = prefer ECG tags, else the
+        # image phase field; "ecg"/"image" pin the route (a pinned route that
+        # cannot run falls back honestly and is reported in the hint).
+        self._phase_source_combo = QComboBox(self)
+        self._phase_source_combo.addItem(tr("dialog.speckle_settings.phase_source_auto"), "auto")
+        self._phase_source_combo.addItem(tr("dialog.speckle_settings.phase_source_ecg"), "ecg")
+        self._phase_source_combo.addItem(tr("dialog.speckle_settings.phase_source_image"), "image")
+        # No explicit pref → the session store (the dialog owns the memory).
+        pref_index = self._phase_source_combo.findData(
+            str(phase_source_pref or get_forced_phase_source() or "auto").lower()
+        )
+        if pref_index >= 0:
+            self._phase_source_combo.setCurrentIndex(pref_index)
+
         form = QFormLayout()
         form.addRow(tr("strain.position") + ":", self._view_combo)
         form.addRow(tr("dialog.speckle_settings.preset"), self._preset_combo)
@@ -127,6 +170,7 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow(tr("dialog.speckle_settings.ed_frame"), self._ed_spin)
         form.addRow(self._es_auto_check)
         form.addRow(tr("dialog.speckle_settings.es_frame"), self._es_spin)
+        form.addRow(tr("dialog.speckle_settings.phase_source") + ":", self._phase_source_combo)
 
         self._source_hint_label = QLabel(ed_es_hint or "")
         self._source_hint_label.setWordWrap(True)
@@ -166,6 +210,11 @@ class SpeckleSettingsDialog(QDialog):
             return None
         return self._es_spin.value()
 
+    @property
+    def phase_source_pref(self) -> str:
+        """The А.4 force-source choice: "auto" | "ecg" | "image"."""
+        return str(self._phase_source_combo.currentData() or "auto")
+
     def get_config(self) -> SpeckleConfig:
         """Build SpeckleConfig from selected preset and UI overrides."""
         preset_name = self.selected_preset_name()
@@ -185,3 +234,26 @@ class SpeckleSettingsDialog(QDialog):
             curve_smoothing_frames=int(self._curve_smoothing_spin.value()),
             segment_flip=self._segment_flip_check.isChecked(),
         )
+
+
+def speckle_ed_es_hint(pins: tuple[bool, bool, bool, bool], *, last_result: object) -> str:
+    """The hint above the ED/ES controls: what gated the last run.
+
+    ``pins`` is ``(ed_from_contour, es_from_contour, ed_pinned, es_pinned)``:
+    pinned anchors always report themselves; otherwise the honest route of
+    the previous run (the А.4 router decides per clip and reports why);
+    before any run the А.4 doctrine line is shown.
+    """
+    ed_from_contour, es_from_contour, ed_pinned, es_pinned = pins
+    if ed_from_contour and es_from_contour:
+        return "Manual — from EDV/ESV contours"
+    if ed_from_contour:
+        return "ED pinned from EDV contour; ES auto-detected"
+    if es_from_contour:
+        return "ES pinned from ESV contour; ED auto-detected"
+    if ed_pinned and es_pinned:
+        return "Manual frames (auto-detect disabled)"
+    source = getattr(last_result, "ed_es_source", None)
+    if isinstance(source, str) and source:
+        return tr("status.phase_gating_last", source=phase_source_label(source))
+    return tr("dialog.speckle_settings.phase_source_hint_auto")

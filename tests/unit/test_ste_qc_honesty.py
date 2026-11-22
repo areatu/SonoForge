@@ -184,6 +184,20 @@ class TestStrainResultQcFields:
 # ── worker-level: drift + QC wiring ───────────────────────────────
 
 
+def _fake_phase_decision(ed: int = 0, es: int = 5, n: int = 10):
+    """Canned А.4 decision: the routing contract without running the router."""
+    from echo_personal_tool.domain.models.ecg import EcEDFrameMapping
+    from echo_personal_tool.domain.services.phase_source import PhaseDecision
+
+    return PhaseDecision(
+        source="image",
+        mapping=EcEDFrameMapping(ed, es, min(ed, es), max(ed, es), source="image"),
+        confidence=0.8,
+        heart_rate_bpm=None,
+        warnings=(),
+    )
+
+
 def _make_zone(n_points: int = 48):
     """Clinically plausible A4C apical arc (32 mm annulus, 60 mm depth, 8 mm wall).
 
@@ -234,7 +248,7 @@ class TestWorkerQcWiring:
         n_kernels = len(kernels)
         curve = np.array(longitudinal_values, dtype=np.float64)
         patches = {
-            "detect_ed_es_from_frames": MagicMock(return_value=(0, 5)),
+            "resolve_phase_source": MagicMock(return_value=_fake_phase_decision()),
             "track_cine_sequential": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
             "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
             "build_zone_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
@@ -266,8 +280,8 @@ class TestWorkerQcWiring:
             patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone", return_value=kernels),
             patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments", return_value=kernels),
             patch(
-                "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
-                patches["detect_ed_es_from_frames"],
+                "echo_personal_tool.application.workers.speckle_worker.resolve_phase_source",
+                patches["resolve_phase_source"],
             ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.track_cine_sequential",
