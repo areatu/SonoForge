@@ -1,0 +1,3818 @@
+{
+  "schema_version": 2,
+  "class_names": [
+    "A4C",
+    "A2C",
+    "A3C",
+    "PLAX",
+    "SAX",
+    "PSAX",
+    "TEE"
+  ],
+  "samples": [
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20240905.1102103891.473.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold16.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20250122.1151313361.711.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold1.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20250926.1102436932.236.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold6.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20250926.1103453225.765.41",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold2.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091321961.124.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/24.16.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091407660.974.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/74.19.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091415189.675.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/75.20.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091431942.872.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/72.21.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091437893.990.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/90.22.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091448901.433.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/33.23.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132545058.799.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/99.26.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132551463.459.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/59.27.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251111.1221131963.177.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold91.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251111.1221144739.685.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold81.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251111.1221216007.789.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold83.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251111.1221312774.316.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold32.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251111.1221619841.209.43",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold77.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1093148210.123.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/23.19.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1093202010.736.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/36.20.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251120.1114144582.416.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold93.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251120.1114412932.998.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold17.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251121.1154927368.456.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold95.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251121.1155013435.583.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold47.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133937283.612.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/12.29.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134029058.391.30",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/91.30.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134157467.926.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold31.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134157467.926.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/26.35.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1142149890.930.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold100.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251127.1145536479.641.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold53.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251208.1143447879.330.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold38.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251210.1083359205.920.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold107.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251210.1083443908.216.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold101.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251215.1091919860.354.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold65.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251215.1092139191.349.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold102.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251215.1134226652.386.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold30.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251222.1144729976.273.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold59.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251225.1135243237.278.1",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold12.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260103.1094301436.969.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold98.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260112.1143717430.492.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold48.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260112.1143828806.370.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold18.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260119.1124253007.521.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold55.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260120.1113729423.294.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold24.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260120.1114353612.317.46",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold114.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260121.1134005660.401.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold61.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260121.1134145937.756.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold74.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260123.1100717436.668.30",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold96.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260123.1100812434.205.33",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold58.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260123.1100932239.810.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold63.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260123.1125638077.581.49",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold27.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123733663.944.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold51.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123748758.409.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/09.15.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123748758.409.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold78.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123808553.536.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/36.17.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123808553.536.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold13.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124014471.689.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold22.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124014471.689.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/89.19.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124103867.423.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/23.21.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124116062.550.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/50.22.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124155697.909.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold70.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260202.1135711086.462.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold52.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260203.1124012270.397.38",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold80.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260203.1124752932.817.52",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold39.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260203.1124810700.919.53",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold14.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260203.1124855533.626.56",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold62.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260203.1125136826.768.61",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold110.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260204.1090142379.241.52",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold106.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260210.1101525171.928.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold88.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260210.1101720940.883.38",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold108.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260210.1101821672.374.41",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold23.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260216.1132502356.534.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold82.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260216.1132841185.695.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold71.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260219.1144943467.154.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold49.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260219.1145002457.172.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold109.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260219.1145508814.776.30",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold105.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260225.1142724493.203.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold50.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260305.1141211931.575.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold28.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260310.1150351125.303.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold85.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260312.1101624403.573.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold25.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260320.1095705861.528.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold41.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260320.1102631029.746.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold103.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260320.1125314775.347.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold40.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260320.1125322124.737.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold21.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260327.1134337317.520.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold26.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260327.1134906480.503.41",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold56.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260403.1131902584.796.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold57.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260406.1132844877.973.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold46.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260406.1133059650.609.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold75.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260418.1152751499.524.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold79.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260418.1153034282.738.38",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold68.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260421.1100914648.573.39",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold10.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260424.1144005822.508.49",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold19.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260430.1114927630.520.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold45.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260430.1114927630.520.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold44.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260430.1115307725.258.43",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold42.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260505.1115920876.448.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold66.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260505.1115949966.813.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold64.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1125819169.402.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold8.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1145839438.587.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold113.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1150006519.618.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold37.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1150435188.395.30",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold90.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260513.1135908044.284.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold112.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260515.1142042811.496.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold11.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260515.1142138029.698.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold3.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260520.1155223040.371.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold67.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260520.1155430905.777.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold97.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260526.1092149505.830.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold72.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260526.1092232509.386.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold5.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260626.1160050685.717.38",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold89.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260626.1160524591.278.56",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold36.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260702.1130726948.166.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold15.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261001.1215025552.675.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-1d65bcea579ba56dc167105fefe674e0.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261001.1215353705.228.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-b8e4543d5f7ad6291f30b7de6faf4c74.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1132316874.687.62",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-04172d30f560284cb4386cebf56da498.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1132353098.281.66",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-1b179ea197b8282b32ee8579120cd66d.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1132819732.292.83",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-8de023f5c2d84b84d7cd20e3b8e7ffb2.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1131002768.844.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-cf329b0fa0783d5dfe5e01596733ca62.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1131046162.821.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-8f6debf495aaf996af21f454c8179c2c.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1131213597.143.31",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-11745468617433ca033f0f2612c4f239.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1131338761.490.34",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-4454cb17abce46d3e49fa8f44b58d491.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261111.1124916742.815.46",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-f9598ba1ff9beb2d50efc7febc996a5b.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1135248498.542.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-94ef15400783686523f39c4bb3ec3af3.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094842012.647.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-829633a874f8f53b078fe50ab7147af7.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135737073.857.54",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-8c45a909f36014035395fa88627907bd.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135801632.963.56",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-11be9d633f2197e981e27451d174a98b.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135842702.690.59",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-30ff70f125d638ac6fddd83a44161508.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142414812.762.22",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-f047c2c27b767419875ff77f54c7ef06.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142419547.859.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-0533c9bd1ab551aac9cd1fbcf3853259.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142425456.668.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-b3fbb774fc57b95f525268dd14a5e933.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261120.1135228839.880.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-46d82623e47e66ba6be634c5451f2538.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261120.1135420670.226.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-d3a7563f7174a3f8c3e777f1d98ce1dd.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261120.1135506871.539.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-bc1f56406fb66b5b5dcc79770ef2068a.dcm",
+      "view": "A4C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092221053.536.50",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/36.50.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092314674.715.52",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/15.52.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092321675.464.53",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/64.53.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092430481.871.54",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/71.54.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092517424.448.56",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/48.56.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132809147.869.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/69.36.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1094138737.789.39",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/89.39.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124235568.848.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/48.26.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124254602.239.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/39.27.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124302163.204.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/04.28.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124412504.921.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/21.35.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124421608.370.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/70.36.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124432329.513.37",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/13.37.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260930.1132813230.411.44",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-21439031daf9a7fae7f106fe867745b6.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260930.1132823502.475.45",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-1111df3843b75d641b5b3d19c65a3f14.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261001.1215424920.177.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-e5bf5832785ffba0bc231b42cd1bdac4.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261005.1115248632.963.44",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-642df62424a32ef168eed893d8898728.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1105320073.161.63",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-479f906249203ea9c5079b6c0379fe28.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1105334156.926.64",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-76e382e44e45e16cb29b7bccf39aca00.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1105338289.622.65",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-6075304b1e3b0547f2200bcf571284d2.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1105346002.892.66",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-e9568a055a44b154a8ff247ddba50112.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1093015031.181.66",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-560a0cdef9beb5a51debadd2f7c19651.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261029.1133234697.993.40",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-c0fbcd2a902bc878989acfeb99e9844c.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261030.1131055080.315.41",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-deba2d3ebe71bfbac3f460b583131de0.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261102.1092748276.444.45",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-4ee1813c4db69808f5e6a1d55cdf5faf.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261105.1101125329.547.51",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-157c0870b6bc875fc230af7fe0b84760.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261106.1090945879.737.52",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-22aecb1d90e7accbebe0195ae589127d.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261106.1091010015.278.53",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-62a572a2af32f52af3b036d2d38bc617.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261111.1125116015.688.50",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-578042fd574dda23d6b032b2f7097513.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1095345394.874.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-8fb7a473912d9d88b9df785682bd4b07.dcm",
+      "view": "A2C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092607042.802.59",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/02.59.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092636159.531.60",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/31.60.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092641890.840.61",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/40.61.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1094153806.499.40",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/99.40.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1094204823.726.41",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/26.41.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134600881.739.47",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/39.47.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124311969.958.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/58.29.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124320226.230.30",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/30.30.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124345707.192.32",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/92.32.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124353217.628.33",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/28.33.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124359150.206.34",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/06.34.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261005.1115301049.288.45",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-4d1f5d5ae070165ecbb7c11c56998e8c.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1093022088.164.67",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-3b2883497ef595d3e174c9726b3a9a46.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1131100115.199.56",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-db351c0e9d02f836472b73bb370962c8.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130345099.489.64",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-55a7869f9ee08d4a933853256a7771d0.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130408075.767.66",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-2dd34ed5170a40849c4ab48ae96623ea.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261111.1125122690.577.51",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-805c93caa9e84dcfad68edd7769ed9bb.dcm",
+      "view": "A3C",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1090804536.265.1",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/265.1.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1090825696.132.3",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/132.3.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1131658335.812.6",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/812.6.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092529673.849.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/849.2.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092559727.310.4",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/310.4.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092650169.335.7",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/335.7.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1132801188.471.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/471.2.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133027998.637.3",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/637.3.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133125097.222.4",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/222.4.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133405749.488.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/88.10.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123321726.916.1",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/916.1.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123403250.588.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/588.2.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123411049.455.3",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/455.3.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123444275.889.5",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/889.5.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1103838161.227.7",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-1294fe3238228745a956df710ce042a4.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1103904542.892.9",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-c73d5c751a936b5f8f2bfe0148312059.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1103931402.116.11",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-fdec8db9f61d7e1283c4f2883a7d5b2c.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1092534543.925.43",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-63a759d6a211460871fd70e319529431.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1130308751.294.8",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-cdee519cd7ed904e5e91199540c683d3.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1134420403.649.1",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-057fc20b38fc4d170bf07840addb7a36.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1134431163.840.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-51fce023d38fe7daa8bf5c946b0198db.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1134524446.356.4",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-3e941b42605968c4ff1c6ce4760614a6.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094107066.101.1",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-61bef39ce687803814669ccdbd521c9b.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094132992.749.2",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-41aa90c38f9d09092eebfb877dcc116c.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094502180.396.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-8076113930941f2be734a4bdff61b19c.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1133755220.495.4",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-71da907761867bed7cd238cb6dc78d4d.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1133818427.411.6",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-d03741110e59c6902d001f155e58c826.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1133846139.356.7",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-625a565c55c90545b77a5cf31f3999aa.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1133927839.668.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-9c0cd83ad08b6ea004be67e0dc6186cc.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1134102789.821.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-5d0c926e439dca4c2fa0b503d477ce0f.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1134439941.861.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-67c4cb5d73303f5b7b04af849c4c4de6.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1134634776.817.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-2ac3acc038a1ce687b6a4ae7d788230f.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142041425.163.8",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-2295e2c08345736d84a7df8e98a4995a.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142116813.607.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-364066e830a95d0c2369fa939a4d5c79.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142130835.114.11",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-210bb716a17bf25d280ae415d64a49af.dcm",
+      "view": "PLAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251022.1094201496.352.9",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/352.9.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251022.1094234804.439.11",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/39.11.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091119303.125.9",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/125.9.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091132258.744.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/44.10.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091144320.233.11",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/33.11.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091149760.116.12",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/16.12.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091200158.242.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/42.13.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091207211.527.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/27.14.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132059923.438.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/38.15.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132105121.812.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/12.16.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1132120684.864.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/64.17.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092925242.101.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/01.17.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133840221.444.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/44.24.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133843809.215.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/15.25.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133849539.885.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/85.26.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133902448.937.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/37.27.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133909916.557.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/57.28.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123656390.807.11",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/07.11.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123713569.125.12",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/25.12.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261001.1202336794.833.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-5fbe7450a8b3d5d3d1be71aaf8aa8d00.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261001.1203219046.746.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-fe0525299e8b95ebe1627a716a02fec7.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261005.1114421625.759.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-1cef2afce22b9902f226fca40dd6a6b5.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261005.1114428733.593.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-ca48ce43f5dde7a158df71e6bf5d2a69.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1104753831.581.40",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-58a222108533798fe2ec6c8cd33ce702.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1104817058.176.42",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-23059e3768ceed019cfb4e0e8d743336.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1092652990.801.50",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-4d57f435c1d7b624c329b5f552b02df2.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261029.1095752643.363.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-9fa09bbdde2fa4080394ff9f31559972.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261029.1100007812.884.32",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-217a787154a6688f412d6f892a8df16b.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1130722434.668.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-a5a8963f261bf0ee55ee3bfc2cb9a19f.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1134640085.927.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-bca12dc503e09258bc5ecc15640a8ef4.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094614313.352.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-9f82c3251711603c2df6e67be38d0db1.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094620112.146.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-ed0978c3a59fbc6bc0c811f0cd72b892.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1134809875.252.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-824af757861233b46623920c617a2623.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135159688.659.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-596fe6df4e55d66d599d59c60e40bff0.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135212108.910.37",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-58e80a4455581b1f7a2db7567e4fd267.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135219310.157.38",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-2b852596e21ad095d9074510b5646518.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135236102.473.40",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-04d22f7c42b807a8faf7d7da67280b6b.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142325966.839.19",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-293b99da7d56ea3e1833a80a88b7ee8b.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142332834.938.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-748ce3c6247b059c2cf4db82dc9b6021.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261120.1135030214.467.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-4beebf4801c9615b66ed9b8b1a52c877.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261120.1135048414.504.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-148559b50ecc4bcf79624484ba81d5b3.dcm",
+      "view": "PSAX",
+      "split": "train",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1093352614.177.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/77.26.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134203681.288.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold29.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134203681.288.36",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/88.36.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251210.1100437839.841.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold87.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251225.1135526475.349.8",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold4.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260103.1094031590.372.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold92.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260103.1094119429.546.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold94.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260107.1085412136.239.57",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold76.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260112.1141140088.546.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold7.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260123.1101824576.470.57",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold60.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123733663.944.13",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/44.13.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124006465.600.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/00.18.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124006465.600.18",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold20.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124028872.585.20",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/85.20.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124155697.909.23",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/09.23.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260216.1100941084.819.29",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold104.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260311.1200238657.579.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold99.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260317.1145432876.110.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold84.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260317.1145514357.954.26",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold54.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260418.1152743944.530.27",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold33.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260420.1131207478.615.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold69.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260420.1131324301.121.28",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold9.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260424.1144231852.794.57",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold73.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260430.1115307725.258.43",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold43.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260504.1131246092.842.39",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold115.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260508.1115704667.355.24",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold111.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1145848879.898.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold86.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260512.1150106872.210.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/gold34.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1132403769.367.67",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-222e461466359f49b373d51d3ebba562.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261006.1132409973.147.68",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-c3cfce7e8d746b9e4bb8b560e52e83fe.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135542235.496.49",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-c5ba195441be0df7868c0fa71d1d725f.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135746707.348.55",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-aaf0de2d12071bfe536dabeebc95b583.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135836434.627.58",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A4C/i-2c463c9bea1ec1bf67bd3c767dbff6bc.dcm",
+      "view": "A4C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092143234.676.48",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/76.48.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1092205557.956.49",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/56.49.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1124219815.877.25",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/77.25.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260930.1132855393.547.46",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-c5fa36333c847a301635c7709c6e5985.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1131402348.869.35",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-a1e29fa36d1039ace008d64f5b2bce23.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130125788.838.57",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-6ee45ea09e26a692967d50793d945d3b.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130131609.100.58",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A2C/i-be81ee4e063306a9f54f6ca6ec548d54.dcm",
+      "view": "A2C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1134610327.425.48",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/25.48.dcm",
+      "view": "A3C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261106.1091232490.240.61",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-396bbcda6c671cb7e099c59b88298673.dcm",
+      "view": "A3C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130328346.935.63",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-d46e307601b7c8ba832862dfee6f5c55.dcm",
+      "view": "A3C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261110.1130354173.395.65",
+      "source_path": "/home/areatu/ECHO2026_src/gold/A3C/i-8dff83ef5dd0d765e40a74241ac60e54.dcm",
+      "view": "A3C",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1090835927.345.4",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/345.4.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251110.1131827018.348.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/48.10.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133324177.501.7",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/501.7.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251124.1133402491.739.9",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/739.9.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1130607411.903.14",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-4c9697cc8deb6b34f6d0043eda6aa1c6.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261113.1134450508.909.3",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-af51167b6060299c045c5bdb8991481e.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261116.1094357739.444.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-2a3e60d21e5e5c92319fbf9e212e5a46.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1134137575.564.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-809de50b2d26ba4c5b0e4016daef4197.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142026626.936.7",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PLAX/i-37f217ac37d229ca5648b0e8044cd9eb.dcm",
+      "view": "PLAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251022.1094222086.385.10",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/85.10.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251024.1091109055.484.8",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/484.8.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092903289.311.15",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/11.15.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20251117.1092913561.917.16",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/17.16.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20260129.1123630306.659.9",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/659.9.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1092645542.393.49",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-12b19fcca2f7f1af95918d975bbc1a3a.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261027.1092701702.739.51",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-3ee7993bed7b00345d367f7de8a0d7aa.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261109.1130712264.325.17",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-3c1aa2136dc014e67b66c27b710571ca.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1135227987.981.39",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-a3df80ed5ddbea06944e45bf1eb3ee15.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    },
+    {
+      "sample_id": "1.2.410.200001.1.1185.2062614048.3.20261118.1142341844.849.21",
+      "source_path": "/home/areatu/ECHO2026_src/gold/PSAX/i-ab437eceb409d9cacb24e624c5e2334d.dcm",
+      "view": "PSAX",
+      "split": "val",
+      "metadata": {
+        "protocol_name": "",
+        "vendor": "SAMSUNG MEDISON CO.,LTD.",
+        "view_tag": "",
+        "acquisition_note": ""
+      }
+    }
+  ]
+}

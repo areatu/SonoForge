@@ -140,7 +140,7 @@ def update_manifest(
                 "input_shape": [1, 3, input_size, input_size],
                 "output_shape": [1, "num_classes"],
                 "output_type": "logits",
-                "postprocess": "softmax_then_mean_argmax_over_clip",
+                "postprocess": "softmax_then_median_argmax_over_clip",
             },
             "status": "exported",
             "sha256": _sha256(onnx_path),
@@ -151,6 +151,7 @@ def update_manifest(
         models[MODEL_ID]["sha256"] = _sha256(onnx_path)
         models[MODEL_ID]["file_size_bytes"] = onnx_path.stat().st_size
         models[MODEL_ID]["status"] = "exported"
+        models[MODEL_ID]["onnx"]["postprocess"] = "softmax_then_median_argmax_over_clip"
 
     if "view_recognition" not in manifest:
         manifest["view_recognition"] = {

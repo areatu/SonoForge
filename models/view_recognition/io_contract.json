@@ -1,0 +1,14 @@
+{
+  "input_size": 224,
+  "class_names": [
+    "A4C",
+    "A2C",
+    "A3C",
+    "PLAX",
+    "SAX",
+    "PSAX",
+    "TEE"
+  ],
+  "num_classes": 7,
+  "backbone": "efficientnet_b0"
+}
