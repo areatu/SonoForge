@@ -307,7 +307,21 @@ def optical_flow_magnitude_signal(
     magnitude = np.zeros(n, dtype=np.float64)
     try:
         for index in range(n - 1):
-            flow = cv2.calcOpticalFlowFarneback(u8[index], u8[index + 1], None, 0.5, 2, 9, 2, 5, 1.2, 0)
+            # An explicit empty flow buffer (not None): the locked cv2 5.0
+            # stubs reject None for the out parameter, and preallocating also
+            # saves an internal allocation per frame.
+            flow = cv2.calcOpticalFlowFarneback(
+                u8[index],
+                u8[index + 1],
+                np.empty((int(u8.shape[1]), int(u8.shape[2]), 2), dtype=np.float32),
+                0.5,
+                2,
+                9,
+                2,
+                5,
+                1.2,
+                0,
+            )
             magnitude[index + 1] = float(np.mean(np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)))
     except cv2.error:
         return empty
