@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
+from echo_personal_tool.domain.services.burned_ecg_mask import (
+    get_burned_ecg_override,
+    store_burned_ecg_override,
+)
 from echo_personal_tool.domain.services.phase_source import get_forced_phase_source
 from echo_personal_tool.presentation.scroll_policy import protect_spinboxes
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
@@ -172,6 +176,24 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow(tr("dialog.speckle_settings.es_frame"), self._es_spin)
         form.addRow(tr("dialog.speckle_settings.phase_source") + ":", self._phase_source_combo)
 
+        # А.5 burned-ECG strip mask (issue #643): «auto» subtracts a detected
+        # vendor strip from the phase signals and the tracking domain; «off»
+        # is the user's override for a clip where the strip is not there (or
+        # must not be excluded).  Unlike the force-source combo, the choice is
+        # written to the session store *immediately*: the mask also serves the
+        # playback phase strip (outside this dialog's accept), and an override
+        # that silently reverted on cancel would be dishonest.
+        self._burned_ecg_combo = QComboBox(self)
+        self._burned_ecg_combo.addItem(tr("dialog.speckle_settings.burned_ecg_auto"), "auto")
+        self._burned_ecg_combo.addItem(tr("dialog.speckle_settings.burned_ecg_off"), "off")
+        store_index = self._burned_ecg_combo.findData(str(get_burned_ecg_override() or "auto").lower())
+        if store_index >= 0:
+            self._burned_ecg_combo.setCurrentIndex(store_index)
+        self._burned_ecg_combo.currentIndexChanged.connect(
+            lambda _index: store_burned_ecg_override(str(self._burned_ecg_combo.currentData() or "auto"))
+        )
+        form.addRow(tr("dialog.speckle_settings.burned_ecg") + ":", self._burned_ecg_combo)
+
         self._source_hint_label = QLabel(ed_es_hint or "")
         self._source_hint_label.setWordWrap(True)
         self._source_hint_label.setStyleSheet(
@@ -214,6 +236,11 @@ class SpeckleSettingsDialog(QDialog):
     def phase_source_pref(self) -> str:
         """The А.4 force-source choice: "auto" | "ecg" | "image"."""
         return str(self._phase_source_combo.currentData() or "auto")
+
+    @property
+    def burned_ecg_mask_pref(self) -> str:
+        """The А.5 strip-mask override: "auto" | "off"."""
+        return str(self._burned_ecg_combo.currentData() or "auto")
 
     def get_config(self) -> SpeckleConfig:
         """Build SpeckleConfig from selected preset and UI overrides."""

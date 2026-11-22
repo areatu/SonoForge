@@ -858,3 +858,16 @@ def test_mmode_partial_and_manual_provenance_survive_save_and_instance_switch():
     restored.activate_instance(UID, "1.2.3.5")
     assert restored.get(UID).mmode_time_per_pixel_ms == 2.0
     assert not restored.get_mmode_calibration(UID, "1.2.3.5").is_dicom_trusted()
+
+
+def test_burned_ecg_strip_round_trips_and_stays_off_the_wire_when_absent():
+    """А.5 (#643): the located strip persists inside the strain record."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_strip = replace(strain, burned_ecg_strip=(172, 189, 40, 280))
+    payload = dumps(record(replace(complete_data(), strain=with_strip)))
+    loaded = loads(payload)["data"]
+    assert loaded.strain.burned_ecg_strip == (172, 189, 40, 280)
+
+    plain = dumps(record(complete_data()))
+    assert b"burned_ecg_strip" not in plain

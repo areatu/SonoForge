@@ -28,10 +28,10 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
-from scipy.ndimage import binary_dilation, find_objects, uniform_filter1d
-from scipy.ndimage import label as component_label
+from scipy.ndimage import uniform_filter1d
 from scipy.signal import detrend, find_peaks, savgol_filter
 
+from echo_personal_tool.domain.services.burned_ecg_mask import detect_burned_ecg_strip
 from echo_personal_tool.domain.services.cine_phase_image_signals import image_phase_signals
 
 SCHEMA_VERSION = "1.0"
@@ -294,6 +294,7 @@ def build_phase_timeline(
     align_ecg: bool = True,
     burned_ecg_r_peaks_ms: np.ndarray | None = None,
     manual_anchor: tuple[int, str] | None = None,
+    exclude_mask: np.ndarray | None = None,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> PhaseTimeline:
     """Label every frame of a cine clip as systole / diastole / unknown.
@@ -322,6 +323,9 @@ def build_phase_timeline(
             the video pixels; used only when there is no real waveform.
         manual_anchor: ``(frame, "ed"|"es")`` — one user click that resolves the
             polarity of an unlabelled image signal.
+        exclude_mask: full-frame ``(h, w)`` boolean of pixels carrying no
+            tissue evidence (А.5 burned ECG strip, matched to ``frames``'
+            shape); subtracted from the image signals before scoring.
         min_confidence: below this the whole clip is labelled ``unknown``.
 
     Returns:
@@ -354,7 +358,7 @@ def build_phase_timeline(
         raw_signals.append(("unlabelled", supplied_unlabelled, _SOURCE_WEIGHTS["unlabelled"], False))
 
     if gray is not None:
-        dark, inten, _motion = image_phase_signals(gray)
+        dark, inten, _motion = image_phase_signals(gray, exclude_mask=exclude_mask)
         if dark.size == n:
             raw_signals.append(("dark_pool", dark, _SOURCE_WEIGHTS["dark_pool"], True))
         if inten.size == n:
@@ -464,19 +468,19 @@ def build_phase_timeline(
 # ── Signal extraction from pixels ───────────────────────────────────────────
 
 
-def dark_pool_signal(gray_frames: np.ndarray) -> np.ndarray:
+def dark_pool_signal(gray_frames: np.ndarray, *, exclude_mask: np.ndarray | None = None) -> np.ndarray:
     """Gain-normalised dark fraction in the tissue sector; ED=max, ES=min."""
-    return image_phase_signals(gray_frames)[0]
+    return image_phase_signals(gray_frames, exclude_mask=exclude_mask)[0]
 
 
-def intensity_signal(gray_frames: np.ndarray) -> np.ndarray:
+def intensity_signal(gray_frames: np.ndarray, *, exclude_mask: np.ndarray | None = None) -> np.ndarray:
     """Gain-normalised tissue brightness (ES=max); no black-sector pixels."""
-    return image_phase_signals(gray_frames)[1]
+    return image_phase_signals(gray_frames, exclude_mask=exclude_mask)[1]
 
 
-def motion_signal(gray_frames: np.ndarray) -> np.ndarray:
+def motion_signal(gray_frames: np.ndarray, *, exclude_mask: np.ndarray | None = None) -> np.ndarray:
     """Gain-normalised inter-frame difference, never an ED/ES polarity cue."""
-    return image_phase_signals(gray_frames)[2]
+    return image_phase_signals(gray_frames, exclude_mask=exclude_mask)[2]
 
 
 def burned_ecg_signal(
@@ -503,47 +507,15 @@ def burned_ecg_signal(
     """
     if n_frames < 8 or frame_time_ms <= 0 or len(color_frames) == 0:
         return None
-    first = np.asarray(color_frames[0])
-    if first.ndim != 3 or first.shape[-1] < 3:
-        return None  # grayscale frames carry no green channel to separate
-    height, width = int(first.shape[0]), int(first.shape[1])
-    band_start = int(height * 0.70)
-    combined = np.zeros((height - band_start, width), dtype=bool)
-    green_px = 0
-    scanned = 0
-    for frame in color_frames:
-        arr = np.asarray(frame)
-        if arr.ndim != 3 or arr.shape[-1] < 3 or arr.shape[0] != height:
-            continue
-        band = arr[band_start:, :, :3].astype(np.int32)
-        red, green, blue = band[..., 0], band[..., 1], band[..., 2]
-        mask = (green > red * 1.2) & (green > blue * 1.2) & (green > 60)
-        combined |= mask
-        green_px += int(mask.sum())
-        scanned += 1
-    if scanned == 0:
+    # Locating is shared with the А.5 burned-strip mask
+    # (``burned_ecg_mask.detect_burned_ecg_strip``): one signature pass finds
+    # the green trace, and the *read* below adds only the rhythm gates
+    # (amplitude span, peak plausibility, HR band).  The mask must fire even
+    # when this function returns ``None`` — locating is not reading.
+    strip = detect_burned_ecg_strip(color_frames, n_frames=n_frames)
+    if strip is None or strip.pixel_mask is None:
         return None
-    green_fraction = green_px / (scanned * combined.size)
-    if green_fraction < 0.001 or green_fraction > 0.35:
-        return None
-    # A tall QRS spike can leave the lower quarter and split from the
-    # baseline, so bond near-by fragments with a small 2-D dilation; the
-    # annotation glyphs stay a separate island (they sit well above the
-    # trace) and are rejected by the width gate below.
-    dilated = binary_dilation(combined, structure=np.ones((5, 7), dtype=bool))
-    labels, n_components = component_label(dilated)
-    if n_components == 0:
-        return None
-    min_width = max(64, int(0.15 * width))
-    objects = find_objects(labels)
-    keep = [
-        index
-        for index, slice_ in enumerate(objects, start=1)
-        if slice_ is not None and (slice_[1].stop - slice_[1].start) >= min_width
-    ]
-    if not keep:
-        return None
-    trace_mask = np.isin(labels, keep) & combined
+    trace_mask = strip.pixel_mask
     columns = np.nonzero(np.any(trace_mask, axis=0))[0]
     if columns.size == 0:
         return None

@@ -99,6 +99,10 @@ class StrainAnalysis:
     post_systolic_index: float | None = None
     drift: float | None = None
     is_post_systolic: bool = False
+    #: А.5 burned-ECG strip located in the clip's pixels — ``(row_start,
+    #: row_end, col_start, col_end)`` or ``None``; the study metadata remembers
+    #: where the vendor drew the strip (it travels with the strain record).
+    burned_ecg_strip: tuple[int, int, int, int] | None = None
     ed_index: int = 0
     es_index: int = 0
     avc_index: int = 0
@@ -268,6 +272,7 @@ class StrainAnalysis:
             post_systolic_index=_finite(getattr(result, "post_systolic_index", None)),
             drift=_finite(getattr(result, "drift_measured", None)),
             is_post_systolic=bool(getattr(result, "is_post_systolic", False)),
+            burned_ecg_strip=_strip_tuple(getattr(result, "burned_ecg_strip", None)),
             ed_index=int(result.ed_index),
             es_index=int(result.es_index),
             avc_index=int(getattr(result, "avc_index", result.es_index)),
@@ -495,9 +500,24 @@ def strain_report_from_study(
         blood_pressure_mmhg=(float(blood_pressure[0]), float(blood_pressure[1]))
         if blood_pressure is not None
         else None,
+        burned_ecg_strip=next(
+            (
+                analysis.burned_ecg_strip
+                for analysis in study.analyses.values()
+                if analysis.burned_ecg_strip is not None
+            ),
+            None,
+        ),
         contour_source=contour_source,
         lineage_by_view=tuple(lineage_by_view),
     )
+
+
+def _strip_tuple(value: object) -> tuple[int, int, int, int] | None:
+    """A 4-int strip rect from the result record, ``None`` when absent/malformed."""
+    if not isinstance(value, tuple) or len(value) != 4 or not all(isinstance(v, (int, float)) for v in value):
+        return None
+    return (int(value[0]), int(value[1]), int(value[2]), int(value[3]))
 
 
 def study_from_results(results: Mapping[str, StrainResult]) -> StrainStudy:

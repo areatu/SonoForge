@@ -335,7 +335,7 @@ class TestConservativeImageEvidence:
         import echo_personal_tool.domain.services.cine_phase_timeline as detector
 
         empty = np.zeros(0)
-        monkeypatch.setattr(detector, "image_phase_signals", lambda frames: (empty, empty, area_curve()))
+        monkeypatch.setattr(detector, "image_phase_signals", lambda frames, **kwargs: (empty, empty, area_curve()))
         timeline = build_phase_timeline(n_frames=N_FRAMES, frame_time_ms=FRAME_MS, frames=np.zeros((N_FRAMES, 8, 8)))
         assert timeline.markers() == ()
         assert timeline.source == "unavailable"

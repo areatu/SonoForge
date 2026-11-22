@@ -219,6 +219,10 @@ def _encode(value: object) -> object:
                 "gwe_percent",
                 "blood_pressure_mmhg",
             }
+        if isinstance(value, StrainReport) and value.burned_ecg_strip is None:
+            # А.5: the located strip is written only when it exists — a study
+            # without a strip keeps the exact wire shape older schemas accept.
+            fields = fields - {"burned_ecg_strip"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire

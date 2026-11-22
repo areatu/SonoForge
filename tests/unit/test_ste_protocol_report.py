@@ -466,3 +466,28 @@ class TestMyocardialWorkWindow:
             assert label.toolTip()  # the refusal reason is human-readable
         finally:
             window.close()
+
+
+class TestBurnedStripRecord:
+    """А.5 (issue #643): the located strip travels with the study metadata."""
+
+    def test_result_strip_is_copied_into_the_analysis(self) -> None:
+        result = _result("A4C", -19.0)
+        result = replace(result, burned_ecg_strip=(172, 189, 40, 280))
+        analysis = StrainAnalysis.from_result(result)
+        assert analysis.burned_ecg_strip == (172, 189, 40, 280)
+
+    def test_analysis_without_a_strip_stays_none(self) -> None:
+        analysis = StrainAnalysis.from_result(_result("A4C", -19.0))
+        assert analysis.burned_ecg_strip is None
+
+    def test_report_carries_the_strip_for_the_study(self) -> None:
+        a4c = replace(_result("A4C", -19.0), burned_ecg_strip=(172, 189, 40, 280))
+        report = strain_report_from_study(_study(a4c, _result("A2C", -20.0)))
+        assert report is not None
+        assert report.burned_ecg_strip == (172, 189, 40, 280)
+
+    def test_report_without_any_strip_has_none(self) -> None:
+        report = strain_report_from_study(_study(_result("A4C", -19.0)))
+        assert report is not None
+        assert report.burned_ecg_strip is None

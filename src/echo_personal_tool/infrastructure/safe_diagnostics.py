@@ -53,6 +53,7 @@ _OPERATIONS = frozenset(
         "heart_rate.ecg",
         "cine_phase.detect",
         "cine_phase.ecg",
+        "cine_phase.strip",
         "optical_flow.refine",
         "speckle.track",
         "mp4.export",
