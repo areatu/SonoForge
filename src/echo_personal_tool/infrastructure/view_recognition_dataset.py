@@ -84,10 +84,27 @@ def load_manifest(path: str | Path) -> ViewRecognitionManifest:
 
 
 def build_dicom_clip_provider(reader: IDicomReader, *, n_frames: int = 8) -> ClipProvider:
-    """Build a :data:`ClipProvider` that reads ``n_frames`` DICOM frames per clip."""
+    """Build a provider that samples ``n_frames`` evenly across the whole clip.
+
+    Using frames 0..n-1 biases the classifier towards the beginning of a cine,
+    where the view is often still changing or the image is not representative.
+    When the reader exposes ``read_metadata``, ``number_of_frames`` is used to
+    spread the samples over the full acquisition; readers without metadata fall
+    back to the first ``n_frames``.
+    """
 
     def provider(source_path: str) -> np.ndarray:
-        frames = [reader.read_pixels(Path(source_path), frame_index=i) for i in range(n_frames)]
+        path = Path(source_path)
+        total = n_frames
+        try:
+            total = max(1, int(reader.read_metadata(path).number_of_frames))
+        except (AttributeError, NotImplementedError, OSError, TypeError, ValueError):
+            pass
+        if n_frames <= 1 or total <= n_frames:
+            indices = list(range(min(max(total, 1), max(n_frames, 1))))
+        else:
+            indices = [round(i * (total - 1) / (n_frames - 1)) for i in range(n_frames)]
+        frames = [reader.read_pixels(path, frame_index=i) for i in indices]
         return as_clip_array(frames)
 
     return provider

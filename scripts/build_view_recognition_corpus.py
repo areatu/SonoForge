@@ -82,8 +82,9 @@ def _read_view_from_annotations(
 
     The JSON is the consolidated gold format: a list of records with
     ``instance_path`` / ``sop_instance_uid`` and a per-frame ``view``; the
-    dominant view across the instance's frames wins. Returns ``None`` when
-    the instance is not covered.
+    dominant view across the instance's frames wins. A record may instead carry
+    one clip-level ``view`` (used when ``frames`` has no view labels). Returns
+    ``None`` when the instance is not covered.
     """
     with annotations_path.open(encoding="utf-8") as handle:
         data = json.load(handle)
@@ -96,10 +97,19 @@ def _read_view_from_annotations(
             continue
         if rpath and rpath != str(source_path):
             continue
-        for frame in record.get("frames", []):
-            view = str(frame.get("view", "")).strip()
-            if view:
-                counts[view] += 1
+        frame_views = [
+            str(frame.get("view", "")).strip()
+            for frame in record.get("frames", [])
+            if str(frame.get("view", "")).strip()
+        ]
+        if frame_views:
+            counts.update(frame_views)
+            continue
+        # A record may carry a single clip-level view instead of per-frame
+        # labels (the consolidated gold file seeded from the manifest).
+        view = str(record.get("view", "")).strip()
+        if view:
+            counts[view] += 1
     if not counts:
         return None
     return counts.most_common(1)[0][0]

@@ -90,6 +90,16 @@ def evaluate(
     return report
 
 
+def _json_safe(value: object) -> object:
+    """Turn tuple-keyed confusion counts into JSON-safe string keys."""
+    if isinstance(value, dict):
+        return {
+            f"{key[0]}->{key[1]}" if isinstance(key, tuple) else str(key): _json_safe(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     report = evaluate(
@@ -100,10 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(
-        json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+        json.dumps(_json_safe(report), indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print(f"top1={report['top1_accuracy']:.4f} total={report['total']} report={args.report}")
+    print(f"top1={report['top1_accuracy']:.4f} total={report['total']} report={args.report}")  # noqa: T201
     return 0
 
 

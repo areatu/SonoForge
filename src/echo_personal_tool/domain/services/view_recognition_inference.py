@@ -6,7 +6,7 @@ tensor the ONNX model expects, and aggregate per-frame logits into a single
 :class:`RecognizedView`.
 
 Keeping this in the domain layer means the same preprocessing is used by
-training, evaluation and the ONNX adapter, and the aggregation rule (mean
+training, evaluation and the ONNX adapter, and the aggregation rule (median
 softmax over frames) is unit-tested without any model stack installed
 (#639 step 2).
 """
@@ -66,10 +66,9 @@ def aggregate_predictions(
     """Aggregate per-frame class probabilities into one :class:`RecognizedView`.
 
     ``probs`` is ``(N, C)`` non-negative class probabilities per frame. The
-    clip's prediction is the mean probability vector: every frame votes with
-    its full distribution, which is stable when frame counts vary and never
-    silently drops frames. The confidence is the winning class' mean
-    probability.
+    clip's prediction is the **per-class median** probability: unlike the mean,
+    a single low-quality frame with a confident wrong answer cannot flip the
+    clip-level view. The confidence is the winning class' median probability.
     """
     array = np.asarray(probs, dtype=np.float64)
     if array.ndim != 2:
@@ -79,6 +78,6 @@ def aggregate_predictions(
     names = tuple(class_names)
     if array.shape[1] != len(names):
         raise ValueError(f"probs has {array.shape[1]} columns but class_names has {len(names)}")
-    mean = array.mean(axis=0)
-    index = int(np.argmax(mean))
-    return RecognizedView(names[index], float(mean[index]))
+    median = np.median(array, axis=0)
+    index = int(np.argmax(median))
+    return RecognizedView(names[index], float(median[index]))

@@ -1,0 +1,23 @@
+{
+  "total": 63,
+  "top1_accuracy": 0.9523809523809523,
+  "per_class_recall": {
+    "A4C": 0.9696969696969697,
+    "A2C": 1.0,
+    "A3C": 0.5,
+    "PLAX": 1.0,
+    "SAX": 0.0,
+    "PSAX": 1.0,
+    "TEE": 0.0
+  },
+  "confusion": {
+    "A4C->A4C": 32,
+    "A4C->A2C": 1,
+    "A2C->A2C": 7,
+    "A3C->A4C": 1,
+    "A3C->A2C": 1,
+    "A3C->A3C": 2,
+    "PLAX->PLAX": 9,
+    "PSAX->PSAX": 10
+  }
+}
