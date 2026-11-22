@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `feat(myocardial_work)`: #647 (план А.9) — Myocardial Work без ЭКГ: петли давление–деформация и GWI/GCW/GWW/GWE из image-derived тайминга клапанов (А.3/А.4) и манжетного АД; секция MW в отчёте и окне strain, честные гейты вместо выдуманных чисел ([полностью](changelog.d/020-feat-myocardial-work-647.md))
 - `feat(phase)`: #642 (план А.4) — единый источник фазы PhaseSource (ecg|image|hybrid): маршрутизация «валидные ЭКГ-теги → ecg, иначе image (А.3)», общий контракт ED/ES/HR/confidence для STE/strain/диастологии/MW, force-source и индикатор гейтинга в UI ([полностью](changelog.d/019-feat-phase-source-642.md))
 - `feat(phase)`: #641 (план А.3) — ЭКГ-независимое фазовое поле φ(t): непрерывная фаза [0,1) на кадр по периодичности самого клипа, ED/ES/ЧСС и мосты в ecg_ed_es_mapper / cardiac_cycle_service как image-источник до роутинга А.4 ([полностью](changelog.d/018-feat-phase-field-641.md))
 - `perf(ci)`: три lossless logic-shards на каждой OS/Python-комбинации, проверка точного набора тестов и объединённого coverage, пофазные тайминги ([полностью](changelog.d/017-perf-ci-logic-shards.md))

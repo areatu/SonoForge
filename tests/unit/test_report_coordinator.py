@@ -781,3 +781,92 @@ def test_last_hidden_row_can_be_restored_from_an_empty_section(coordinator, repe
     monkeypatch.setattr(ReportValuesDialog, "exec", lambda dialog: check_rows(dialog, Qt.CheckState.Checked))
     coordinator.edit_values()
     assert page.document.groups == before and not page.sections.hidden_values
+
+
+class TestMyocardialWorkHeaderPressure:
+    """А.9 (#647): the header cuff BP turns the stored study into MW rows."""
+
+    def test_bp_fields_produce_mw_rows_from_the_controller_study(self, coordinator, controller, window) -> None:
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
+
+        n = 12
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -19.0, n),
+            radial=np.zeros(n),
+            gls=-19.0,
+            view="A4C",
+            qc_status="valid",
+            segment_strain={3: -17.0, 6: -19.0, 9: -18.5, 12: -20.0, 15: -21.0, 18: -21.5},
+            segment_quality={seg: 0.9 for seg in (3, 6, 9, 12, 15, 18)},
+            segment_curves={seg: np.linspace(0.0, value, n) for seg, value in ((3, -17.0), (6, -19.0))},
+            ed_index=0,
+            es_index=5,
+            avc_index=5,
+            avc_source="ecg",
+            ess=-18.0,
+            peak_strain=-19.0,
+            config_preset="standard",
+            tracking_quality_mean=0.92,
+            heart_rate_bpm=64.0,
+            frame_time_ms=33.3,
+        )
+        study = StrainStudy(analyses={"A4C": StrainAnalysis.from_result(result)})
+        controller.strain_study.return_value = study
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.domain.models.ste_analysis import strain_report_from_study
+
+        controller.compute_study_snapshot.return_value = MeasurementSnapshot(strain=strain_report_from_study(study))
+        coordinator.set_mode(True)
+        coordinator.set_patient_field("systolic_bp_mmhg", "120")
+        coordinator.set_patient_field("diastolic_bp_mmhg", "80")
+
+        document = coordinator.current_document()
+
+        labels = [value.label for group in document.groups for value in group.values]
+        assert any("GWI" in label for label in labels)
+        assert any("GWE" in label for label in labels)
+
+    def test_junk_bp_text_adds_no_mw_rows_and_no_crash(self, coordinator, controller, window) -> None:
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
+
+        n = 12
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -19.0, n),
+            radial=np.zeros(n),
+            gls=-19.0,
+            view="A4C",
+            qc_status="valid",
+            segment_strain={3: -17.0},
+            segment_quality={3: 0.9},
+            segment_curves={3: np.linspace(0.0, -17.0, n)},
+            ed_index=0,
+            es_index=5,
+            avc_index=5,
+            avc_source="ecg",
+            ess=-18.0,
+            peak_strain=-19.0,
+            config_preset="standard",
+            tracking_quality_mean=0.92,
+            heart_rate_bpm=64.0,
+            frame_time_ms=33.3,
+        )
+        study = StrainStudy(analyses={"A4C": StrainAnalysis.from_result(result)})
+        controller.strain_study.return_value = study
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.domain.models.ste_analysis import strain_report_from_study
+
+        controller.compute_study_snapshot.return_value = MeasurementSnapshot(strain=strain_report_from_study(study))
+        coordinator.set_mode(True)
+        coordinator.set_patient_field("systolic_bp_mmhg", "12x")
+        coordinator.set_patient_field("diastolic_bp_mmhg", "80")
+
+        document = coordinator.current_document()
+
+        labels = [value.label for group in document.groups for value in group.values]
+        assert not any("GWI" in label for label in labels)

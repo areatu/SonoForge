@@ -644,6 +644,15 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     # ── Strain ──
     _m("lv.gls", ("GLS ЛЖ", "Глобальная продольная деформация ЛЖ"), ("LV GLS", "LV global longitudinal strain"),
        Quantity.PERCENT, 1, ase=_T6, ase_row='lv.gls', verified=True, synonyms=("strain", "стрейн", "speckle")),
+    # ── Myocardial Work (план А.9) — non-invasive pressure-strain loops ──
+    _m("lv.gwi", ("GWI ЛЖ", "Глобальный индекс работы миокарда"), ("LV GWI", "LV global work index"),
+       Quantity.RATIO, 0, synonyms=("GWI", "работа миокарда")),
+    _m("lv.gcw", ("GCW ЛЖ", "Конструктивная работа миокарда"), ("LV GCW", "LV constructive work"),
+       Quantity.RATIO, 0, synonyms=("GCW",)),
+    _m("lv.gww", ("GWW ЛЖ", "Потерянная работа миокарда"), ("LV GWW", "LV wasted work"),
+       Quantity.RATIO, 0, synonyms=("GWW",)),
+    _m("lv.gwe", ("GWE ЛЖ", "Эффективность работы миокарда"), ("LV GWE", "LV work efficiency"),
+       Quantity.PERCENT, 1, synonyms=("GWE",)),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),

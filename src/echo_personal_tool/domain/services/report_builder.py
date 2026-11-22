@@ -530,6 +530,11 @@ def _strain_report_notes(strain: StrainReport) -> tuple[str, ...]:
         notes.append(tr("domain.report.strain_avc_source", source=avc_text).strip())
     if strain.contour_source != "manual":
         notes.append(tr("domain.report.strain_contour_draft").strip())
+    if strain.blood_pressure_mmhg is not None and strain.mw_by_view:
+        sbp, dbp = strain.blood_pressure_mmhg
+        notes.append(
+            tr("domain.report.mw_method", sbp=f"{sbp:g}", dbp=f"{dbp:g}", n=str(len(strain.mw_by_view))).strip()
+        )
     if strain.segments_missing:
         notes.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing).strip())
     return tuple(notes)
@@ -1186,6 +1191,34 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
             group=GROUP_LEFT_VENTRICLE,
             norm_label="GLS",
             origin=strain_value_origin(strain, "lv.gls"),
+        )
+        if item:
+            values.append(item)
+        _append_myocardial_work_values(values, strain, sex=sex)
+
+
+def _append_myocardial_work_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:
+    """Append the Myocardial Work rows (plan А.9) when a cuff pressure exists.
+
+    No reference-norm label: the MW numbers carry no ASE reference table here,
+    and a norm-less row is honest — the method note states the inputs.
+    """
+    if not strain.mw_by_view:
+        return
+    rows = (
+        ("domain.report.mw_gwi", "lv.gwi", strain.gwi_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gcw", "lv.gcw", strain.gcw_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gww", "lv.gww", strain.gww_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gwe", "lv.gwe", strain.gwe_percent, "%"),
+    )
+    for label_key, measurement_id, value, unit in rows:
+        item = _value(
+            tr(label_key),
+            measurement_id,
+            value,
+            unit,
+            sex=sex,
+            group=GROUP_LEFT_VENTRICLE,
         )
         if item:
             values.append(item)
