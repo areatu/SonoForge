@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from math import isfinite
 
 import numpy as np
@@ -13,7 +14,12 @@ from echo_personal_tool.domain.doppler_catalog import (
     flow_site_from_peak_label,
     flow_site_from_trace_label,
 )
-from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO, DopplerTrace
+from echo_personal_tool.domain.models.doppler import (
+    DopplerIntervalMarker,
+    DopplerMeasurementDTO,
+    DopplerPeakMarker,
+    DopplerTrace,
+)
 from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults
 from echo_personal_tool.domain.services.doppler_repeats import (
     REPORT_WINDOW,
@@ -56,6 +62,24 @@ def _find_interval_duration_ms(dto: DopplerMeasurementDTO, label: str) -> float 
         for interval in dto.intervals
         if interval.accepted and _normalize_label(interval.label) == wanted
     )
+
+
+def peak_repeat_count(peaks: Iterable[DopplerPeakMarker], *labels: str) -> int:
+    """How many accepted measurements of one parameter the markers hold.
+
+    The repeat window (``doppler_repeats.REPORT_WINDOW``) is applied at
+    :func:`_find_peak_velocity`; the count is the honest «n измерений» behind
+    that mean (the diastology panel). Works on any marker iterable — the raw
+    DTO and the aggregated ``DopplerResults.peaks`` alike.
+    """
+    wanted = {_normalize_label(label) for label in labels}
+    return sum(1 for peak in peaks if peak.accepted and _normalize_label(peak.label) in wanted)
+
+
+def interval_repeat_count(intervals: Iterable[DopplerIntervalMarker], label: str) -> int:
+    """How many accepted interval markers of one label the markers hold."""
+    wanted = _normalize_label(label)
+    return sum(1 for interval in intervals if interval.accepted and _normalize_label(interval.label) == wanted)
 
 
 def heart_rate_from_interval_ms(duration_ms: float) -> float | None:

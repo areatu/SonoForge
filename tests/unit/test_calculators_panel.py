@@ -340,3 +340,28 @@ def test_panel_never_overflows_horizontally(qtbot) -> None:
                 continue
             right = card.box.mapTo(scroll.viewport(), card.box.rect().topLeft()).x() + card.box.width()
             assert right <= scroll.viewport().width() + 1, (width, card.spec.id, right)
+
+
+def test_diastolic_card_lists_the_ase_criteria() -> None:
+    """А.10: the grade card shows which criteria lean on which auto-filled value."""
+    panel = CalculatorsPanel()
+    panel.set_mode(MODE_STANDALONE)
+    criteria = panel.findChild(QLabel, "calcCriteria_diastolic_grade")
+    assert criteria is not None
+    _type(panel, "e_over_e_prime", "16")
+    _type(panel, "e_prime_sept", "6")
+    _type(panel, "lav_index", "30")
+    _type(panel, "tr_vmax", "3.0")
+    text = criteria.text()
+    assert "E/e′ &gt; 14: 16.0" in text
+    assert "e′ &lt; 7 cm/s: 6.0" in text
+    assert "LAVi &gt; 34 mL/m²: 30.0" in text
+    assert "TR Vmax &gt; 280 cm/s: 300.0" in text
+    assert "elevated" in text and "not elevated" in text
+
+
+def test_diastolic_card_hides_criteria_without_inputs() -> None:
+    panel = CalculatorsPanel()
+    panel.set_mode(MODE_STANDALONE)
+    criteria = panel.findChild(QLabel, "calcCriteria_diastolic_grade")
+    assert not criteria.isVisibleTo(panel)

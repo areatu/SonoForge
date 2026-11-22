@@ -119,6 +119,7 @@ def restrict_snapshot_to_profile(
         rwt=None,
         rv_fac_percent=None,
         diastology_grade=None,
+        diastology=None,
         indexed=None,
         strain=None,
         calculations=None,

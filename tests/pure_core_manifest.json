@@ -5,6 +5,7 @@
     "tests/unit/test_chamber_simpson.py",
     "tests/unit/test_ctmr_slice_requests.py",
     "tests/unit/test_ctmr_stacks.py",
+    "tests/unit/test_diastology_workflow.py",
     "tests/unit/test_dicom_cache_identity.py",
     "tests/unit/test_frame_cache.py",
     "tests/unit/test_frame_cache_completeness.py",
