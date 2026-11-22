@@ -436,6 +436,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self._studies: list[StudyMetadata] = []
         self._sort_mode = "created"
         self._thumbnail_loader: ThumbnailLoader | None = None
+        self._copy_workers: set[object] = set()
         self._loader_accepts_priority = False
         self._building = False
         self._scroll_timer = QTimer(self)
@@ -1043,6 +1044,9 @@ class ThumbnailGalleryWidget(QListWidget):
     def _copy_source_file(self, instance: InstanceMetadata) -> None:
         if instance.path is None:
             return
+        from PySide6.QtCore import QThreadPool
+        from PySide6.QtWidgets import QMessageBox
+
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
 
         default_name = instance.path.name
@@ -1051,8 +1055,61 @@ class ThumbnailGalleryWidget(QListWidget):
             tr("gallery.save_file"),
             default_name,
         )
-        if dest:
+        if not dest:
+            return
+
+        if instance.media_format != "dicom":
             shutil.copy2(str(instance.path), dest)
+            return
+
+        import pydicom
+
+        from echo_personal_tool.application.server_io import load_server_settings
+        from echo_personal_tool.application.workers.original_dicom_copy_worker import (
+            OriginalDicomCopyWorker,
+        )
+        from echo_personal_tool.presentation.server_settings_dialog import (
+            ensure_transport_confirmed_before_network,
+        )
+
+        try:
+            probe = pydicom.dcmread(str(instance.path), stop_before_pixels=True, force=True)
+            study_uid = str(getattr(probe, "StudyInstanceUID", "") or "")
+        except Exception:  # noqa: BLE001 - gallery copy must never crash on a bad header
+            study_uid = ""
+        if not (study_uid and instance.series_uid and instance.sop_instance_uid):
+            QMessageBox.warning(self, tr("status.export_failed"), tr("orthanc.instance_download_failed"))
+            return
+
+        settings = load_server_settings()
+        confirmed = ensure_transport_confirmed_before_network(self, settings)
+        if confirmed is None:
+            return
+
+        worker = OriginalDicomCopyWorker(
+            confirmed,
+            study_uid,
+            instance.series_uid,
+            instance.sop_instance_uid,
+            dest,
+            parent=self,
+        )
+        self._copy_workers.add(worker)
+        worker.signals.finished.connect(
+            lambda _path, w=worker: self._copy_workers.discard(w),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda _code, w=worker: self._on_original_copy_failed(w),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_original_copy_failed(self, worker: object) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        self._copy_workers.discard(worker)
+        QMessageBox.warning(self, tr("status.export_failed"), tr("orthanc.instance_download_failed"))
 
     def toggle_collapse(self) -> None:
         if self._collapsed:

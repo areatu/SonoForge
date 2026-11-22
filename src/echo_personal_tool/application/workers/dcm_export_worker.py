@@ -1,21 +1,28 @@
-"""Background worker that exports a frame range of a DICOM clip as DICOM.
+"""Background worker that exports a DICOM clip as a compact JPEG Baseline DICOM.
 
-The gallery's «Экспорт в DICOM…» writes either the whole file (a byte copy —
-nothing is re-encoded) or a consecutive frame range as a new multi-frame
-DICOM: the selected frames are decoded and stored uncompressed (Explicit VR
-Little Endian) with the original header metadata.  Keeping the export
-uncompressed is deliberate — slicing encapsulated (compressed) pixel data is
-not lossless, and an export must not silently change the transfer syntax.
+The gallery's «Экспорт в DICOM…» asks for the whole clip or a consecutive frame
+range.  Both paths decode the requested frames from the already de-identified
+working file and write a new multi-frame DICOM with JPEG Baseline pixel data.
+The source bytes are never copied verbatim: slicing encapsulated JPEG/JPEG2000
+fragments is not lossless, and the export must stay small (12–40 MiB for a
+typical cine) instead of duplicating a hundreds-of-megabytes raw file.
+
+Copying the original *with* PHI is the separate «Скопировать DICOM-файл…»
+action; this worker always inherits de-identification from its input file.
 """
 
 from __future__ import annotations
 
 import logging
-import shutil
+import os
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
 import pydicom
+from PIL import Image
+from pydicom.encaps import encapsulate
+from pydicom.uid import JPEGBaseline8Bit
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
@@ -24,11 +31,39 @@ logger = logging.getLogger(__name__)
 
 DCM_EXPORT_FAILURE_CODE = "export_failed"
 
+_TARGET_BYTES = 24 * 1024 * 1024
+_MAX_BYTES = 40 * 1024 * 1024
+_QUALITIES = (90, 92, 94, 96, 98, 100)
+_SAMPLE_FRAMES = 8
+
 
 class DcmExportSignals(QObject):
     progress = Signal(int, int)  # current_frame, total_frames
     finished = Signal(str)  # output_path
     failed = Signal(str)  # stable failure code
+
+
+def _encode_jpeg(frame: np.ndarray, quality: int, monochrome: bool) -> bytes:
+    buf = BytesIO()
+    if monochrome:
+        Image.fromarray(frame, mode="L").save(buf, format="JPEG", quality=quality)
+    else:
+        Image.fromarray(frame, mode="RGB").save(
+            buf, format="JPEG", quality=quality, subsampling=1
+        )
+    return buf.getvalue()
+
+
+def _choose_quality(frames: np.ndarray, monochrome: bool) -> int:
+    """Pick the quality whose sampled frame size is closest to the target."""
+    sample = frames[: min(_SAMPLE_FRAMES, len(frames))]
+    best_quality, best_distance = _QUALITIES[-1], float("inf")
+    for quality in _QUALITIES:
+        avg = sum(len(_encode_jpeg(frame, quality, monochrome)) for frame in sample) / len(sample)
+        distance = abs(avg * len(frames) - _TARGET_BYTES)
+        if distance < best_distance:
+            best_quality, best_distance = quality, distance
+    return best_quality
 
 
 class DcmRangeExportWorker(QRunnable):
@@ -51,25 +86,19 @@ class DcmRangeExportWorker(QRunnable):
     @Slot()
     def run(self) -> None:
         try:
-            if self._frame_range is None:
-                shutil.copy2(str(self._source_path), str(self._dest_path))
-                self.signals.finished.emit(str(self._dest_path))
-                return
-            self._export_range()
+            self._export_frames()
         except Exception as exc:  # noqa: BLE001 — worker boundary delivers failure to the UI
             log_boundary_failure(logger, "dcm.export", exc, code="unexpected", level=logging.ERROR)
             self.signals.failed.emit(DCM_EXPORT_FAILURE_CODE)
 
-    def _export_range(self) -> None:
+    def _export_frames(self) -> None:
         from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-        frame_range = self._frame_range
-        assert frame_range is not None  # run() handles the whole-file case
-        start, end = frame_range
         session = get_thread_dicom_session(self._source_path)
         session.open(self._source_path)
         try:
             total = session.frame_count
+            start, end = self._frame_range or (0, total - 1)
             start = max(0, min(start, total - 1))
             end = max(start, min(end, total - 1))
             # Export only the requested range: a selected range must not require
@@ -83,36 +112,57 @@ class DcmRangeExportWorker(QRunnable):
         selected = np.empty((count,) + first.shape, dtype=first.dtype)
         for offset, index in enumerate(range(start, end + 1)):
             selected[offset] = decoded[index]
-        for i in range(count):
-            if i % 5 == 0 or i == count - 1:
-                self.signals.progress.emit(i + 1, count)
 
         ds = pydicom.dcmread(str(self._source_path))
-        self._write_multiframe(ds, selected)
+        self._write_compressed(ds, selected)
         self.signals.finished.emit(str(self._dest_path))
 
-    def _write_multiframe(self, ds: pydicom.Dataset, frames: np.ndarray) -> None:
+    def _write_compressed(self, ds: pydicom.Dataset, frames: np.ndarray) -> None:
         out = ds.copy()
-        file_meta = getattr(ds, "file_meta", None)
-        if file_meta is not None:
-            file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+        file_meta = getattr(out, "file_meta", None)
+        if file_meta is None:
+            file_meta = pydicom.dataset.FileMetaDataset()
             out.file_meta = file_meta
-        out.NumberOfFrames = str(int(frames.shape[0]))
+        file_meta.TransferSyntaxUID = JPEGBaseline8Bit
+        out.is_implicit_VR = False
+        out.is_little_endian = True
+
+        count = int(frames.shape[0])
         first = np.asarray(frames[0])
+        monochrome = first.ndim == 2
+        out.NumberOfFrames = str(count)
         out.Rows, out.Columns = int(first.shape[0]), int(first.shape[1])
-        if first.ndim == 3:
-            out.SamplesPerPixel = int(first.shape[2])
-            out.PhotometricInterpretation = "RGB"
+        out.SamplesPerPixel = 1 if monochrome else int(first.shape[2])
+        out.PhotometricInterpretation = "MONOCHROME2" if monochrome else "YBR_FULL_422"
+        if not monochrome:
             out.PlanarConfiguration = 0
-            pixels = np.ascontiguousarray(frames).tobytes()
-        else:
-            out.SamplesPerPixel = 1
-            out.PhotometricInterpretation = "MONOCHROME2"
-            out.BitsAllocated = 8
-            out.BitsStored = 8
-            out.HighBit = 7
-            out.PixelRepresentation = 0
-            pixels = np.ascontiguousarray(frames, dtype=np.uint8).tobytes()
-        out.PixelData = pixels
-        self._dest_path.parent.mkdir(parents=True, exist_ok=True)
-        out.save_as(str(self._dest_path), write_like_original=False)
+        out.BitsAllocated = 8
+        out.BitsStored = 8
+        out.HighBit = 7
+        out.PixelRepresentation = 0
+        out.LossyImageCompression = "01"
+        out.LossyImageCompressionMethod = "ISO_10918_1"
+
+        quality = _choose_quality(frames, monochrome)
+        tmp = self._dest_path.with_name(self._dest_path.name + ".tmp")
+        try:
+            while True:
+                jpeg_frames = []
+                for index, frame in enumerate(frames):
+                    jpeg_frames.append(_encode_jpeg(frame, quality, monochrome))
+                    if index % 5 == 0 or index == count - 1:
+                        self.signals.progress.emit(index + 1, count)
+                total_jpeg = sum(len(item) for item in jpeg_frames)
+                out.PixelData = encapsulate(jpeg_frames)
+                out["PixelData"].is_undefined_length = True
+                out.LossyImageCompressionRatio = f"{frames.nbytes / total_jpeg:.1f}"
+                self._dest_path.parent.mkdir(parents=True, exist_ok=True)
+                out.save_as(str(tmp), write_like_original=False, enforce_file_format=True)
+                if tmp.stat().st_size <= _MAX_BYTES or quality == _QUALITIES[0]:
+                    os.replace(tmp, self._dest_path)
+                    return
+                tmp.unlink()
+                quality = _QUALITIES[_QUALITIES.index(quality) - 1]
+        finally:
+            if tmp.exists():
+                tmp.unlink()
