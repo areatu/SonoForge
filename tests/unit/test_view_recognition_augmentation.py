@@ -5,6 +5,11 @@ from __future__ import annotations
 import random
 
 import numpy as np
+import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("torchvision")
+
 from scripts.train_view_recognition import _augment_clip, _AugmentedClipsDataset
 
 
