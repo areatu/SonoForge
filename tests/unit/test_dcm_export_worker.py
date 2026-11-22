@@ -38,8 +38,9 @@ def _write_rgb_multiframe_dicom(path: Path, frames: np.ndarray) -> Path:
 
 
 class TestDcmRangeExportWorker:
-    def test_whole_file_export_copies_bytes_verbatim(self, tmp_path: Path) -> None:
+    def test_whole_file_export_compresses_all_frames(self, tmp_path: Path) -> None:
         src = write_synthetic_multiframe_dicom(tmp_path / "source.dcm", frame_count=4, rows=24, cols=32)
+        source_pixels = pydicom.dcmread(str(src)).pixel_array
         dest = tmp_path / "exported_whole.dcm"
         finished: list[str] = []
         failed: list[str] = []
@@ -52,9 +53,13 @@ class TestDcmRangeExportWorker:
         worker.run()
 
         assert failed == []
-        assert progress == []
+        assert progress == [(1, 4), (4, 4)]
         assert finished == [str(dest)]
-        assert dest.read_bytes() == src.read_bytes()
+        out_ds = pydicom.dcmread(str(dest))
+        assert out_ds.file_meta.TransferSyntaxUID == pydicom.uid.JPEGBaseline8Bit
+        assert int(out_ds.NumberOfFrames) == 4
+        assert str(out_ds.PhotometricInterpretation) == "MONOCHROME2"
+        np.testing.assert_allclose(np.asarray(out_ds.pixel_array), source_pixels, atol=15)
 
     def test_monochrome_range_export_writes_selected_frames_uncompressed(self, tmp_path: Path) -> None:
         src = write_synthetic_multiframe_dicom(tmp_path / "cine.dcm", frame_count=6, rows=20, cols=28)
@@ -84,11 +89,11 @@ class TestDcmRangeExportWorker:
         assert progress == [(1, 3), (3, 3)]
 
         out_ds = pydicom.dcmread(str(dest))
-        assert out_ds.file_meta.TransferSyntaxUID == pydicom.uid.ExplicitVRLittleEndian
+        assert out_ds.file_meta.TransferSyntaxUID == pydicom.uid.JPEGBaseline8Bit
         assert int(out_ds.NumberOfFrames) == 3
         assert out_ds.PhotometricInterpretation == "MONOCHROME2"
         assert int(out_ds.SamplesPerPixel) == 1
-        np.testing.assert_array_equal(out_ds.pixel_array, raw[2:5])
+        np.testing.assert_allclose(np.asarray(out_ds.pixel_array), raw[2:5], atol=15)
 
     def test_rgb_range_export_clamps_bounds_and_batches_progress(self, tmp_path: Path) -> None:
         rgb = np.zeros((7, 16, 20, 3), dtype=np.uint8)
@@ -111,11 +116,12 @@ class TestDcmRangeExportWorker:
         assert progress == [(1, 7), (6, 7), (7, 7)]
 
         out_ds = pydicom.dcmread(str(dest))
+        assert out_ds.file_meta.TransferSyntaxUID == pydicom.uid.JPEGBaseline8Bit
         assert int(out_ds.NumberOfFrames) == 7
-        assert out_ds.PhotometricInterpretation == "RGB"
+        assert out_ds.PhotometricInterpretation == "YBR_FULL_422"
         assert int(out_ds.SamplesPerPixel) == 3
         assert int(out_ds.PlanarConfiguration) == 0
-        np.testing.assert_array_equal(out_ds.pixel_array, rgb)
+        np.testing.assert_allclose(np.asarray(out_ds.pixel_array), rgb, atol=15)
 
     def test_export_failure_emits_stable_code_and_redacts_phi_from_logs(
         self,
