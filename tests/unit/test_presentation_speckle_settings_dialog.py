@@ -217,3 +217,28 @@ class TestRegularizationAndSideControls:
         config = dlg.get_config()
         assert config.curve_smoothing_frames == 5
         assert config.spatial_smoothing == 1.2  # preset still applied
+
+
+class TestPhaseSourceGating:
+    """А.4 (issue #642): the force-source combo and its round-trip."""
+
+    def test_defaults_to_auto(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog()
+        assert dlg._phase_source_combo.count() == 3
+        assert dlg.phase_source_pref == "auto"
+
+    def test_pref_round_trip(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog(phase_source_pref="image")
+        assert dlg.phase_source_pref == "image"
+        dlg._phase_source_combo.setCurrentIndex(dlg._phase_source_combo.findData("ecg"))
+        assert dlg.phase_source_pref == "ecg"
+
+    def test_unknown_pref_falls_back_to_auto(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog(phase_source_pref="banana")
+        assert dlg.phase_source_pref == "auto"

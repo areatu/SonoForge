@@ -76,6 +76,7 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
     format_results_overlay_html,
 )
+from echo_personal_tool.domain.services.phase_source import store_forced_phase_source
 from echo_personal_tool.keyboard_shortcuts import (
     configure_shortcuts,
     event_matches_shortcut,
@@ -157,7 +158,11 @@ from echo_personal_tool.presentation.prepared_anatomy_draw import PreparedDrawTo
 from echo_personal_tool.presentation.prepared_anatomy_layer import PreparedAnatomyLayer
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.protocol_step_bar import ProtocolStepBar
-from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+from echo_personal_tool.presentation.speckle_settings_dialog import (
+    SpeckleSettingsDialog,
+    phase_source_label,
+    speckle_ed_es_hint,
+)
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
 from echo_personal_tool.presentation.study_comparison import open_previous_study_comparison
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
@@ -5840,18 +5845,8 @@ class MainWindow(QMainWindow):
             self._manual_ed_frame = phase_contours["ED"].frame_index
         if es_from_contour:
             self._manual_es_frame = phase_contours["ES"].frame_index
-        ed_pinned = self._manual_ed_frame is not None
-        es_pinned = self._manual_es_frame is not None
-        if ed_from_contour and es_from_contour:
-            ed_es_hint = "Manual — from EDV/ESV contours"
-        elif ed_from_contour:
-            ed_es_hint = "ED pinned from EDV contour; ES auto-detected"
-        elif es_from_contour:
-            ed_es_hint = "ES pinned from ESV contour; ED auto-detected"
-        elif ed_pinned and es_pinned:
-            ed_es_hint = "Manual frames (auto-detect disabled)"
-        else:
-            ed_es_hint = "Auto-detect: ECG → Simpson area → image"
+        pins = (ed_from_contour, es_from_contour, self._manual_ed_frame is not None, self._manual_es_frame is not None)
+        ed_es_hint = speckle_ed_es_hint(pins, last_result=self._strain_result_for_window)
         current_idx = self._get_current_frame_index() or 0
         n_frames = self._controller.frame_access.status().frame_count
         settings = SpeckleSettingsDialog(
@@ -5872,13 +5867,16 @@ class MainWindow(QMainWindow):
         config_preset = settings.selected_preset_name()
         self._ste_wall_thickness_mm = float(config.wall_thickness_mm)
         self._ste_position = settings.selected_view()
+        store_forced_phase_source(settings.phase_source_pref)
         self._manual_ed_frame = settings.manual_ed
         self._manual_es_frame = settings.manual_es
         self._viewer.clear_speckle_overlay()
-        if self._manual_ed_frame is not None and self._manual_es_frame is not None:
-            phase_hint = f"ED={self._manual_ed_frame}, ES={self._manual_es_frame}"
-        else:
-            phase_hint = tr("status.speckle_phase_hint")
+        manual_both = self._manual_ed_frame is not None and self._manual_es_frame is not None
+        phase_hint = (
+            f"ED={self._manual_ed_frame}, ES={self._manual_es_frame}"
+            if manual_both
+            else tr("status.speckle_phase_hint")
+        )
         self._show_status(tr("status.speckle_compute", phase_hint=phase_hint))
         self._controller.run_speckle_tracking(
             contour,
@@ -5949,7 +5947,7 @@ class MainWindow(QMainWindow):
             qc_info,
             f"NCC: {format_whole_pct(ncc_pct)}%",
             quality_info,
-            f"ED/ES: {result.ed_es_source}",
+            f"{tr('status.phase_gating')}: {phase_source_label(str(result.ed_es_source))}",
             f"Drift: {drift}",
             f"Preset: {preset_name}",
         ]

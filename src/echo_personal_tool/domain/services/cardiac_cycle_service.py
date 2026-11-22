@@ -1,7 +1,8 @@
 """Cardiac cycle detection with ECG-to-spectrogram time alignment.
 
 A single service that turns an ECG waveform or, when the ECG is absent or
-unusable, the spectral envelope itself into a list of
+unusable, the А.4 phase-source route — image cycles from a provider (plan
+#642), then the spectral envelope itself — into a list of
 :class:`CardiacCycle` boundaries expressed in the spectrogram's local
 millisecond domain. Used by the vessel Doppler auto-trace to snap PSV/EDV to
 real cardiac cycles instead of relying on the raw ROI edges.
@@ -9,7 +10,7 @@ real cardiac cycles instead of relying on the raw ROI edges.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -371,14 +372,21 @@ class CardiacCycleService:
         spectrogram_time_axis_ms: np.ndarray | None = None,
         fallback_signal: np.ndarray | None = None,
         max_shift_ms: float = 1500.0,
+        image_cycles_provider: Callable[[], Sequence[CardiacCycle]] | None = None,
+        forced_source: str | None = None,
     ) -> list[CardiacCycle]:
         """Return cardiac cycles in the spectrogram's local ms domain.
 
         Cycles come from the ECG R-peak train when a usable ECG is present
-        and aligns to the fallback signal; otherwise they are derived from the
-        envelope velocity profile itself (``source="envelope"``) so averaging
-        works without ECG. Returns an empty list only when no signal is
-        available or it carries no detectable peaks.
+        and aligns to the fallback signal; otherwise the А.4 route applies
+        (plan #642): image cycles from *image_cycles_provider* (the cine
+        phase field expressed in this service's ms domain — the provider owns
+        that mapping, ``source="image"``), then the envelope velocity
+        profile (``source="envelope"``) so averaging works without ECG.
+        ``forced_source`` ("ecg"/"image") pins the route: forcing ECG without
+        a usable waveform returns no cycles instead of silently falling back;
+        forcing image skips the ECG even when valid. Returns an empty list
+        only when no signal is available or it carries no detectable peaks.
         """
         if spectrogram_time_axis_ms is None or fallback_signal is None:
             return []
@@ -390,19 +398,51 @@ class CardiacCycleService:
         if times.size < _MIN_PROFILE_SAMPLES:
             return []
 
+        forced = str(forced_source or "").strip().lower()
+        if forced not in ("auto", "ecg", "image"):
+            forced = "auto"
+
+        if forced == "image":
+            return self._image_or_envelope_cycles(image_cycles_provider, times, signal)
+
+        if forced == "ecg":
+            # Pinned ECG: no silent envelope/image fallback — honest emptiness.
+            pinned = self._ecg_cycles(ecg, times, signal, max_shift_ms, fallback_ok=False)
+            return pinned if pinned is not None else []
+        ecg_cycles = self._ecg_cycles(ecg, times, signal, max_shift_ms, fallback_ok=None)
+        if ecg_cycles is not None:
+            return ecg_cycles
+        return self._image_or_envelope_cycles(image_cycles_provider, times, signal)
+
+    def _ecg_cycles(
+        self,
+        ecg: EcgWaveform | None,
+        times: np.ndarray,
+        signal: np.ndarray,
+        max_shift_ms: float,
+        *,
+        fallback_ok: bool | None,
+    ) -> list[CardiacCycle] | None:
+        """ECG-derived cycles, or ``None`` when the ECG route is unusable.
+
+        ``fallback_ok=None`` (auto) preserves the historical behaviour of
+        falling through to the envelope on every unusable-ECG branch;
+        ``fallback_ok=False`` (pinned ECG) returns ``[]`` instead of ``None``
+        when the route fails, and never signals a fall-through.
+        """
         if ecg is None:
-            return detect_cycles_from_envelope(times, signal)
+            return [] if fallback_ok is False else None
 
         lead_data = primary_ecg_signal(ecg)
         if lead_data is None:
-            return detect_cycles_from_envelope(times, signal)
+            return [] if fallback_ok is False else None
         voltage, fs = lead_data
 
         r_peak_result = detect_r_peaks(voltage, fs)
         if len(r_peak_result.r_peak_indices) < 2:
-            return detect_cycles_from_envelope(times, signal)
+            return [] if fallback_ok is False else None
         if r_peak_result.confidence < _CYCLE_CONFIDENCE_THRESHOLD:
-            return detect_cycles_from_envelope(times, signal)
+            return [] if fallback_ok is False else None
 
         alignment = align_spectrogram_to_ecg(
             ecg,
@@ -412,7 +452,7 @@ class CardiacCycleService:
             r_peak_result=r_peak_result,
         )
         if alignment is None:
-            return detect_cycles_from_envelope(times, signal)
+            return [] if fallback_ok is False else None
 
         t0, t1 = float(np.min(times)), float(np.max(times))
         local_peaks = r_peak_result.r_peak_times_ms - alignment.offset_ms
@@ -441,3 +481,21 @@ class CardiacCycleService:
                 )
             )
         return cycles
+
+    def _image_or_envelope_cycles(
+        self,
+        image_cycles_provider: Callable[[], Sequence[CardiacCycle]] | None,
+        times: np.ndarray,
+        signal: np.ndarray,
+    ) -> list[CardiacCycle]:
+        """Image cycles when a provider supplies them; envelope is the floor.
+
+        The provider contract is *must not raise* (it wraps the caller's own
+        phase field; a bug there is the caller's to see) and must express its
+        cycles in this service's ms domain.
+        """
+        if image_cycles_provider is not None:
+            image_cycles = [c for c in image_cycles_provider() if isinstance(c, CardiacCycle)]
+            if image_cycles:
+                return list(image_cycles)
+        return detect_cycles_from_envelope(times, signal)

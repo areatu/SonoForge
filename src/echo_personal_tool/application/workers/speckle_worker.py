@@ -27,10 +27,14 @@ from echo_personal_tool.domain.services.aha_segments import (
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     auto_detect_ed_es,
     build_myocardial_roi_mask,
-    detect_ed_es_from_frames,
     estimate_heart_rate_fft,
+    lv_area_proxy_curve,
 )
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
+from echo_personal_tool.domain.services.phase_source import (
+    get_forced_phase_source,
+    resolve_phase_source,
+)
 from echo_personal_tool.domain.services.quality import assess_tracking_quality
 from echo_personal_tool.domain.services.segment_map import describe_segment_sides
 from echo_personal_tool.domain.services.speckle_tracking import (
@@ -434,6 +438,9 @@ class SpeckleTrackingWorker(QRunnable):
         # on this worker thread when ``ecg_waveform`` was not supplied (so a
         # real ECG is available even when the cine came from the frame cache).
         ecg_source_path: Path | str | None = None,
+        # А.4 phase-gating force-source: "auto"|"ecg"|"image"|None (None and
+        # "auto" keep the prefer-ECG routing of issue #642).
+        phase_source_pref: str | None = None,
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -452,8 +459,61 @@ class SpeckleTrackingWorker(QRunnable):
         self._source_path = source_path
         self._media_format = media_format
         self._ecg_source_path = ecg_source_path
+        # А.4 force-source ("auto"|"ecg"|"image"|None): the UI's phase-gating
+        # choice; None/"auto" keeps the prefer-ECG routing.
+        self._phase_source_pref = str(phase_source_pref) if phase_source_pref else None
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
+
+    def _phase_area_curve(self, state: types.SimpleNamespace) -> np.ndarray | None:
+        """Cavity-area carrier for the image phase route.
+
+        The stored Simpson curve wins (a curated measurement, NaN-filled over
+        missing frames — the field interpolates), else the zone's per-frame
+        area proxy, else ``None`` (no curve carrier).
+        """
+        n = int(state.n_frames)
+        if self._simpson_area_curve:
+            curve = np.full(n, np.nan, dtype=np.float64)
+            filled = False
+            for frame_index, value in self._simpson_area_curve:
+                idx = int(frame_index)
+                if 0 <= idx < n and np.isfinite(value):
+                    curve[idx] = float(value)
+                    filled = True
+            if filled and n >= 3:
+                return curve
+        frames = getattr(state, "frames", None)
+        if frames is not None and getattr(frames, "ndim", 0) >= 3:
+            curve = lv_area_proxy_curve(frames, self._zone)
+            if curve.size >= 3 and float(np.ptp(curve)) > 1e-9:
+                return curve
+        return None
+
+    def _phase_image_frames(self, state: types.SimpleNamespace) -> np.ndarray | None:
+        """Grayscale stack for the image phase route, downscaled to ≤64 px.
+
+        The А.3 signals (dark pool, intensity, flow) are normalised
+        internally, so the source scale does not matter; the downscale keeps
+        the routing cost negligible next to tracking itself. Colour frames
+        are averaged to gray; malformed stacks yield ``None``.
+        """
+        import cv2
+
+        frames = getattr(state, "frames", None)
+        if frames is None or getattr(frames, "ndim", 0) < 3:
+            return None
+        h, w = int(frames.shape[1]), int(frames.shape[2])
+        if min(h, w) < 8:
+            return None
+        scale = min(1.0, 64.0 / float(max(h, w)))
+        out_w, out_h = max(4, int(round(w * scale))), max(4, int(round(h * scale)))
+        small: list[np.ndarray] = []
+        for frame in frames:
+            arr = np.asarray(frame, dtype=np.float64)
+            gray = arr.mean(axis=2) if arr.ndim == 3 else arr
+            small.append(cv2.resize(gray, (out_w, out_h), interpolation=cv2.INTER_AREA))
+        return np.stack(small)
 
     def run(self) -> None:
         state = types.SimpleNamespace()
@@ -518,11 +578,12 @@ class SpeckleTrackingWorker(QRunnable):
         state.manual_es_given = self._manual_es is not None
         state.fully_manual = state.manual_ed_given and state.manual_es_given
         logger.info(
-            "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s",
+            "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s phase_pref=%s",
             self._manual_ed,
             self._manual_es,
             state.n_frames,
             self._ecg_waveform is not None,
+            self._phase_source_pref,
         )
         state.ed_es_confidence = 0.5
         state.r_peak_result = None
@@ -535,33 +596,24 @@ class SpeckleTrackingWorker(QRunnable):
             state.ed_es_source = "manual"
             state.ed_es_confidence = 1.0
         else:
-            # ECG-first policy: use R-peaks when reliable, else Simpson area
-            # curve, else image fallback.
-            from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
-                detect_ed_es_for_cine,
-                detect_ed_es_from_area_curve,
+            # А.4 routing (issue #642): one PhaseSource contract — ECG when
+            # the tags are valid, else the А.3 image phase field, hybrid when
+            # they agree; the UI's force-source pins the route.
+            decision = resolve_phase_source(
+                n_frames=state.n_frames,
+                frame_time_ms=self._frame_time_ms,
+                ecg=self._ecg_waveform,
+                area_curve=self._phase_area_curve(state),
+                frames=self._phase_image_frames(state),
+                forced=self._phase_source_pref or get_forced_phase_source(),
             )
-
-            def image_fallback() -> tuple[int, int]:
-                return detect_ed_es_from_frames(state.frames, self._zone, state.config)
-
-            state.mapping = detect_ed_es_for_cine(
-                self._ecg_waveform,
-                self._frame_time_ms,
-                state.n_frames,
-                simpson_fallback=lambda: detect_ed_es_from_area_curve(self._simpson_area_curve, state.n_frames),
-                image_fallback=image_fallback,
-            )
+            state.mapping = decision.mapping
             state.auto_ed = state.mapping.ed_frame_index
             state.auto_es = state.mapping.es_frame_index
-            state.ed_es_source = state.mapping.source
-            state.r_peak_result = state.mapping.r_peak_result
-            if state.mapping.r_peak_result is not None:
-                state.ed_es_confidence = float(state.mapping.r_peak_result.confidence)
-            elif state.mapping.source == "simpson":
-                state.ed_es_confidence = 0.8
-            else:
-                state.ed_es_confidence = 0.5
+            state.ed_es_source = decision.source
+            state.r_peak_result = decision.mapping.r_peak_result
+            state.ed_es_confidence = decision.confidence
+            state.phase_warnings = decision.warnings
 
             # One-sided manual anchors: the user pinned one frame (usually
             # the EDV or ESV contour), the other side keeps the automatic

@@ -113,6 +113,22 @@ def _estimate_lv_area_proxy(frame: np.ndarray, zone: MyocardialZone) -> float:
     return float(np.mean(roi)) if roi.size > 0 else 0.0
 
 
+def lv_area_proxy_curve(frames: np.ndarray, zone: MyocardialZone) -> np.ndarray:
+    """Per-frame LV area proxy curve (ED = maximum); empty on malformed input.
+
+    The public face of :func:`_estimate_lv_area_proxy` for callers that want
+    the *curve* and not just two frames — e.g. the А.4 phase routing feeds it
+    to the А.3 phase field as the cavity-area carrier.
+    """
+    n_frames = int(frames.shape[0]) if frames.ndim >= 3 else 0
+    if n_frames < 1:
+        return np.zeros(0, dtype=np.float64)
+    return np.array(
+        [_estimate_lv_area_proxy(frames[i], zone) for i in range(n_frames)],
+        dtype=np.float64,
+    )
+
+
 def detect_ed_es_from_frames(
     frames: np.ndarray,
     zone: MyocardialZone,
@@ -123,10 +139,7 @@ def detect_ed_es_from_frames(
     if n_frames < 3:
         return (0, min(1, max(0, n_frames - 1)))
 
-    curve = np.array(
-        [_estimate_lv_area_proxy(frames[i], zone) for i in range(n_frames)],
-        dtype=np.float64,
-    )
+    curve = lv_area_proxy_curve(frames, zone)
     x = np.arange(n_frames, dtype=np.float64)
 
     if n_frames >= 4 and np.ptp(curve) > 1e-8:

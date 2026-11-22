@@ -434,3 +434,117 @@ class TestEdvWindow:
         assert edv_value == pytest.approx(70.0)
         # window spans t=1470..1500, midpoint t=1485, nearest sample is 1480/1490
         assert 1470.0 <= times[edv_idx] <= 1500.0
+
+
+class TestPhaseSourceRouting:
+    """А.4 routing (issue #642): ECG → image provider → envelope."""
+
+    @staticmethod
+    def _image_cycles(count: int = 2) -> list[CardiacCycle]:
+        return [
+            CardiacCycle(
+                start_ms=1000.0 * i,
+                end_ms=1000.0 * i + 900.0,
+                r_peak_ms=1000.0 * i,
+                ed_ms=1000.0 * i,
+                es_ms=1000.0 * i + 315.0,
+                source="image",
+                confidence=0.8,
+                rr_ms=900.0,
+            )
+            for i in range(count)
+        ]
+
+    def test_image_provider_used_when_ecg_absent(self) -> None:
+        t, profile = _synthetic_profile()
+        cycles = CardiacCycleService().get_cycles(
+            ecg=None,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=self._image_cycles,
+        )
+        assert len(cycles) == 2
+        assert all(c.source == "image" for c in cycles)
+
+    def test_valid_ecg_beats_image_provider(self) -> None:
+        ecg = _synthetic_ecg()
+        t, profile = _synthetic_profile()
+        calls: list[int] = []
+
+        def provider() -> list[CardiacCycle]:
+            calls.append(1)
+            return self._image_cycles()
+
+        cycles = CardiacCycleService().get_cycles(
+            ecg=ecg,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=provider,
+        )
+        assert cycles and all(c.source == "ecg" for c in cycles)
+        assert calls == []  # the provider is not even probed
+
+    def test_forced_image_skips_valid_ecg(self) -> None:
+        ecg = _synthetic_ecg()
+        t, profile = _synthetic_profile()
+        cycles = CardiacCycleService().get_cycles(
+            ecg=ecg,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=self._image_cycles,
+            forced_source="image",
+        )
+        assert cycles
+        assert all(c.source == "image" for c in cycles)
+
+    def test_forced_ecg_without_usable_ecg_returns_empty(self) -> None:
+        # Pinning ECG must not silently degrade to image/envelope: honest
+        # emptiness tells the caller the route it demanded did not run.
+        t, profile = _synthetic_profile()
+        cycles = CardiacCycleService().get_cycles(
+            ecg=None,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=self._image_cycles,
+            forced_source="ecg",
+        )
+        assert cycles == []
+
+    def test_provider_contract_is_must_not_raise(self) -> None:
+        # The provider wraps the caller's own phase field; a bug there is the
+        # caller's to see, not silently swallowed into envelope cycles.
+        t, profile = _pulsatile_profile()
+
+        def broken() -> list[CardiacCycle]:
+            raise RuntimeError("provider exploded")
+
+        with pytest.raises(RuntimeError):
+            CardiacCycleService().get_cycles(
+                ecg=None,
+                spectrogram_time_axis_ms=t,
+                fallback_signal=profile,
+                image_cycles_provider=broken,
+            )
+
+    def test_provider_without_cycles_degrades_to_envelope(self) -> None:
+        t, profile = _pulsatile_profile()
+        cycles = CardiacCycleService().get_cycles(
+            ecg=None,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=list,
+        )
+        assert cycles
+        assert all(c.source == "envelope" for c in cycles)
+
+    def test_unknown_forced_value_is_treated_as_auto(self) -> None:
+        ecg = _synthetic_ecg()
+        t, profile = _synthetic_profile()
+        cycles = CardiacCycleService().get_cycles(
+            ecg=ecg,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
+            image_cycles_provider=self._image_cycles,
+            forced_source="banana",
+        )
+        assert cycles and all(c.source == "ecg" for c in cycles)
