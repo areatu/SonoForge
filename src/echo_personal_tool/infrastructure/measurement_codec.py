@@ -223,6 +223,15 @@ def _encode(value: object) -> object:
             # А.5: the located strip is written only when it exists — a study
             # without a strip keeps the exact wire shape older schemas accept.
             fields = fields - {"burned_ecg_strip"}
+        if isinstance(value, StrainReport) and not value.la_strain_by_view:
+            # А.6: LA strain is written only when a view measured it — a study
+            # without LA strain keeps the exact wire shape older schemas accept.
+            fields = fields - {
+                "la_strain_by_view",
+                "la_reservoir_pct",
+                "la_conduit_pct",
+                "la_booster_pct",
+            }
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire

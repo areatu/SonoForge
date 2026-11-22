@@ -35,6 +35,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     estimate_heart_rate_fft,
     lv_area_proxy_curve,
 )
+from echo_personal_tool.domain.services.la_strain import select_la_strain_contour
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.phase_source import (
     get_forced_phase_source,
@@ -446,6 +447,12 @@ class SpeckleTrackingWorker(QRunnable):
         # А.4 phase-gating force-source: "auto"|"ecg"|"image"|None (None and
         # "auto" keep the prefer-ECG routing of issue #642).
         phase_source_pref: str | None = None,
+        # А.6 LA strain (issue #644): either the LA roof arc directly (n×2
+        # pixel points + its frame) or the clip's contours, from which the
+        # view-matched LA contour is picked. Empty/None keep the LA stage off.
+        la_contour: np.ndarray | None = None,
+        la_contour_frame: int | None = None,
+        la_contours: tuple[Any, ...] = (),
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -467,6 +474,15 @@ class SpeckleTrackingWorker(QRunnable):
         # А.4 force-source ("auto"|"ecg"|"image"|None): the UI's phase-gating
         # choice; None/"auto" keeps the prefer-ECG routing.
         self._phase_source_pref = str(phase_source_pref) if phase_source_pref else None
+        # А.6 LA roof arc (n×2) + its frame; None keeps the LA stage off.
+        self._la_contour = None if la_contour is None else np.asarray(la_contour, dtype=np.float64)
+        self._la_contour_frame = None if la_contour_frame is None else int(la_contour_frame)
+        if self._la_contour is None and la_contours:
+            # No direct arc: pick the view-matched LA roof contour of this clip
+            # (the LA volume tool's contour). The viewer holds per-clip contours.
+            choice = select_la_strain_contour(la_contours, sop_instance_uid=None, view=self._view)
+            if choice is not None:
+                self._la_contour, self._la_contour_frame = choice
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -555,6 +571,7 @@ class SpeckleTrackingWorker(QRunnable):
             self._run_preprocess_and_track(state)
             self._run_trajectories(state)
             self._run_strain_curves(state)
+            self._run_la_strain(state)
             self._run_clinical_metrics(state)
             self._run_quality_gate(state)
             self._run_quality_assessment(state)
@@ -1144,6 +1161,53 @@ class SpeckleTrackingWorker(QRunnable):
         # global curve, AVC-independent), ESS (value at AVC), time to peak,
         # post-systolic index and the measured baseline drift.
 
+    def _run_la_strain(self, state: Any) -> None:
+        """Track the LA roof arc and compute reservoir/conduit/booster (plan А.6).
+
+        Optional evidence: without an LA contour for this clip (the study has
+        none, or the drawn contour sits on another clip) the result simply
+        carries no LA strain — the strain window and the report show no LA
+        section instead of a fabricated one.
+        """
+        state.la_strain_curve = None
+        state.la_strain_metrics = None
+        state.la_tracking_quality = None
+        arc = self._la_contour
+        if arc is None or arc.shape[0] < 3:
+            return
+        from echo_personal_tool.domain.services.la_strain import (
+            compute_la_phase_metrics,
+            compute_la_strain_curve,
+            track_la_arc,
+        )
+
+        try:
+            anchor = (
+                int(np.clip(self._la_contour_frame - state.phase_start, 0, state.preprocessed.shape[0] - 1))
+                if self._la_contour_frame is not None
+                else state.track_ed_index
+            )
+            tracked = track_la_arc(
+                state.preprocessed,
+                arc,
+                anchor,
+                state.config,
+                kernel_radius=int(state.kernel_radius),
+            )
+            if tracked is None:
+                return
+            positions, ncc_mean, _valid_fraction = tracked
+            curve = compute_la_strain_curve(positions, state.track_ed_index, self._pixel_spacing)
+            metrics = compute_la_phase_metrics(curve, ed_index=state.track_ed_index, end_index=int(curve.size - 1))
+        except (TypeError, ValueError) as exc:
+            # A malformed contour (degenerate arc) — LA strain is optional
+            # evidence; the LV analysis itself still completes.
+            log_boundary_failure(logger, "speckle.la_strain", exc, code="invalid", level=logging.DEBUG)
+            return
+        state.la_strain_curve = curve
+        state.la_strain_metrics = metrics
+        state.la_tracking_quality = float(ncc_mean)
+
     def _run_clinical_metrics(self, state: Any) -> None:
         """Derive AVC, strain metrics, and per-segment tracking quality."""
         state.avc_frame, state.avc_source, state.avc_confidence = detect_avc_frame(
@@ -1546,6 +1610,9 @@ class SpeckleTrackingWorker(QRunnable):
             tracked_positions_all=state.tracked_positions_all,
             view=self._view,
             burned_ecg_strip=None if getattr(state, "burned_strip", None) is None else state.burned_strip.rect,
+            la_strain_curve=getattr(state, "la_strain_curve", None),
+            la_strain=getattr(state, "la_strain_metrics", None),
+            la_tracking_quality=getattr(state, "la_tracking_quality", None),
             avc_index=int(state.avc_frame + state.phase_start),
             avc_source=state.avc_source,
             avc_confidence=float(state.avc_confidence),

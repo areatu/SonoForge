@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:  # runtime import would be circular (la_strain → speckle_tracking → models)
+    from echo_personal_tool.domain.services.la_strain import LaStrainMetrics
 
 
 @dataclass(frozen=True)
@@ -294,3 +298,11 @@ class StrainResult:
     #: the user overrode the mask off).  Travels with the analysis record so
     #: the study metadata remembers where the vendor drew the strip.
     burned_ecg_strip: tuple[int, int, int, int] | None = None
+    #: А.6 LA strain of this clip (plan #644): the tracked-roof-arc strain
+    #: curve (zeroed at ventricular ED) and the reservoir/conduit/booster
+    #: metrics, or ``None`` when the study has no LA contour for this clip or
+    #: the tracking could not produce a usable curve.  The tracking quality
+    #: (NCC mean) travels with the numbers.
+    la_strain_curve: np.ndarray | None = None
+    la_strain: LaStrainMetrics | None = None
+    la_tracking_quality: float | None = None

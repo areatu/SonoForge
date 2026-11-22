@@ -871,3 +871,25 @@ def test_burned_ecg_strip_round_trips_and_stays_off_the_wire_when_absent():
 
     plain = dumps(record(complete_data()))
     assert b"burned_ecg_strip" not in plain
+
+
+def test_la_strain_round_trips_and_stays_off_the_wire_when_absent():
+    """А.6 (#644): the LA strain phases persist inside the strain record."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_la = replace(
+        strain,
+        la_strain_by_view=(("A4C", 25.0, 15.0, 12.0), ("A2C", 27.0, None, 10.0)),
+        la_reservoir_pct=26.0,
+        la_conduit_pct=15.0,
+        la_booster_pct=11.0,
+    )
+    payload = dumps(record(replace(complete_data(), strain=with_la)))
+    loaded = loads(payload)["data"]
+    assert loaded.strain.la_strain_by_view == (("A4C", 25.0, 15.0, 12.0), ("A2C", 27.0, None, 10.0))
+    assert loaded.strain.la_reservoir_pct == 26.0
+    assert loaded.strain.la_conduit_pct == 15.0
+    assert loaded.strain.la_booster_pct == 11.0
+
+    plain = dumps(record(complete_data()))
+    assert b"la_strain_by_view" not in plain

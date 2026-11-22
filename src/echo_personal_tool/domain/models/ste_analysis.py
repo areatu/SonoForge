@@ -103,6 +103,13 @@ class StrainAnalysis:
     #: row_end, col_start, col_end)`` or ``None``; the study metadata remembers
     #: where the vendor drew the strip (it travels with the strain record).
     burned_ecg_strip: tuple[int, int, int, int] | None = None
+    #: А.6 LA strain of this view (plan #644): reservoir/conduit/booster
+    #: magnitudes in percent (``None`` where not measurable) and the NCC mean
+    #: of the LA arc tracking. All ``None`` when the clip has no LA contour.
+    la_reservoir_pct: float | None = None
+    la_conduit_pct: float | None = None
+    la_booster_pct: float | None = None
+    la_tracking_quality: float | None = None
     ed_index: int = 0
     es_index: int = 0
     avc_index: int = 0
@@ -261,6 +268,7 @@ class StrainAnalysis:
         """
         metrics = getattr(result, "segment_metrics", {}) or {}
         segment_ess = {int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()}
+        la_metrics = getattr(result, "la_strain", None)
         return cls(
             view=normalise_view(view or getattr(result, "view", "A4C")),
             source_contour=source if source is not None and source.recorded else None,
@@ -273,6 +281,10 @@ class StrainAnalysis:
             drift=_finite(getattr(result, "drift_measured", None)),
             is_post_systolic=bool(getattr(result, "is_post_systolic", False)),
             burned_ecg_strip=_strip_tuple(getattr(result, "burned_ecg_strip", None)),
+            la_reservoir_pct=None if la_metrics is None else _finite(la_metrics.reservoir_pct),
+            la_conduit_pct=None if la_metrics is None else _finite(la_metrics.conduit_pct),
+            la_booster_pct=None if la_metrics is None else _finite(la_metrics.booster_pct),
+            la_tracking_quality=_finite(getattr(result, "la_tracking_quality", None)),
             ed_index=int(result.ed_index),
             es_index=int(result.es_index),
             avc_index=int(getattr(result, "avc_index", result.es_index)),
@@ -450,6 +462,7 @@ def strain_report_from_study(
     avc_by_view: list[tuple[str, str]] = []
     lineage_by_view: list[tuple[str, ContourLineage]] = []
     mw_by_view: list[tuple[str, float, float, float, float]] = []
+    la_by_view: list[tuple[str, float, float | None, float | None]] = []
     for view in study.views_measured():
         analysis = study.analyses[view]
         value = _finite(analysis.gls)
@@ -460,6 +473,16 @@ def strain_report_from_study(
         avc_by_view.append((view, analysis.avc_source))
         if analysis.source_contour is not None:
             lineage_by_view.append((view, analysis.source_contour))
+        la_reservoir = _finite(analysis.la_reservoir_pct)
+        if la_reservoir is not None:
+            la_by_view.append(
+                (
+                    view,
+                    la_reservoir,
+                    _finite(analysis.la_conduit_pct),
+                    _finite(analysis.la_booster_pct),
+                )
+            )
         if blood_pressure is not None:
             work = myocardial_work_from_analysis(
                 analysis.global_curve,
@@ -473,6 +496,23 @@ def strain_report_from_study(
                 mw_by_view.append((view, cycle.gwi_mmhg_pct, cycle.gcw_mmhg_pct, cycle.gww_mmhg_pct, cycle.gwe_percent))
     if not gls_by_view:
         return None
+
+    la_summary: dict[str, float | None] = {"la_reservoir_pct": None, "la_conduit_pct": None, "la_booster_pct": None}
+    if la_by_view:
+        # Mean over the views that produced each phase — conduit/booster may
+        # be missing on one view while reservoir exists on both.
+
+        def _column(column: int) -> list[float]:
+            out: list[float] = []
+            for row in la_by_view:
+                item = row[column]
+                if item is not None:
+                    out.append(float(item))
+            return out
+
+        for key, column in (("la_reservoir_pct", 1), ("la_conduit_pct", 2), ("la_booster_pct", 3)):
+            values = _column(column)
+            la_summary[key] = float(np.mean(values)) if values else None
 
     first = study.analyses[gls_by_view[0][0]]
     mw_summary: dict[str, float | None] = {
@@ -508,6 +548,10 @@ def strain_report_from_study(
             ),
             None,
         ),
+        la_strain_by_view=tuple(la_by_view),
+        la_reservoir_pct=la_summary["la_reservoir_pct"],
+        la_conduit_pct=la_summary["la_conduit_pct"],
+        la_booster_pct=la_summary["la_booster_pct"],
         contour_source=contour_source,
         lineage_by_view=tuple(lineage_by_view),
     )
