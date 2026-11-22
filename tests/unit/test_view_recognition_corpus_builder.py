@@ -114,6 +114,34 @@ def test_annotations_override_protocol_name(tmp_path: Path) -> None:
     assert diagnostics == []
 
 
+def test_annotations_record_level_view_fallback(tmp_path: Path) -> None:
+    root = tmp_path / "dicoms"
+    root.mkdir()
+    target = _make_dicom(root / "target.dcm", "WEIRD")
+    ds = pydicom.dcmread(target, stop_before_pixels=True, force=True)
+    annotations = tmp_path / "annotations.json"
+    annotations.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "sop_instance_uid": str(ds.SOPInstanceUID),
+                        "instance_path": str(target),
+                        "view": "a4c",
+                        "frames": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    samples, diagnostics = collect_samples(root, annotations_path=annotations)
+    assert len(samples) == 1
+    # Clip-level view is canonicalised when the record has no frame labels.
+    assert samples[0].view == "A4C"
+    assert diagnostics == []
+
+
 def test_builder_main_writes_valid_manifest(dicom_dir: Path, tmp_path: Path, capsys) -> None:
     out = tmp_path / "manifest.json"
     exit_code = build_main(["--dicom-dir", str(dicom_dir), "--output", str(out), "--val-ratio", "0.25", "--seed", "1"])

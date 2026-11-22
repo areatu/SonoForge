@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -128,6 +129,17 @@ def test_dicom_clip_provider_stacks_frames() -> None:
     clip = provider("/x.dcm")
     assert clip.shape == (3, 4, 4)
     assert clip[2, 0, 0] == 2.0
+
+
+def test_dicom_clip_provider_samples_across_whole_clip() -> None:
+    class MetadataReader(FakeDicomReader):
+        def read_metadata(self, path: Path) -> SimpleNamespace:
+            return SimpleNamespace(number_of_frames=9)
+
+    provider = build_dicom_clip_provider(MetadataReader(), n_frames=3)
+    clip = provider("/x.dcm")
+    assert clip.shape == (3, 4, 4)
+    assert [float(frame[0, 0]) for frame in clip] == [0.0, 4.0, 8.0]
 
 
 def test_load_manifest_from_file(tmp_path: Path) -> None:

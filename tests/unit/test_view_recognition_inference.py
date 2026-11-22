@@ -88,16 +88,19 @@ def test_clip_to_batch_then_channels_round_trip() -> None:
 # ── aggregate_predictions ─────────────────────────────────────────────
 
 
-def test_aggregate_predictions_uses_mean_softmax() -> None:
+def test_aggregate_predictions_uses_median_softmax() -> None:
+    # The mean would pick A2C (0.6 vs 0.4); the median ignores the outlier
+    # frame and keeps A4C (0.6 vs 0.4), which is the robust clip-level view.
     probs = np.array(
         [
-            [0.8, 0.2],
             [0.6, 0.4],
+            [0.6, 0.4],
+            [0.0, 1.0],
         ]
     )
     result = aggregate_predictions(probs, ("A4C", "A2C"))
     assert result.view == "A4C"
-    assert result.confidence == pytest.approx(0.7)
+    assert result.confidence == pytest.approx(0.6)
 
 
 def test_aggregate_predictions_unanimous_frames() -> None:
