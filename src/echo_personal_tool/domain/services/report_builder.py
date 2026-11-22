@@ -103,7 +103,7 @@ from echo_personal_tool.domain.services.report_provenance import (
     simpson_origin,
 )
 from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
-from echo_personal_tool.domain.translation import tr, tr_plural
+from echo_personal_tool.domain.translation import get_language, tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
@@ -703,6 +703,40 @@ def _append_left_ventricle_report_values(
         values.append(item)
     if snapshot.diastology_grade:
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
+    _append_diastology_report_values(values, snapshot, group=GROUP_LEFT_VENTRICLE)
+
+
+def _append_diastology_report_values(
+    values: list[ReportValue],
+    snapshot: MeasurementSnapshot,
+    *,
+    group: str,
+) -> None:
+    """Append the turnkey diastology section (plan А.10): criteria + verdict.
+
+    The raw fields (E, A, e′, TR, …) already have their own rows from the
+    Doppler appendix; this section adds the assessment itself — each ASE
+    criterion with its value, threshold and verdict, then the one-line
+    conclusion with the criteria arithmetic (or the missing-inputs list —
+    the honest indeterminate). Nothing here when the study has no Doppler
+    data at all.
+    """
+    assessment = snapshot.diastology
+    if assessment is None:
+        return
+    language = get_language()
+    for row in assessment.criteria:
+        verdict = assessment.criterion_verdict(row, language=language)
+        values.append(
+            _text_value(
+                f"{assessment.criterion_label(row.id, language=language)} {row.limit}",
+                f"{row.value:.1f} — {verdict}",
+                group=group,
+            )
+        )
+    note = assessment.verdict_note(language=language)
+    if note:
+        values.append(_text_value(tr("domain.report.diastology_note"), note, group=group))
 
 
 def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from echo_personal_tool.domain.models.diastology import DiastologyAssessment
 from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.report_repeat import ReportRepeat
@@ -336,6 +337,11 @@ class MeasurementSnapshot:
     rwt: float | None = None
     rv_fac_percent: float | None = None
     diastology_grade: str | None = None
+    #: Turnkey diastology assessment (plan А.10): auto-filled fields, the ASE
+    #: criteria with verdicts, the grade and the honest missing-inputs list.
+    #: ``None`` until the study has Doppler data; not persisted — rebuilt on
+    #: every snapshot.
+    diastology: DiastologyAssessment | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     #: Whether a physical 2D scale was available when the snapshot was built.
     #: The default is deliberately ``False``: a snapshot constructed without

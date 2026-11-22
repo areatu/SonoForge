@@ -264,6 +264,12 @@ class _CalculatorCard:
         self.missing.setObjectName(f"calcMissing_{spec.id}")
         self.missing.setWordWrap(True)
         outer.addWidget(self.missing)
+        self.criteria = QLabel()
+        self.criteria.setObjectName(f"calcCriteria_{spec.id}")
+        self.criteria.setWordWrap(True)
+        self.criteria.setTextFormat(Qt.TextFormat.RichText)
+        self.criteria.setVisible(False)
+        outer.addWidget(self.criteria)
         self.warnings = QLabel()
         self.warnings.setObjectName(f"calcWarnings_{spec.id}")
         self.warnings.setWordWrap(True)
@@ -359,10 +365,53 @@ class _CalculatorCard:
                 missing.extend(i for i in item.missing if i not in missing)
         self.missing.setText(missing_text(tuple(missing)) if missing else "")
         self.missing.setVisible(bool(missing))
+        if self.spec.id == "diastolic_grade":
+            self._update_diastology_criteria(inputs or {})
         warnings = [warning_text(w) for w in result.warnings] if result is not None else []
         warnings = [f"⚠ {text}" for text in warnings if text]
         self.warnings.setText("\n".join(warnings))
         self.warnings.setVisible(bool(warnings))
+
+    def _update_diastology_criteria(self, inputs: dict[str, InputValue]) -> None:
+        """The ASE criteria rows of the diastolic-grade card (plan А.10).
+
+        Auto-filled inputs (SOURCE_MEASURED from the Doppler results) and
+        manual ones render identically here: the row shows the value, the
+        threshold and the verdict word, so the sonographer sees *which*
+        criteria the grade leans on and which are still missing (the missing
+        inputs stay in the line above).
+        """
+        from echo_personal_tool.domain.calculations.diastology_grade import diastolic_criteria
+        from echo_personal_tool.domain.models.diastology import criterion_label_text, criterion_verdict_word
+
+        values = {input_id: item.value for input_id, item in inputs.items() if item.value is not None}
+        tr_vmax = values.get("tr_vmax")
+        rows = diastolic_criteria(
+            e_over_e_prime=values.get("e_over_e_prime"),
+            e_prime_sept_cm_s=values.get("e_prime_sept"),
+            e_prime_lat_cm_s=values.get("e_prime_lat"),
+            lav_index_ml_m2=values.get("lav_index"),
+            # The input is typed in m/s, the criterion compares cm/s.
+            tr_vmax_cm_s=None if tr_vmax is None else tr_vmax * 100.0,
+        )
+        language = get_language()
+        tokens = get_theme_tokens()
+        lines: list[str] = []
+        for row in rows:
+            verdict = criterion_verdict_word(row, language=language)
+            token = "state.err" if row.met else "state.ok"
+            color = tokens.get(token, "")
+            label = html.escape(criterion_label_text(row.id, language=language))
+            limit = html.escape(row.limit)
+            line = f"{label} {limit}: {row.value:.1f}"
+            if color:
+                line += f" <span style='color:{color};'>— {html.escape(verdict)}</span>"
+            else:
+                line += f" — {html.escape(verdict)}"
+            lines.append(line)
+        title = f"<b>{html.escape(tr('calc.dias.criteria_title'))}</b><br>"
+        self.criteria.setText(title + "<br>".join(lines) if lines else "")
+        self.criteria.setVisible(bool(lines))
 
     def _has_own_results(self, inputs: dict[str, InputValue], result: object | None) -> bool:
         """Whether the card has anything of its own to say yet.
