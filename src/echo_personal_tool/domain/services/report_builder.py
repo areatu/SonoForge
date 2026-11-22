@@ -103,7 +103,7 @@ from echo_personal_tool.domain.services.report_provenance import (
     simpson_origin,
 )
 from echo_personal_tool.domain.services.report_selection import linear_parameter, named_parameter
-from echo_personal_tool.domain.translation import tr, tr_plural
+from echo_personal_tool.domain.translation import get_language, tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
@@ -530,6 +530,11 @@ def _strain_report_notes(strain: StrainReport) -> tuple[str, ...]:
         notes.append(tr("domain.report.strain_avc_source", source=avc_text).strip())
     if strain.contour_source != "manual":
         notes.append(tr("domain.report.strain_contour_draft").strip())
+    if strain.blood_pressure_mmhg is not None and strain.mw_by_view:
+        sbp, dbp = strain.blood_pressure_mmhg
+        notes.append(
+            tr("domain.report.mw_method", sbp=f"{sbp:g}", dbp=f"{dbp:g}", n=str(len(strain.mw_by_view))).strip()
+        )
     if strain.segments_missing:
         notes.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing).strip())
     return tuple(notes)
@@ -698,6 +703,40 @@ def _append_left_ventricle_report_values(
         values.append(item)
     if snapshot.diastology_grade:
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
+    _append_diastology_report_values(values, snapshot, group=GROUP_LEFT_VENTRICLE)
+
+
+def _append_diastology_report_values(
+    values: list[ReportValue],
+    snapshot: MeasurementSnapshot,
+    *,
+    group: str,
+) -> None:
+    """Append the turnkey diastology section (plan А.10): criteria + verdict.
+
+    The raw fields (E, A, e′, TR, …) already have their own rows from the
+    Doppler appendix; this section adds the assessment itself — each ASE
+    criterion with its value, threshold and verdict, then the one-line
+    conclusion with the criteria arithmetic (or the missing-inputs list —
+    the honest indeterminate). Nothing here when the study has no Doppler
+    data at all.
+    """
+    assessment = snapshot.diastology
+    if assessment is None:
+        return
+    language = get_language()
+    for row in assessment.criteria:
+        verdict = assessment.criterion_verdict(row, language=language)
+        values.append(
+            _text_value(
+                f"{assessment.criterion_label(row.id, language=language)} {row.limit}",
+                f"{row.value:.1f} — {verdict}",
+                group=group,
+            )
+        )
+    note = assessment.verdict_note(language=language)
+    if note:
+        values.append(_text_value(tr("domain.report.diastology_note"), note, group=group))
 
 
 def _ivc_pair_mm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, float | None]:
@@ -1186,6 +1225,34 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
             group=GROUP_LEFT_VENTRICLE,
             norm_label="GLS",
             origin=strain_value_origin(strain, "lv.gls"),
+        )
+        if item:
+            values.append(item)
+        _append_myocardial_work_values(values, strain, sex=sex)
+
+
+def _append_myocardial_work_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:
+    """Append the Myocardial Work rows (plan А.9) when a cuff pressure exists.
+
+    No reference-norm label: the MW numbers carry no ASE reference table here,
+    and a norm-less row is honest — the method note states the inputs.
+    """
+    if not strain.mw_by_view:
+        return
+    rows = (
+        ("domain.report.mw_gwi", "lv.gwi", strain.gwi_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gcw", "lv.gcw", strain.gcw_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gww", "lv.gww", strain.gww_mmhg_pct, "mmHg%"),
+        ("domain.report.mw_gwe", "lv.gwe", strain.gwe_percent, "%"),
+    )
+    for label_key, measurement_id, value, unit in rows:
+        item = _value(
+            tr(label_key),
+            measurement_id,
+            value,
+            unit,
+            sex=sex,
+            group=GROUP_LEFT_VENTRICLE,
         )
         if item:
             values.append(item)

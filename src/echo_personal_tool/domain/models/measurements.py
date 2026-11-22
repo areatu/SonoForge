@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from echo_personal_tool.domain.models.diastology import DiastologyAssessment
 from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, DopplerPeakMarker, DopplerTrace
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.report_repeat import ReportRepeat
@@ -281,6 +282,21 @@ class StrainReport:
     avc_source_by_view: tuple[tuple[str, str], ...] = ()
     #: Segments the analysed views could not measure (never fabricated).
     segments_missing: int = 0
+    #: Myocardial Work (plan А.9): ``(view, GWI, GCW, GWW, GWE)`` per analysed
+    #: view with a usable curve, plus the mean over the views that produced a
+    #: loop — all ``None``/empty when no cuff pressure was supplied, so the
+    #: report simply has no MW section instead of a fabricated one.
+    mw_by_view: tuple[tuple[str, float, float, float, float], ...] = ()
+    gwi_mmhg_pct: float | None = None
+    gcw_mmhg_pct: float | None = None
+    gww_mmhg_pct: float | None = None
+    gwe_percent: float | None = None
+    #: The cuff pressure the work was computed from (``(SBP, DBP)`` mmHg).
+    blood_pressure_mmhg: tuple[float, float] | None = None
+    #: А.5: the vendor ECG strip located in the pixels — the study metadata
+    #: remembers where it is so the mask survives a reload (``None`` when the
+    #: clip carries no strip or the user overrode the mask off).
+    burned_ecg_strip: tuple[int, int, int, int] | None = None
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
     #: ``(view, contour lineage)`` of the endocardial contour each view was
@@ -321,6 +337,11 @@ class MeasurementSnapshot:
     rwt: float | None = None
     rv_fac_percent: float | None = None
     diastology_grade: str | None = None
+    #: Turnkey diastology assessment (plan А.10): auto-filled fields, the ASE
+    #: criteria with verdicts, the grade and the honest missing-inputs list.
+    #: ``None`` until the study has Doppler data; not persisted — rebuilt on
+    #: every snapshot.
+    diastology: DiastologyAssessment | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     #: Whether a physical 2D scale was available when the snapshot was built.
     #: The default is deliberately ``False``: a snapshot constructed without

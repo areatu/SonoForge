@@ -90,6 +90,10 @@ class PhaseRequest:
     frames: np.ndarray | None = None
     lv_masks: np.ndarray | None = None
     forced: str | None = None
+    #: А.5 burned-ECG strip: full-frame ``(h, w)`` boolean of vendor pixels
+    #: carrying no tissue evidence; subtracted from every image-domain
+    #: candidate before the field scores them. ``None`` = nothing excluded.
+    exclude_mask: np.ndarray | None = None
     confidence_threshold: float = DEFAULT_ECG_CONFIDENCE_THRESHOLD
     min_image_confidence: float = DEFAULT_MIN_CONFIDENCE
 
@@ -219,6 +223,7 @@ class CinePhaseSource:
             area_curve=request.area_curve,
             lv_masks=request.lv_masks,
             min_confidence=float(request.min_image_confidence),
+            exclude_mask=request.exclude_mask,
         )
         if not field.cycles:
             return None
@@ -324,6 +329,7 @@ def resolve_phase_source(
     frames: np.ndarray | None = None,
     lv_masks: np.ndarray | None = None,
     forced: str | None = None,
+    exclude_mask: np.ndarray | None = None,
     confidence_threshold: float = DEFAULT_ECG_CONFIDENCE_THRESHOLD,
     min_image_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> PhaseDecision:
@@ -341,6 +347,7 @@ def resolve_phase_source(
         frames=frames,
         lv_masks=lv_masks,
         forced=forced,
+        exclude_mask=exclude_mask,
         confidence_threshold=confidence_threshold,
         min_image_confidence=min_image_confidence,
     )

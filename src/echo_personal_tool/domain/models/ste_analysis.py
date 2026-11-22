@@ -27,6 +27,7 @@ import numpy as np
 
 from echo_personal_tool.domain.models.measurements import ContourLineage, StrainReport
 from echo_personal_tool.domain.models.speckle import StrainResult
+from echo_personal_tool.domain.services.myocardial_work import myocardial_work_from_analysis
 from echo_personal_tool.domain.services.segment_map import (
     normalise_view,
     segment_ids_in_bullseye_order,
@@ -98,6 +99,10 @@ class StrainAnalysis:
     post_systolic_index: float | None = None
     drift: float | None = None
     is_post_systolic: bool = False
+    #: А.5 burned-ECG strip located in the clip's pixels — ``(row_start,
+    #: row_end, col_start, col_end)`` or ``None``; the study metadata remembers
+    #: where the vendor drew the strip (it travels with the strain record).
+    burned_ecg_strip: tuple[int, int, int, int] | None = None
     ed_index: int = 0
     es_index: int = 0
     avc_index: int = 0
@@ -267,6 +272,7 @@ class StrainAnalysis:
             post_systolic_index=_finite(getattr(result, "post_systolic_index", None)),
             drift=_finite(getattr(result, "drift_measured", None)),
             is_post_systolic=bool(getattr(result, "is_post_systolic", False)),
+            burned_ecg_strip=_strip_tuple(getattr(result, "burned_ecg_strip", None)),
             ed_index=int(result.ed_index),
             es_index=int(result.es_index),
             avc_index=int(getattr(result, "avc_index", result.es_index)),
@@ -420,6 +426,7 @@ def strain_report_from_study(
     study: StrainStudy,
     *,
     contour_source: str = "manual",
+    blood_pressure: tuple[float, float] | None = None,
 ) -> StrainReport | None:
     """Project a :class:`StrainStudy` onto the protocol record (plan §5.3 п.6).
 
@@ -429,6 +436,12 @@ def strain_report_from_study(
     from :meth:`StrainStudy.gls_average` so the report and the UI can never
     disagree about which views entered the average.
 
+    ``blood_pressure`` — the cuff ``(SBP, DBP)`` mmHg from the report header:
+    when supplied, every view with a usable curve gets its Myocardial Work
+    loop (plan А.9, :mod:`myocardial_work`) and the protocol carries the
+    per-view GWI/GCW/GWW/GWE with the mean over the views. Without it the MW
+    fields stay empty — the loop is never built from an invented pressure.
+
     Returns ``None`` when no view has a usable number — a study without strain
     simply has no strain section in the report.
     """
@@ -436,6 +449,7 @@ def strain_report_from_study(
     qc_by_view: list[tuple[str, str]] = []
     avc_by_view: list[tuple[str, str]] = []
     lineage_by_view: list[tuple[str, ContourLineage]] = []
+    mw_by_view: list[tuple[str, float, float, float, float]] = []
     for view in study.views_measured():
         analysis = study.analyses[view]
         value = _finite(analysis.gls)
@@ -446,10 +460,30 @@ def strain_report_from_study(
         avc_by_view.append((view, analysis.avc_source))
         if analysis.source_contour is not None:
             lineage_by_view.append((view, analysis.source_contour))
+        if blood_pressure is not None:
+            work = myocardial_work_from_analysis(
+                analysis.global_curve,
+                ed_index=analysis.ed_index,
+                avc_index=analysis.avc_index,
+                sbp_mmhg=float(blood_pressure[0]),
+                dbp_mmhg=float(blood_pressure[1]),
+            )
+            cycle = work.cycles[0] if work.cycles else None
+            if cycle is not None:
+                mw_by_view.append((view, cycle.gwi_mmhg_pct, cycle.gcw_mmhg_pct, cycle.gww_mmhg_pct, cycle.gwe_percent))
     if not gls_by_view:
         return None
 
     first = study.analyses[gls_by_view[0][0]]
+    mw_summary: dict[str, float | None] = {
+        "gwi_mmhg_pct": None,
+        "gcw_mmhg_pct": None,
+        "gww_mmhg_pct": None,
+        "gwe_percent": None,
+    }
+    if mw_by_view:
+        for index, key in enumerate(("gwi_mmhg_pct", "gcw_mmhg_pct", "gww_mmhg_pct", "gwe_percent"), start=1):
+            mw_summary[key] = float(np.mean([row[index] for row in mw_by_view]))
     return StrainReport(
         gls_by_view=tuple(gls_by_view),
         qc_by_view=tuple(qc_by_view),
@@ -458,9 +492,32 @@ def strain_report_from_study(
         segmentation=first.segmentation,
         avc_source_by_view=tuple(avc_by_view),
         segments_missing=len(study.missing_segments()),
+        mw_by_view=tuple(mw_by_view),
+        gwi_mmhg_pct=mw_summary["gwi_mmhg_pct"],
+        gcw_mmhg_pct=mw_summary["gcw_mmhg_pct"],
+        gww_mmhg_pct=mw_summary["gww_mmhg_pct"],
+        gwe_percent=mw_summary["gwe_percent"],
+        blood_pressure_mmhg=(float(blood_pressure[0]), float(blood_pressure[1]))
+        if blood_pressure is not None
+        else None,
+        burned_ecg_strip=next(
+            (
+                analysis.burned_ecg_strip
+                for analysis in study.analyses.values()
+                if analysis.burned_ecg_strip is not None
+            ),
+            None,
+        ),
         contour_source=contour_source,
         lineage_by_view=tuple(lineage_by_view),
     )
+
+
+def _strip_tuple(value: object) -> tuple[int, int, int, int] | None:
+    """A 4-int strip rect from the result record, ``None`` when absent/malformed."""
+    if not isinstance(value, tuple) or len(value) != 4 or not all(isinstance(v, (int, float)) for v in value):
+        return None
+    return (int(value[0]), int(value[1]), int(value[2]), int(value[3]))
 
 
 def study_from_results(results: Mapping[str, StrainResult]) -> StrainStudy:

@@ -55,8 +55,7 @@ from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements, resolve_bsa_basis
-from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber, confirmed_biplane_index_ml_m2
-from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
+from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
 from echo_personal_tool.domain.calculations.la_area_length import (
     from_measurements as la_from_measurements,
@@ -103,6 +102,7 @@ from echo_personal_tool.domain.services.auto_depth_calibration import (
 )
 from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_record_status
 from echo_personal_tool.domain.services.contour_geometry import apex_point
+from echo_personal_tool.domain.services.diastology_workflow import diastology_for_snapshot
 from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
@@ -2076,17 +2076,11 @@ class AppController(QObject):
         simpson_record_status = self._simpson_record_status(session, simpson_current)
         doppler_current = self._current_doppler_basis(session)
         doppler_record_status = self._doppler_record_status(session, doppler_current)
-        diastology_grade = None
-        if doppler is not None and indexed is not None:
-            lav_i = confirmed_biplane_index_ml_m2(indexed.lav_bi_index_ml_m2, la_simpson) or indexed.lav_4c_index_ml_m2
-            diastology_grade = grade_diastolic_function(
-                e_over_e_prime=doppler.e_over_e_prime,
-                lav_index_ml_m2=lav_i,
-                tr_vmax_cm_s=doppler.tr_vmax_cm_s,
-                e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
-                e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
-                language=get_language(),
-            )
+        # Turnkey diastology (plan А.10): fields + criteria + honest gaps even
+        # when the grade itself is insufficient (no LAVi, few criteria).
+        diastology, diastology_grade = diastology_for_snapshot(
+            doppler, indexed=indexed, la_simpson=la_simpson, language=get_language()
+        )
         calculations = self._compute_calculations(doppler, session, state, indexed=indexed)
         derived_record_status = self._derived_record_status(session, calculations)
         return MeasurementSnapshot(
@@ -2103,6 +2097,7 @@ class AppController(QObject):
             rwt=rwt,
             rv_fac_percent=rv_fac_percent,
             diastology_grade=diastology_grade,
+            diastology=diastology,
             linear_measurements=linear_measurements,
             spacing_calibrated=spacing_calibrated,
             unreviewed_contours=sum(1 for c in contours if c.review_pending),

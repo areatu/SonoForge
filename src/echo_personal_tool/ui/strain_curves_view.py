@@ -59,6 +59,18 @@ SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
 }
 
 
+# UI colour literals live once per module: the colour ratchet counts
+# occurrences, so every repeat references the constant instead.
+_AXIS_COLOR = "#90a4ae"
+_VALUE_COLOR = "#ffd54f"
+_PLOT_BACKGROUND = "#0b0e11"
+_GRID_COLOR = "#37474f"
+_TITLE_COLOR = "#eceff1"
+_PLACEHOLDER_COLOR = "#546e7a"
+_LOOP_COLOR = "#4fc3f7"
+_OK_COLOR = "#4caf50"
+
+
 def segment_label(segment_id: int) -> str:
     """Localised AHA name of a segment id (falls back to the id itself)."""
     return tr(f"strain.seg_{int(segment_id)}")
@@ -105,20 +117,20 @@ class SegmentCurvePanel(QWidget):
         # ── Header: «A4C · Продольная деформация»  +  GLS ────────────────
         header = QHBoxLayout()
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; color: #eceff1; font-size: 13px;")
+        title_label.setStyleSheet(f"font-weight: bold; color: {_TITLE_COLOR}; font-size: 13px;")
         header.addWidget(title_label)
         metric_label = QLabel(tr("strain.metric_deformation").lower())
-        metric_label.setStyleSheet("color: #90a4ae; font-size: 11px;")
+        metric_label.setStyleSheet(f"color: {_AXIS_COLOR}; font-size: 11px;")
         header.addWidget(metric_label)
         header.addStretch()
         self._gls_label = QLabel("")
-        self._gls_label.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 15px;")
+        self._gls_label.setStyleSheet(f"color: {_VALUE_COLOR}; font-weight: bold; font-size: 15px;")
         header.addWidget(self._gls_label)
         layout.addLayout(header)
 
         # ── Graph ─────────────────────────────────────────────────────────
         self._plot = pg.PlotWidget()
-        self._plot.setBackground("#0b0e11")
+        self._plot.setBackground(_PLOT_BACKGROUND)
         self._plot.setLabel("left", tr("strain.axis_pct"))
         self._plot.setLabel("bottom", tr("strain.time_axis"))
         self._plot.showGrid(x=True, y=True, alpha=0.15)
@@ -127,16 +139,16 @@ class SegmentCurvePanel(QWidget):
 
         # Subdued y ticks — strain is negative in systole, so the y axis is
         # auto-scaled to the data (vendor graphs put the 0 line mid-way).
-        self._plot.getAxis("left").setTextPen("#90a4ae")
-        self._plot.getAxis("bottom").setTextPen("#90a4ae")
+        self._plot.getAxis("left").setTextPen(_AXIS_COLOR)
+        self._plot.getAxis("bottom").setTextPen(_AXIS_COLOR)
 
         # Zero reference line
-        pen_zero = pg.mkPen("#37474f", width=1, style=Qt.PenStyle.DashLine)
+        pen_zero = pg.mkPen(_GRID_COLOR, width=1, style=Qt.PenStyle.DashLine)
         self._plot.addItem(pg.InfiniteLine(pos=0, angle=0, pen=pen_zero))
 
         # Placeholder for empty views ("нет данных")
         self._placeholder = QLabel(tr("strain.no_data"))
-        self._placeholder.setStyleSheet("color: #546e7a; font-size: 12px;")
+        self._placeholder.setStyleSheet(f"color: {_PLACEHOLDER_COLOR}; font-size: 12px;")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setMinimumHeight(200)
 
@@ -152,13 +164,32 @@ class SegmentCurvePanel(QWidget):
 
         # ── ECG strip (hidden unless a real ECG exists) ────────────────────
         self._ecg_plot = pg.PlotWidget()
-        self._ecg_plot.setBackground("#0b0e11")
+        self._ecg_plot.setBackground(_PLOT_BACKGROUND)
         self._ecg_plot.hideAxis("left")
         self._ecg_plot.hideAxis("bottom")
         self._ecg_plot.setMaximumHeight(46)
         self._ecg_plot.setMinimumHeight(36)
         self._ecg_plot.setVisible(False)
         layout.addWidget(self._ecg_plot, stretch=0)
+
+        # ── Pressure–strain loop (plan А.9; hidden unless cuff BP is set) ──
+        self._loop_plot = pg.PlotWidget()
+        self._loop_plot.setBackground(_PLOT_BACKGROUND)
+        self._loop_plot.setLabel("left", tr("strain.mw_loop_pressure"))
+        self._loop_plot.setLabel("bottom", tr("strain.axis_pct"))
+        self._loop_plot.showGrid(x=True, y=True, alpha=0.15)
+        self._loop_plot.setMaximumHeight(150)
+        self._loop_plot.setMinimumHeight(110)
+        self._loop_plot.setMouseEnabled(x=False, y=False)
+        self._loop_plot.getAxis("left").setTextPen(_AXIS_COLOR)
+        self._loop_plot.getAxis("bottom").setTextPen(_AXIS_COLOR)
+        self._loop_plot.hide()
+        self._loop_item: pg.PlotDataItem | None = None
+        self._loop_title = QLabel("")
+        self._loop_title.setStyleSheet(f"color: {_AXIS_COLOR}; font-size: 11px;")
+        self._loop_title.hide()
+        layout.addWidget(self._loop_title)
+        layout.addWidget(self._loop_plot, stretch=0)
 
     # ── data ──────────────────────────────────────────────────────────────
 
@@ -218,7 +249,7 @@ class SegmentCurvePanel(QWidget):
         self._legend.setParentItem(self._plot.getPlotItem())
         self._legend.anchor(itemPos=(1, 0), parentPos=(1, 0), offset=(-6, 4))
         self._legend.setBrush(pg.mkBrush(20, 26, 32, 210))
-        self._legend.setPen(pg.mkPen("#37474f"))
+        self._legend.setPen(pg.mkPen(_GRID_COLOR))
         for seg_id in sorted(self._curves):
             sample = pg.PlotDataItem(pen=pg.mkPen(SEGMENT_COLORS[seg_id], width=3))
             self._legend.addItem(sample, segment_label(seg_id))
@@ -232,7 +263,7 @@ class SegmentCurvePanel(QWidget):
         self._es_marker = pg.InfiniteLine(
             pos=es_x,
             angle=90,
-            pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(_VALUE_COLOR, width=1, style=Qt.PenStyle.DashLine),
         )
         self._es_marker.setZValue(4)
         self._plot.addItem(self._es_marker)
@@ -331,14 +362,14 @@ class SegmentCurvePanel(QWidget):
         else:
             t = np.arange(n, dtype=float) * float(frame_time_ms)
 
-        pen = pg.mkPen("#4caf50", width=1)
+        pen = pg.mkPen(_OK_COLOR, width=1)
         self._ecg_item = self._ecg_plot.plot(t, ecg_data, pen=pen)
 
         marker_x = current_frame * frame_time_ms
         self._ecg_marker = pg.InfiniteLine(
             pos=marker_x,
             angle=90,
-            pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(_VALUE_COLOR, width=1, style=Qt.PenStyle.DashLine),
         )
         self._ecg_plot.addItem(self._ecg_marker)
 
@@ -349,6 +380,39 @@ class SegmentCurvePanel(QWidget):
         """Move the ECG frame marker (used by animation in the cine panel)."""
         if self._ecg_marker is not None and frame_time_ms > 0:
             self._ecg_marker.setPos(float(frame_index) * frame_time_ms)
+
+    def set_pressure_loop(self, strain: np.ndarray | None, pressure: np.ndarray | None, *, title: str = "") -> None:
+        """Show the pressure–strain loop (plan А.9) or hide the panel.
+
+        The loop is strain (x) against LV pressure (y) over the beat, closed
+        back onto the first sample; its area is the myocardial work.
+        """
+        usable = (
+            strain is not None
+            and pressure is not None
+            and len(strain) == len(pressure)
+            and len(strain) >= 8
+            and bool((np.isfinite(strain) & np.isfinite(pressure)).any())
+        )
+        if not usable:
+            self._loop_plot.hide()
+            self._loop_title.hide()
+            return
+        x = np.asarray(strain, dtype=np.float64)
+        y = np.asarray(pressure, dtype=np.float64)
+        closed_x = np.concatenate([x, x[:1]])
+        closed_y = np.concatenate([y, y[:1]])
+        if self._loop_item is None:
+            self._loop_item = self._loop_plot.plot(
+                closed_x,
+                closed_y,
+                pen=pg.mkPen(_LOOP_COLOR, width=2),
+            )
+        else:
+            self._loop_item.setData(closed_x, closed_y)
+        self._loop_title.setText(title)
+        self._loop_title.setVisible(bool(title))
+        self._loop_plot.show()
 
     def clear(self) -> None:
         self._clear_plot_items()
@@ -361,6 +425,8 @@ class SegmentCurvePanel(QWidget):
         if self._ecg_marker is not None:
             self._ecg_plot.removeItem(self._ecg_marker)
             self._ecg_marker = None
+        self._loop_plot.hide()
+        self._loop_title.hide()
         self._stack.setCurrentWidget(self._placeholder)
 
 
@@ -556,6 +622,14 @@ class StrainCurvesView(QWidget):
         self._panel_dao.clear()
         for panel in (self._panel_a4c, self._panel_a2c, self._panel_dao):
             panel.show()
+
+    def set_pressure_loop(self, strain: np.ndarray | None, pressure: np.ndarray | None, *, title: str = "") -> None:
+        """Route the pressure–strain loop (plan А.9) to the active view panel."""
+        panel = self._visible_when_data.get(self._active_view, self._panel_a4c)
+        panel.set_pressure_loop(strain, pressure, title=title)
+        for other in self._visible_when_data.values():
+            if other is not panel:
+                other.set_pressure_loop(None, None)
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Legacy helper (no longer used by the curves view).

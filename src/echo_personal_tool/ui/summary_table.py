@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.measurement_catalog import format_measurement
 from echo_personal_tool.ui.ui_metrics import font_pixel_size, text_width
 
+# UI colour literals live once per module: the colour ratchet counts
+# occurrences, so every repeat references the constant instead.
+_TITLE_COLOR = "#e0e0e0"
+_DIM_COLOR = "#bdbdbd"
+_VALUE_COLOR = "#ffd54f"
+
 
 class SummaryTable(QWidget):
-    """Summary metrics table — Clinical-style layout with 9 rows."""
+    """Summary metrics table — Clinical-style layout with per-view QC marks."""
+
+    #: The cuff BP the user typed in the MW block — ``(SBP, DBP)`` raw texts;
+    #: the window parses them and recomputes Myocardial Work (plan А.9).
+    bp_edited = Signal(str, str)
 
     #: Per-view rows and the view each one reports. The vendor "3 Point Contour"
     #: screen marks every analysed view with its status, so the reader knows at a
@@ -28,6 +38,8 @@ class SummaryTable(QWidget):
         "gls_a2c": "lv.gls_a2c",
         "gls_dao": "lv.gls_a3c",
         "gls_av": "lv.gls",
+        "gwi": "lv.gwi",
+        "gwe": "lv.gwe",
         "ef": "lv.ef_bp",
         "edv": "lv.edv_bp",
         "esv": "lv.esv_bp",
@@ -46,7 +58,7 @@ class SummaryTable(QWidget):
         layout.setSpacing(4)
 
         title = QLabel(tr("strain.summary_table"))
-        title.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 12px;")
+        title.setStyleSheet(f"font-weight: bold; color: {_TITLE_COLOR}; font-size: 12px;")
         layout.addWidget(title)
 
         self._rows: dict[str, tuple[QLabel, QLabel, str]] = {}
@@ -60,6 +72,8 @@ class SummaryTable(QWidget):
             ("gls_a2c", tr("strain.gls_a2c"), "%"),
             ("gls_dao", tr("strain.gls_dao"), "%"),
             ("gls_av", tr("strain.gls_av"), "%"),
+            ("gwi", tr("strain.mw_gwi_row"), "mmHg%"),
+            ("gwe", tr("strain.mw_gwe_row"), "%"),
             ("ef", tr("strain.ef"), "%"),
             ("edv", tr("strain.edv"), tr("strain.unit_ml")),
             ("esv", tr("strain.esv"), tr("strain.unit_ml")),
@@ -69,10 +83,10 @@ class SummaryTable(QWidget):
         for key, label_text, unit in row_defs:
             row = QHBoxLayout()
             lbl = QLabel(label_text)
-            lbl.setStyleSheet(f"color: #bdbdbd; font-size: {font_pixel_size(lbl, 0.85, minimum=9)}px;")
+            lbl.setStyleSheet(f"color: {_DIM_COLOR}; font-size: {font_pixel_size(lbl, 0.85, minimum=9)}px;")
             val = QLabel("--")
             val.setStyleSheet(
-                f"color: #ffd54f; font-weight: bold; font-size: {font_pixel_size(val, 0.85, minimum=9)}px;"
+                f"color: {_VALUE_COLOR}; font-weight: bold; font-size: {font_pixel_size(val, 0.85, minimum=9)}px;"
             )
             val.setAlignment(Qt.AlignmentFlag.AlignRight)
             val.setMinimumWidth(text_width(val, "0.00", padding=16, minimum=44))
@@ -81,6 +95,32 @@ class SummaryTable(QWidget):
             row.addWidget(val)
             layout.addLayout(row)
             self._rows[key] = (lbl, val, unit)
+
+        # ── Cuff BP input (plan А.9): the MW loop needs an amplitude, and the
+        # amplitude must come from a person with a cuff, never invented. The
+        # same pressure drives the report via the protocol header; this local
+        # editor only previews the work for the curves on screen.
+        bp_row = QHBoxLayout()
+        bp_label = QLabel(tr("strain.mw_bp_label"))
+        bp_label.setStyleSheet(f"color: {_DIM_COLOR}; font-size: {font_pixel_size(bp_label, 0.85, minimum=9)}px;")
+        self._sbp_edit = QLineEdit()
+        self._sbp_edit.setPlaceholderText("120")
+        self._dbp_edit = QLineEdit()
+        self._dbp_edit.setPlaceholderText("80")
+        for edit in (self._sbp_edit, self._dbp_edit):
+            edit.setFixedWidth(text_width(edit, "000", padding=18, minimum=44))
+            edit.setAccessibleName(tr("strain.mw_bp_label"))
+            edit.textEdited.connect(self._emit_bp)
+        self._bp_slash = QLabel("/")
+        self._bp_slash.setStyleSheet(
+            f"color: #bdbdbd; font-size: {font_pixel_size(self._bp_slash, 0.85, minimum=9)}px;"
+        )
+        bp_row.addWidget(bp_label)
+        bp_row.addStretch()
+        bp_row.addWidget(self._sbp_edit)
+        bp_row.addWidget(self._bp_slash)
+        bp_row.addWidget(self._dbp_edit)
+        layout.addLayout(bp_row)
 
         layout.addStretch()
 
@@ -92,6 +132,28 @@ class SummaryTable(QWidget):
         measured views were allowed into ``GLS_AV``.
         """
         self._view_status = {str(view): str(status) for view, status in statuses.items() if status}
+
+    def _emit_bp(self) -> None:
+        self.bp_edited.emit(self._sbp_edit.text().strip(), self._dbp_edit.text().strip())
+
+    def set_mw_values(self, gwi: float | None, gwe: float | None, *, warnings: tuple[str, ...] = ()) -> None:
+        """Fill the Myocardial Work rows (plan А.9) or blank them.
+
+        ``warnings`` are the domain gate keys (``no_strain``, ``no_cycle``,
+        ``no_shortening`` …): the rows stay ``--`` and the first warning is
+        shown as a marked label — never a fabricated number for a beat the
+        domain refused to integrate.
+        """
+        for key, val in (("gwi", gwi), ("gwe", gwe)):
+            lbl, val_label, _unit = self._rows[key]
+            if val is None:
+                val_label.setText("--")
+            else:
+                mid = self._ROW_MEASUREMENT_IDS.get(key, "lv.gls")
+                val_label.setText(format_measurement(mid, val, "%" if key == "gwe" else "mmHg%"))
+            base = lbl.text().replace(" ⚠", "")
+            lbl.setText(base + (" ⚠" if warnings else ""))
+            lbl.setToolTip(tr(f"strain.mw_warn_{warnings[0]}") if warnings else "")
 
     def update_values(self, **kwargs: float | str | None) -> None:
         """Update table values. Accepts: gls, gls_a4c, gls_a2c, gls_dao, ef, edv, esv, autozak, hr."""

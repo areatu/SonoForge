@@ -58,6 +58,13 @@ class CinePhaseWorker(QRunnable):
         #: R-peaks burned into the pixels, extracted while the full-resolution
         #: frames are in hand (a downsampled thumbnail loses the thin line).
         self._burned_peaks: np.ndarray | None = None
+        #: А.5: the located strip (full-resolution geometry); its band is
+        #: subtracted from the image signals so a flickering strip cannot be
+        #: read as rhythm.  Locating carries no rhythm gates — the mask fires
+        #: even when the trace is unreadable.
+        self._burned_strip: object | None = None
+        #: Full-resolution frame dimensions the strip geometry refers to.
+        self._raw_shape: tuple[int, int] | None = None
         self.signals = CinePhaseSignals()
         self.setAutoDelete(True)
 
@@ -93,6 +100,7 @@ class CinePhaseWorker(QRunnable):
                 ecg_r_peaks_ms=None if burned else r_peaks,
                 ecg_confidence=confidence,
                 burned_ecg_r_peaks_ms=r_peaks if burned else None,
+                exclude_mask=self._downscaled_strip_mask(frames),
             )
             self.signals.finished.emit(timeline, self._instance_uid, self._generation)
         except Exception as exc:  # noqa: BLE001 - one stable code reaches the UI
@@ -108,7 +116,47 @@ class CinePhaseWorker(QRunnable):
         if not raw:
             return None
         self._burned_peaks = self._extract_burned_ecg(raw)
+        first = np.asarray(raw[0])
+        self._raw_shape = (int(first.shape[0]), int(first.shape[1]))
+        self._burned_strip = self._extract_burned_strip(raw)
         return self._downsample(raw)
+
+    def _extract_burned_strip(self, raw: list) -> object | None:
+        """Locate the vendor ECG strip on the full-resolution color frames."""
+        from echo_personal_tool.domain.services.burned_ecg_mask import (
+            BurnedEcgStrip,
+            detect_burned_ecg_strip,
+            get_burned_ecg_override,
+        )
+
+        if get_burned_ecg_override() == "off":
+            return None
+        try:
+            strip = detect_burned_ecg_strip(raw)
+        except (TypeError, ValueError) as exc:
+            # A malformed decoded frame list (ragged shapes) — the mask is
+            # optional evidence, the clip itself still plays.
+            log_boundary_failure(logger, "cine_phase.strip", exc, code="source", level=logging.DEBUG)
+            return None
+        assert isinstance(strip, BurnedEcgStrip | None)
+        return strip
+
+    def _downscaled_strip_mask(self, frames: np.ndarray) -> np.ndarray | None:
+        """The strip band scaled to the downsampled stack the signals read."""
+        from echo_personal_tool.domain.services.burned_ecg_mask import BurnedEcgStrip
+
+        strip = self._burned_strip
+        if not isinstance(strip, BurnedEcgStrip) or frames is None or frames.ndim < 3:
+            return None
+        first = np.asarray(frames[0])
+        height, width = int(first.shape[0]), int(first.shape[1])
+        raw_first = np.asarray(self._raw_shape)
+        if raw_first.size < 2 or height <= 0 or width <= 0:
+            return None
+        factor = min(float(height) / float(raw_first[0]), float(width) / float(raw_first[1]))
+        if factor <= 0 or factor >= 1.0:
+            return strip.mask_for((height, width))
+        return strip.scaled(factor, (height, width)).mask_for((height, width))
 
     def _extract_burned_ecg(self, raw: list) -> np.ndarray | None:
         """Green ECG trace from the full-resolution color frames, if any."""

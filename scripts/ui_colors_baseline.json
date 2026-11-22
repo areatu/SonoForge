@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 186,
+  "total": 182,
   "roots": [
     "presentation",
     "ui",
@@ -27,8 +27,8 @@
     "ui/cine_panel.py": 13,
     "ui/control_panel.py": 22,
     "ui/ste/overview_screen.py": 32,
-    "ui/strain_curves_view.py": 13,
+    "ui/strain_curves_view.py": 8,
     "ui/strain_window.py": 6,
-    "ui/summary_table.py": 3
+    "ui/summary_table.py": 4
   }
 }

@@ -207,6 +207,22 @@ def _encode(value: object) -> object:
             # a study without strain lineage keeps the exact shape older
             # schemas already accepted (issue 555).
             fields = fields - {"lineage_by_view"}
+        if isinstance(value, StrainReport) and not value.mw_by_view:
+            # Myocardial Work (plan А.9) is written only when a cuff pressure
+            # produced loops: a study without MW keeps the exact wire shape
+            # older schemas already accepted.
+            fields = fields - {
+                "mw_by_view",
+                "gwi_mmhg_pct",
+                "gcw_mmhg_pct",
+                "gww_mmhg_pct",
+                "gwe_percent",
+                "blood_pressure_mmhg",
+            }
+        if isinstance(value, StrainReport) and value.burned_ecg_strip is None:
+            # А.5: the located strip is written only when it exists — a study
+            # without a strip keeps the exact wire shape older schemas accept.
+            fields = fields - {"burned_ecg_strip"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire

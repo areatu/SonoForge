@@ -65,6 +65,7 @@ from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
+from scipy.ndimage import binary_dilation
 from scipy.signal import find_peaks, savgol_filter
 
 from echo_personal_tool.domain.models.ecg import EcEDFrameMapping
@@ -98,6 +99,12 @@ _MIN_CARRIER_CORR = 0.2
 _SUPPORT_MIN_CORR = 0.3
 _SUPPORT_BONUS = 0.10
 _FLOW_MAX_SIZE = 96
+
+#: Farneback integrates over a ±(poly_n/winsize) neighbourhood and the burned
+#: strip's redraw flicker creates gradients no tissue has, so the flow of the
+#: pixels *around* the strip is corrupted too — the exclusion region grows by
+#: this many source pixels (about twice the window's reach) before the mean.
+_FLOW_EXCLUDE_MARGIN_PX = 24
 _MAX_TRAILING_WINDOWS = 3
 
 #: Phase carriers: polarity known, ED = maximum (same doctrine as
@@ -280,6 +287,7 @@ def optical_flow_magnitude_signal(
     gray_frames: np.ndarray | Sequence[np.ndarray],
     *,
     max_size: int = _FLOW_MAX_SIZE,
+    exclude_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Polarity-free tissue motion magnitude per frame (Farneback).
 
@@ -302,6 +310,21 @@ def optical_flow_magnitude_signal(
         small = np.stack([cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_AREA) for frame in gray])
     else:
         small = gray
+        out_h, out_w = height, width
+    exclude_small: np.ndarray | None = None
+    if exclude_mask is not None:
+        strip = np.asarray(exclude_mask, dtype=bool)
+        if strip.shape == (height, width):
+            exclude_small = strip[np.linspace(0, height - 1, out_h).astype(int)][
+                :, np.linspace(0, width - 1, out_w).astype(int)
+            ]
+            # The flow of the pixels *around* the strip is corrupted too (the
+            # Farneback window straddles the drawn line), so the excluded
+            # region grows by the window's reach at the downscaled scale.
+            margin = max(1, int(round(_FLOW_EXCLUDE_MARGIN_PX * (out_h / height))))
+            exclude_small = binary_dilation(
+                exclude_small, structure=np.ones((2 * margin + 1, 2 * margin + 1), dtype=bool)
+            )
     u8 = np.clip(small, 0.0, 255.0).astype(np.uint8)
     n = int(u8.shape[0])
     magnitude = np.zeros(n, dtype=np.float64)
@@ -322,7 +345,17 @@ def optical_flow_magnitude_signal(
                 1.2,
                 0,
             )
-            magnitude[index + 1] = float(np.mean(np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)))
+            mag = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
+            if exclude_small is not None:
+                # NaN, not zero: zeroing would bias the mean downward — the
+                # strip must simply not vote (a fully masked frame yields
+                # nan, caught by the ptp gate below).
+                mag[exclude_small] = np.nan
+                with np.errstate(invalid="ignore"):
+                    frame_mean = float(np.nanmean(mag))
+                magnitude[index + 1] = frame_mean if np.isfinite(frame_mean) else 0.0
+            else:
+                magnitude[index + 1] = float(np.mean(mag))
     except cv2.error:
         return empty
     magnitude[0] = magnitude[1]
@@ -336,6 +369,7 @@ def extract_phase_candidates(
     frames: np.ndarray | Sequence[np.ndarray] | None = None,
     area_curve: np.ndarray | Sequence[float] | None = None,
     lv_masks: np.ndarray | Sequence[np.ndarray] | None = None,
+    exclude_mask: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """Candidate phase signals, each gain-normalised, ED-oriented.
 
@@ -354,12 +388,12 @@ def extract_phase_candidates(
             candidates["area"] = mask_area
     gray = _gray_stack(frames) if frames is not None else None
     if gray is not None:
-        dark, intensity, _motion = image_phase_signals(gray)
+        dark, intensity, _motion = image_phase_signals(gray, exclude_mask=exclude_mask)
         if dark.size == gray.shape[0]:
             candidates["dark_pool"] = np.asarray(dark, dtype=np.float64)
         if intensity.size == gray.shape[0]:
             candidates["intensity"] = -np.asarray(intensity, dtype=np.float64)
-        flow = optical_flow_magnitude_signal(gray)
+        flow = optical_flow_magnitude_signal(gray, exclude_mask=exclude_mask)
         if flow.size == gray.shape[0]:
             candidates["flow"] = flow
     return candidates
@@ -875,6 +909,7 @@ def build_phase_field(
     area_curve: np.ndarray | Sequence[float] | None = None,
     lv_masks: np.ndarray | Sequence[np.ndarray] | None = None,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    exclude_mask: np.ndarray | None = None,
 ) -> PhaseField:
     """Build the continuous phase field φ(t) for one cine clip, without ECG.
 
@@ -890,6 +925,9 @@ def build_phase_field(
         lv_masks: optional boolean LV mask stack; its per-frame area is used
             only when no ``area_curve`` is supplied.
         min_confidence: below this the field carries no cycles and φ ≡ 0.
+        exclude_mask: full-frame ``(h, w)`` boolean of pixels that carry no
+            tissue evidence (А.5 burned ECG strip); subtracted from every
+            image-domain candidate before scoring.
 
     Returns:
         A :class:`PhaseField`.  Never raises for bad input: unusable data
@@ -908,6 +946,7 @@ def build_phase_field(
         frames=None if gray is None else gray,
         area_curve=area_curve,
         lv_masks=lv_masks,
+        exclude_mask=exclude_mask,
     )
     carriers: dict[str, np.ndarray] = {}
     for name in _CARRIER_WEIGHTS:

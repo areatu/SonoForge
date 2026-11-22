@@ -23,8 +23,10 @@ Label rules (spec §5.1 with the user's Q-03 answers, 2026-10-16):
    yet reconciled with the full table carry ``verified=False`` (TP-0 PR-3).
 3. RU — Russian clinical abbreviations.  Latin is allowed only for the
    symbols and terms in :data:`RU_LATIN_ALLOWLIST`: wave/quantity symbols
-   (E, A, e′, a′, s′, Vmax, Vps, Ved, dP/dt, Qp, Qs) and the terms kept
-   untranslated by decision Q-03 (DT, IVRT, VTI, DVI).
+   (E, A, e′, a′, s′, Vmax, Vps, Ved, dP/dt, Qp, Qs), the terms kept
+   untranslated by decision Q-03 (DT, IVRT, VTI, DVI) and the proper names
+   (TAPSE, PISA, GLS, GWI, GCW, GWW, GWE — the last four are the
+   Myocardial Work indices, plan А.9).
 4. Biplane in RU is «Биплан» (not «бипланово»).
 5. Indexed values in RU take a lower-case «и» prefix: иКДО, иОЛП, иУО …
 6. PASP in RU is «Сист. ДЛА».
@@ -339,11 +341,13 @@ def _labels(ru: tuple[str, str] | str, en: tuple[str, str] | str) -> Mapping[str
 
 # Latin tokens allowed in Russian labels: symbols of quantities and waves, and
 # the abbreviations kept in English by decision Q-03 (DT, IVRT, VTI, DVI).
-# TAPSE, PISA and GLS are international names used as proper names (spec §5.2,
-# "как «метод Симпсона»"); listed separately so they can be revisited.
+# TAPSE, PISA, GLS, GWI/GCW/GWW/GWE are international names used as proper
+# names (spec §5.2, "как «метод Симпсона»"); listed separately so they can be
+# revisited. Myocardial Work indices (plan А.9) follow GLS: the vendor world
+# writes GWI/GCW/GWW/GWE, translating them would hide the search terms.
 RU_SYMBOLS: frozenset[str] = frozenset({"E", "A", "e′", "a′", "s′", "Vmax", "Vps", "Ved", "dP/dt", "Qp", "Qs", "RR"})
 RU_UNTRANSLATED_TERMS: frozenset[str] = frozenset({"DT", "IVRT", "VTI", "DVI"})
-RU_PROPER_NAMES: frozenset[str] = frozenset({"TAPSE", "PISA", "GLS"})
+RU_PROPER_NAMES: frozenset[str] = frozenset({"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE"})
 RU_LATIN_ALLOWLIST: frozenset[str] = RU_SYMBOLS | RU_UNTRANSLATED_TERMS | RU_PROPER_NAMES
 
 # A Latin "word" in a Russian label: letters plus the prime (e′).  "dP/dt" and
@@ -644,6 +648,15 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     # ── Strain ──
     _m("lv.gls", ("GLS ЛЖ", "Глобальная продольная деформация ЛЖ"), ("LV GLS", "LV global longitudinal strain"),
        Quantity.PERCENT, 1, ase=_T6, ase_row='lv.gls', verified=True, synonyms=("strain", "стрейн", "speckle")),
+    # ── Myocardial Work (план А.9) — non-invasive pressure-strain loops ──
+    _m("lv.gwi", ("GWI ЛЖ", "Глобальный индекс работы миокарда"), ("LV GWI", "LV global work index"),
+       Quantity.RATIO, 0, synonyms=("GWI", "работа миокарда")),
+    _m("lv.gcw", ("GCW ЛЖ", "Конструктивная работа миокарда"), ("LV GCW", "LV constructive work"),
+       Quantity.RATIO, 0, synonyms=("GCW",)),
+    _m("lv.gww", ("GWW ЛЖ", "Потерянная работа миокарда"), ("LV GWW", "LV wasted work"),
+       Quantity.RATIO, 0, synonyms=("GWW",)),
+    _m("lv.gwe", ("GWE ЛЖ", "Эффективность работы миокарда"), ("LV GWE", "LV work efficiency"),
+       Quantity.PERCENT, 1, synonyms=("GWE",)),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),

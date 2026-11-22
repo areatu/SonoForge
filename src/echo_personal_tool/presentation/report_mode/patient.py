@@ -22,6 +22,14 @@ FIELDS = (
     ("indication", "report.indication"),
 )
 
+#: Cuff pressure fields (plan А.9): text editors like the rest, parsed to
+#: floats by the coordinator — "120/80" typos must not crash the header, so
+#: the parsing lives where the overrides are applied, not in the widget.
+BP_FIELDS = (
+    ("systolic_bp_mmhg", "report.bp_systolic"),
+    ("diastolic_bp_mmhg", "report.bp_diastolic"),
+)
+
 
 class ReportPatientEditor(QGroupBox):
     field_changed = Signal(str, str)
@@ -42,6 +50,15 @@ class ReportPatientEditor(QGroupBox):
             self._fields[name] = editor
             form.addRow(self._translate(key), editor)
             self._labels[name] = form.labelForField(editor)
+        for name, key in BP_FIELDS:
+            editor = QLineEdit()
+            editor.setMinimumWidth(0)
+            editor.setPlaceholderText(self._translate("report.bp_unit_hint"))
+            editor.setAccessibleName(self._translate(key))
+            editor.textEdited.connect(lambda text, field=name: self.field_changed.emit(field, text))
+            self._fields[name] = editor
+            form.addRow(self._translate(key), editor)
+            self._labels[name] = form.labelForField(editor)
         self._sex = QComboBox()
         for key, value in (("report.sex_unknown", ""), ("report.sex_male", "M"), ("report.sex_female", "F")):
             self._sex.addItem(self._translate(key), value)
@@ -55,7 +72,8 @@ class ReportPatientEditor(QGroupBox):
 
     def set_patient(self, patient: PatientInfo) -> None:
         for name, editor in self._fields.items():
-            value = str(getattr(patient, name) or "")
+            raw = getattr(patient, name)
+            value = "" if raw is None else (f"{raw:g}" if isinstance(raw, float) else str(raw))
             if editor.text() != value:
                 editor.setText(value)
         self._sex.setCurrentIndex(max(0, self._sex.findData(patient.sex)))
@@ -71,7 +89,7 @@ class ReportPatientEditor(QGroupBox):
 
     def reload_text(self) -> None:
         self.setTitle(self._translate("report.patient"))
-        for name, key in FIELDS:
+        for name, key in (*FIELDS, *BP_FIELDS):
             self._labels[name].setText(self._translate(key))
             self._fields[name].setAccessibleName(self._translate(key))
         self._sex_label.setText(self._translate("report.sex"))

@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
+from echo_personal_tool.domain.services.myocardial_work import (
+    build_pressure_curve,
+    compute_myocardial_work,
+    detect_valve_events,
+)
 from echo_personal_tool.domain.services.segment_map import normalise_view
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
@@ -195,6 +200,11 @@ class StrainWindow(QMainWindow):
         self._study: StrainStudy = StrainStudy()
         self._qc_accepted_segments: set[int] = set(range(1, 18))  # All segments accepted by default
 
+        # Myocardial Work (plan А.9): cuff BP typed in the summary block; the
+        # loop is recomputed per result and never fabricated without it.
+        self._blood_pressure: tuple[float, float] | None = None
+        self._summary.bp_edited.connect(self._on_blood_pressure_edited)
+
         # Undo/Redo stacks for kernel movements
         self._undo_stack: list[tuple[int, float, float, float, float]] = []  # (idx, old_x, old_y, new_x, new_y)
         self._redo_stack: list[tuple[int, float, float, float, float]] = []
@@ -220,6 +230,55 @@ class StrainWindow(QMainWindow):
         if isinstance(study, StrainStudy):
             self._study = study
             self._refresh_overview()
+
+    def _on_blood_pressure_edited(self, sbp_text: str, dbp_text: str) -> None:
+        """Cuff BP typed in the summary block — recompute the MW preview."""
+        sbp = _finite_float(sbp_text)
+        dbp = _finite_float(dbp_text)
+        self._blood_pressure = (sbp, dbp) if sbp is not None and dbp is not None else None
+        self._refresh_myocardial_work()
+
+    def _refresh_myocardial_work(self) -> None:
+        """Recompute the Myocardial Work preview for the shown result (plan А.9).
+
+        Nothing is computed without a cuff pressure, and a beat the domain
+        refuses (gaps, no net shortening, impossible cycle) shows its warning
+        mark instead of a number — the window borrows the same gates as the
+        report, so the preview and the protocol can never disagree about
+        whether a loop exists.
+        """
+        self._summary.set_mw_values(None, None)
+        self._curves_view.set_pressure_loop(None, None)
+        result = self._result
+        if self._blood_pressure is None or result is None:
+            return
+        curve = np.asarray(result.longitudinal, dtype=np.float64) if result.longitudinal is not None else None
+        if curve is None or not np.isfinite(curve).any():
+            return
+        sbp, dbp = self._blood_pressure
+        avc = getattr(result, "avc_index", None)
+        avc_frame = None if avc is None else int(avc)
+        work = compute_myocardial_work(
+            curve,
+            ed_frame=int(result.ed_index),
+            sbp_mmhg=sbp,
+            dbp_mmhg=dbp,
+            avc_frame=avc_frame,
+        )
+        cycle = work.cycles[0] if work.cycles else None
+        if cycle is None:
+            self._summary.set_mw_values(None, None, warnings=work.warnings)
+            return
+        self._summary.set_mw_values(cycle.gwi_mmhg_pct, cycle.gwe_percent, warnings=work.warnings)
+        events = detect_valve_events(curve, ed_frame=int(result.ed_index), avc_frame=avc_frame)
+        if events is None:
+            return
+        pressure = build_pressure_curve(len(curve), events, sbp_mmhg=sbp, dbp_mmhg=dbp)
+        self._curves_view.set_pressure_loop(
+            curve,
+            pressure,
+            title=tr("strain.mw_loop_title", sbp=f"{sbp:g}", dbp=f"{dbp:g}"),
+        )
 
     def _analysis_with_source(self, result: StrainResult) -> StrainAnalysis:
         """Keep the contour lineage the controller adopted for this view (issue 555)."""
@@ -358,18 +417,14 @@ class StrainWindow(QMainWindow):
         # Per-view GLS: filled from the recorded analyses, so a view analysed
         # earlier keeps its value (and the average of the views is meaningful).
         # A view that was never analysed stays empty — never a fabricated 0.
-        gls_a4c = self._study.view_gls("A4C")
-        gls_a2c = self._study.view_gls("A2C")
-        gls_dao = self._study.view_gls("A3C")
-
         # Which measured views passed QC, vendor-style: the per-view rows carry
         # the status mark so GLS_AV is never read as "three views agreed".
         self._summary.set_view_statuses({view: item.qc_status for view, item in self._study.analyses.items()})
         self._summary.update_values(
             gls=result.gls,
-            gls_a4c=gls_a4c,
-            gls_a2c=gls_a2c,
-            gls_dao=gls_dao,
+            gls_a4c=self._study.view_gls("A4C"),
+            gls_a2c=self._study.view_gls("A2C"),
+            gls_dao=self._study.view_gls("A3C"),
             gls_av=self._study.gls_average(),
             ess=_finite_float(getattr(result, "ess", None)),
             ttp=_finite_float(getattr(result, "time_to_peak_ms", None)),
@@ -377,6 +432,7 @@ class StrainWindow(QMainWindow):
             drift=_finite_float(getattr(result, "drift_measured", None)),
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
+        self._refresh_myocardial_work()
 
         # Update Bull's Eye plot
         if result.segment_strain:

@@ -627,3 +627,95 @@ class TestRapFromIvcPair:
         # the stale 16 mm reading would have yielded 15 mmHg.
         assert ("8", "mmHg") in rows
         assert ("15", "mmHg") not in rows
+
+
+class TestMyocardialWorkRows:
+    """А.9 (issue #647): the MW numbers reach the protocol rows."""
+
+    def _mw_snapshot(self) -> MeasurementSnapshot:
+        return _snapshot(
+            strain=StrainReport(
+                gls_by_view=(("A4C", -19.0),),
+                qc_by_view=(("A4C", "valid"),),
+                gls_average=-19.0,
+                views_valid=("A4C",),
+                mw_by_view=(("A4C", 2100.0, 2400.0, 300.0, 88.9),),
+                gwi_mmhg_pct=2100.0,
+                gcw_mmhg_pct=2400.0,
+                gww_mmhg_pct=300.0,
+                gwe_percent=88.9,
+                blood_pressure_mmhg=(120.0, 80.0),
+            )
+        )
+
+    def test_mw_rows_present_in_the_left_ventricle_group(self) -> None:
+        groups = build_report_groups(self._mw_snapshot(), sex="M")
+        lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
+        labels = {value.label for value in lv.values}
+        assert any("GWI" in label for label in labels)
+        assert any("GCW" in label for label in labels)
+        assert any("GWW" in label for label in labels)
+        assert any("GWE" in label for label in labels)
+        gwi = next(value for value in lv.values if "GWI" in value.label)
+        assert gwi.value.startswith("2100")
+
+    def test_no_blood_pressure_adds_no_mw_rows(self) -> None:
+        snapshot = _snapshot(
+            strain=StrainReport(
+                gls_by_view=(("A4C", -19.0),),
+                qc_by_view=(("A4C", "valid"),),
+                gls_average=-19.0,
+                views_valid=("A4C",),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
+        assert not any("GWI" in value.label or "GWE" in value.label for value in lv.values)
+
+    def test_method_note_states_the_inputs(self) -> None:
+        groups = build_report_groups(self._mw_snapshot(), sex="M")
+        lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
+        assert any("120/80" in note for note in lv.notes)
+
+
+class TestDiastologySection:
+    """А.10 (issue #648): the turnkey diastology assessment reaches the report."""
+
+    def _assessment_snapshot(self) -> MeasurementSnapshot:
+        from echo_personal_tool.domain.services.diastology_workflow import build_diastology_assessment
+
+        results = DopplerResults(
+            e_cm_s=80.0,
+            e_prime_sept_cm_s=6.0,
+            e_over_e_prime=16.0,
+            tr_vmax_cm_s=300.0,
+            ivrt_ms=95.0,
+        )
+        return _snapshot(diastology=build_diastology_assessment(results, lav_index_ml_m2=40.0))
+
+    def test_criteria_rows_in_the_left_ventricle_group(self) -> None:
+        groups = build_report_groups(self._assessment_snapshot(), sex="M")
+        lv = _values(groups, GROUP_LEFT_VENTRICLE)
+        criteria = [label for label in lv if label.startswith(("E/e′", "e′ ", "LAVi", "TR Vmax"))]
+        assert any(label.startswith("E/e′ >") for label in criteria)
+        assert any(label.startswith("e′ <") for label in criteria)
+        assert any(label.startswith("LAVi >") for label in criteria)
+        assert any(label.startswith("TR Vmax >") for label in criteria)
+
+    def test_criterion_row_carries_value_and_verdict(self) -> None:
+        groups = build_report_groups(self._assessment_snapshot(), sex="M")
+        lv = _values(groups, GROUP_LEFT_VENTRICLE)
+        row = next(value for label, value in lv.items() if label.startswith("E/e′ >"))
+        assert row.startswith("16.0")
+        language_rows = " ".join(lv.values())
+        assert "не повышен" in language_rows or "повышен" in language_rows
+
+    def test_verdict_note_row_present(self) -> None:
+        groups = build_report_groups(self._assessment_snapshot(), sex="M")
+        lv = _values(groups, GROUP_LEFT_VENTRICLE)
+        assert "Нарушение ДФ" in " ".join(lv.values())
+
+    def test_no_doppler_adds_no_rows(self) -> None:
+        groups = build_report_groups(_snapshot(), sex="M")
+        lv = _values(groups, GROUP_LEFT_VENTRICLE)
+        assert not any(label.startswith("E/e′ >") for label in lv)
