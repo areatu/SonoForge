@@ -16,11 +16,13 @@ import pydicom
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.application.server_io import (
+    ServerSettings,
     close_dicom_web_client,
     make_dicom_retrieve_service,
     make_dicom_web_client,
     make_dimse_client,
 )
+from echo_personal_tool.domain.ports import DicomWebClient
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
@@ -38,8 +40,8 @@ class OriginalDicomCopyWorker(QRunnable):
 
     def __init__(
         self,
-        settings: object,
-        study_uid: str,
+        settings: ServerSettings,
+        source_path: Path,
         series_uid: str,
         instance_uid: str,
         destination: Path,
@@ -47,7 +49,7 @@ class OriginalDicomCopyWorker(QRunnable):
     ) -> None:
         super().__init__()
         self._settings = settings
-        self._study_uid = study_uid
+        self._source_path = Path(source_path)
         self._series_uid = series_uid
         self._instance_uid = instance_uid
         self._destination = Path(destination)
@@ -56,28 +58,29 @@ class OriginalDicomCopyWorker(QRunnable):
 
     @Slot()
     def run(self) -> None:
-        web = None
+        web: DicomWebClient | None = None
         try:
-            web = make_dicom_web_client(self._settings)  # type: ignore[arg-type]
-            dimse = make_dimse_client(self._settings)  # type: ignore[arg-type]
+            probe = pydicom.dcmread(str(self._source_path), stop_before_pixels=True, force=True)
+            study_uid = str(getattr(probe, "StudyInstanceUID", "") or "")
+            if not study_uid:
+                raise ValueError("working DICOM has no StudyInstanceUID")
+
+            web = make_dicom_web_client(self._settings)
+            dimse = make_dimse_client(self._settings)
             service = make_dicom_retrieve_service(
-                self._settings,  # type: ignore[arg-type]
+                self._settings,
                 web_client=web,
                 dimse_client=dimse,
             )
-            data = service.retrieve_instance(
-                self._study_uid, self._series_uid, self._instance_uid
-            )
-            probe = pydicom.dcmread(BytesIO(data), stop_before_pixels=True, force=True)
-            returned_uid = str(getattr(probe, "SOPInstanceUID", "") or "")
+            data = service.retrieve_instance(study_uid, self._series_uid, self._instance_uid)
+            downloaded = pydicom.dcmread(BytesIO(data), stop_before_pixels=True, force=True)
+            returned_uid = str(getattr(downloaded, "SOPInstanceUID", "") or "")
             if returned_uid and returned_uid != self._instance_uid:
                 raise ValueError("retrieved instance UID does not match the request")
             self._destination.parent.mkdir(parents=True, exist_ok=True)
             self._destination.write_bytes(data)
         except Exception as exc:  # noqa: BLE001 - worker boundary reports the failure
-            log_boundary_failure(
-                logger, "dicom.copy_original", exc, code="unexpected", level=logging.ERROR
-            )
+            log_boundary_failure(logger, "dcm.export", exc, code="unexpected", level=logging.ERROR)
             self.signals.failed.emit(ORIGINAL_COPY_FAILURE_CODE)
         else:
             self.signals.finished.emit(str(self._destination))

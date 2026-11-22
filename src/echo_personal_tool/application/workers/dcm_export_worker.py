@@ -48,9 +48,7 @@ def _encode_jpeg(frame: np.ndarray, quality: int, monochrome: bool) -> bytes:
     if monochrome:
         Image.fromarray(frame, mode="L").save(buf, format="JPEG", quality=quality)
     else:
-        Image.fromarray(frame, mode="RGB").save(
-            buf, format="JPEG", quality=quality, subsampling=1
-        )
+        Image.fromarray(frame, mode="RGB").save(buf, format="JPEG", quality=quality, subsampling=1)
     return buf.getvalue()
 
 

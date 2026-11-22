@@ -1062,7 +1062,7 @@ class ThumbnailGalleryWidget(QListWidget):
             shutil.copy2(str(instance.path), dest)
             return
 
-        import pydicom
+        from pathlib import Path
 
         from echo_personal_tool.application.server_io import load_server_settings
         from echo_personal_tool.application.workers.original_dicom_copy_worker import (
@@ -1072,12 +1072,7 @@ class ThumbnailGalleryWidget(QListWidget):
             ensure_transport_confirmed_before_network,
         )
 
-        try:
-            probe = pydicom.dcmread(str(instance.path), stop_before_pixels=True, force=True)
-            study_uid = str(getattr(probe, "StudyInstanceUID", "") or "")
-        except Exception:  # noqa: BLE001 - gallery copy must never crash on a bad header
-            study_uid = ""
-        if not (study_uid and instance.series_uid and instance.sop_instance_uid):
+        if not (instance.series_uid and instance.sop_instance_uid):
             QMessageBox.warning(self, tr("status.export_failed"), tr("orthanc.instance_download_failed"))
             return
 
@@ -1088,10 +1083,10 @@ class ThumbnailGalleryWidget(QListWidget):
 
         worker = OriginalDicomCopyWorker(
             confirmed,
-            study_uid,
+            instance.path,
             instance.series_uid,
             instance.sop_instance_uid,
-            dest,
+            Path(dest),
             parent=self,
         )
         self._copy_workers.add(worker)
