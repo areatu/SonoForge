@@ -13,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pydicom
+from pydicom.errors import InvalidDicomError
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.application.server_io import (
@@ -22,12 +23,26 @@ from echo_personal_tool.application.server_io import (
     make_dicom_web_client,
     make_dimse_client,
 )
+from echo_personal_tool.application.services.dicom_retrieve_service import RetrieveError
 from echo_personal_tool.domain.ports import DicomWebClient
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure
 
 logger = logging.getLogger(__name__)
 
 ORIGINAL_COPY_FAILURE_CODE = "original_copy_failed"
+
+# The retrieve service folds every adapter/network error into RetrieveError and
+# re-raises only TransportPolicyError; the remaining types come from DICOM
+# parsing and file I/O. Keeping the list explicit avoids adding a new broad
+# handler to the application-layer ratchet.
+_COPY_ERRORS = (
+    RetrieveError,
+    InvalidDicomError,
+    OSError,
+    ValueError,
+    EOFError,
+    RuntimeError,
+)
 
 
 class OriginalDicomCopySignals(QObject):
@@ -79,7 +94,7 @@ class OriginalDicomCopyWorker(QRunnable):
                 raise ValueError("retrieved instance UID does not match the request")
             self._destination.parent.mkdir(parents=True, exist_ok=True)
             self._destination.write_bytes(data)
-        except Exception as exc:  # noqa: BLE001 - worker boundary reports the failure
+        except _COPY_ERRORS as exc:
             log_boundary_failure(logger, "dcm.export", exc, code="unexpected", level=logging.ERROR)
             self.signals.failed.emit(ORIGINAL_COPY_FAILURE_CODE)
         else:
