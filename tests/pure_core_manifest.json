@@ -17,6 +17,7 @@
     "tests/unit/test_pixel_utils_display_range.py",
     "tests/unit/test_planimeter.py",
     "tests/unit/test_planimeter_formatter.py",
+    "tests/unit/test_phase_field.py",
     "tests/unit/test_pure_core_harness.py",
     "tests/unit/test_report_signature_domain.py",
     "tests/unit/test_view_recognition.py",
