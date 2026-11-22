@@ -292,6 +292,10 @@ class StrainReport:
     gwe_percent: float | None = None
     #: The cuff pressure the work was computed from (``(SBP, DBP)`` mmHg).
     blood_pressure_mmhg: tuple[float, float] | None = None
+    #: А.5: the vendor ECG strip located in the pixels — the study metadata
+    #: remembers where it is so the mask survives a reload (``None`` when the
+    #: clip carries no strip or the user overrode the mask off).
+    burned_ecg_strip: tuple[int, int, int, int] | None = None
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
     #: ``(view, contour lineage)`` of the endocardial contour each view was

@@ -24,6 +24,11 @@ from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
     compute_gls_from_segments,
 )
+from echo_personal_tool.domain.services.burned_ecg_mask import (
+    BurnedEcgStrip,
+    detect_burned_ecg_strip,
+    get_burned_ecg_override,
+)
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     auto_detect_ed_es,
     build_myocardial_roi_mask,
@@ -465,6 +470,33 @@ class SpeckleTrackingWorker(QRunnable):
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
+    def _detect_burned_strip(self, state: Any) -> BurnedEcgStrip | None:
+        """Locate the vendor ECG strip, unless the user overrode the mask off.
+
+        The detector carries no rhythm gates on purpose: a noisy strip with
+        no readable QRS still covers pixels that must not reach the signals.
+        """
+        if get_burned_ecg_override() == "off":
+            return None
+        # ``state.frames`` is a proper ndarray by contract and the detector
+        # validates every shape internally — it does not raise here.
+        return detect_burned_ecg_strip(state.frames, n_frames=state.n_frames)
+
+    def _phase_exclude_mask(self, state: types.SimpleNamespace) -> np.ndarray | None:
+        """The strip band downscaled to the ≤64 px phase stack, or ``None``."""
+        strip: BurnedEcgStrip | None = getattr(state, "burned_strip", None)
+        frames = getattr(state, "frames", None)
+        if strip is None or frames is None or getattr(frames, "ndim", 0) < 3:
+            return None
+        height, width = int(frames.shape[1]), int(frames.shape[2])
+        if min(height, width) < 8:
+            return None
+        scale = min(1.0, 64.0 / float(max(height, width)))
+        if scale >= 1.0:
+            return strip.mask_for((height, width))
+        out_w, out_h = max(4, int(round(width * scale))), max(4, int(round(height * scale)))
+        return strip.scaled(scale, (out_h, out_w)).mask_for((out_h, out_w))
+
     def _phase_area_curve(self, state: types.SimpleNamespace) -> np.ndarray | None:
         """Cavity-area carrier for the image phase route.
 
@@ -543,6 +575,12 @@ class SpeckleTrackingWorker(QRunnable):
             self._frames = _load_full_cine_frames(self._source_path, self._media_format)
         state.frames = self._frames
         state.n_frames = int(state.frames.shape[0])
+        # А.5 burned-ECG strip: locate once on the full-resolution frames
+        # (sampled internally), honour the session override, and subtract the
+        # band from every pixel-domain consumer below (zone mask, phase
+        # signals, flow).  Tissue under the strip is honest unknown — the
+        # band is excluded, never inpainted and never cropped away.
+        state.burned_strip = self._detect_burned_strip(state)
 
         # Real ECG: prefer an explicitly supplied waveform; otherwise read
         # it from the DICOM source on this worker thread. Kept None when the
@@ -605,6 +643,7 @@ class SpeckleTrackingWorker(QRunnable):
                 ecg=self._ecg_waveform,
                 area_curve=self._phase_area_curve(state),
                 frames=self._phase_image_frames(state),
+                exclude_mask=self._phase_exclude_mask(state),
                 forced=self._phase_source_pref or get_forced_phase_source(),
             )
             state.mapping = decision.mapping
@@ -705,6 +744,11 @@ class SpeckleTrackingWorker(QRunnable):
         )
 
         state.zone_mask = build_zone_mask(self._zone, state.preprocessed.shape[1:3])
+        strip: BurnedEcgStrip | None = getattr(state, "burned_strip", None)
+        if strip is not None:
+            # The strip band leaves the tracking domain entirely: kernels in
+            # it would follow vendor-drawn pixels, not myocardium (А.5).
+            state.zone_mask = state.zone_mask & ~strip.mask_for(state.preprocessed.shape[1:3])
         state.track_ed_index = state.local_ed
 
         self.signals.progress.emit(0, 100)
@@ -1501,6 +1545,7 @@ class SpeckleTrackingWorker(QRunnable):
             tracked_ed_positions=state.tracked_ed_positions,
             tracked_positions_all=state.tracked_positions_all,
             view=self._view,
+            burned_ecg_strip=None if getattr(state, "burned_strip", None) is None else state.burned_strip.rect,
             avc_index=int(state.avc_frame + state.phase_start),
             avc_source=state.avc_source,
             avc_confidence=float(state.avc_confidence),

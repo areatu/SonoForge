@@ -289,3 +289,8 @@ class StrainResult:
     ed_es_confidence: float = 0.0
     ed_es_quality: str = "unknown"
     ecg_trace_for_display: np.ndarray | None = None
+    #: А.5 burned-ECG strip located in the pixels — ``(row_start, row_end,
+    #: col_start, col_end)`` or ``None`` when the clip carries no strip (or
+    #: the user overrode the mask off).  Travels with the analysis record so
+    #: the study metadata remembers where the vendor drew the strip.
+    burned_ecg_strip: tuple[int, int, int, int] | None = None

@@ -242,3 +242,38 @@ class TestPhaseSourceGating:
 
         dlg = SpeckleSettingsDialog(phase_source_pref="banana")
         assert dlg.phase_source_pref == "auto"
+
+
+class TestBurnedEcgMaskOverride:
+    """А.5 (issue #643): the strip-mask override combo writes the session store."""
+
+    def test_defaults_to_the_store_value(self):
+        from echo_personal_tool.domain.services.burned_ecg_mask import (
+            store_burned_ecg_override,
+        )
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        store_burned_ecg_override("auto")
+        dlg = SpeckleSettingsDialog()
+        try:
+            assert dlg._burned_ecg_combo.count() == 2
+            assert dlg.burned_ecg_mask_pref == "auto"
+        finally:
+            dlg.close()
+
+    def test_changing_the_combo_stores_immediately(self):
+        from echo_personal_tool.domain.services.burned_ecg_mask import (
+            get_burned_ecg_override,
+            store_burned_ecg_override,
+        )
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        store_burned_ecg_override("auto")
+        dlg = SpeckleSettingsDialog()
+        try:
+            dlg._burned_ecg_combo.setCurrentIndex(dlg._burned_ecg_combo.findData("off"))
+            assert dlg.burned_ecg_mask_pref == "off"
+            assert get_burned_ecg_override() == "off"
+        finally:
+            dlg.close()
+            store_burned_ecg_override("auto")
