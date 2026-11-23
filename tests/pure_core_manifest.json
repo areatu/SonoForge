@@ -14,6 +14,7 @@
     "tests/unit/test_imt.py",
     "tests/unit/test_interop_domain.py",
     "tests/unit/test_interop_inbound_domain.py",
+    "tests/unit/test_la_strain.py",
     "tests/unit/test_p3_pixel_cache.py",
     "tests/unit/test_phase_field.py",
     "tests/unit/test_phase_source.py",

@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `feat(la_strain)`: #644 (план А.6) — strain ЛП: трекинг дуги крыши ЛП по циклу с фазовой привязкой, кривая стрейна, метрики reservoir/conduit/booster (LASr/LAScd/LASct), строки в сводке окна strain и секция отчёта; синтетический gold-тест на согласие с известным движением ([полностью](changelog.d/023-feat-la-strain-644.md))
 - `feat(diastology_workflow)`: #648 (план А.10) — диастология «под ключ»: панель авто-заполняется из Doppler/TDI-данных (E/A, e′, E/e′, TR, PV, IVRT с числом измерений), критерии ASE 2016 с вердиктами, авто-градация с честным indeterminate и секция отчёта с выводами ([полностью](changelog.d/022-feat-diastology-workflow-648.md))
 - `feat(burned_ecg_mask)`: #643 (план А.5) — маска вшитой ЭКГ-полосы: локализация (IoU ≥ 0.9), вычитание из ROI/флоу/фазовых сигналов и трекинга, override в диалоге STE, персистенция в метаданных исследования; ткань под полосой — честное «неизвестно», без inpainting и обрезки ([полностью](changelog.d/021-feat-burned-ecg-mask-643.md))
 - `feat(myocardial_work)`: #647 (план А.9) — Myocardial Work без ЭКГ: петли давление–деформация и GWI/GCW/GWW/GWE из image-derived тайминга клапанов (А.3/А.4) и манжетного АД; секция MW в отчёте и окне strain, честные гейты вместо выдуманных чисел ([полностью](changelog.d/020-feat-myocardial-work-647.md))

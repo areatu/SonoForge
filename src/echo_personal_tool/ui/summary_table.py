@@ -74,6 +74,9 @@ class SummaryTable(QWidget):
             ("gls_av", tr("strain.gls_av"), "%"),
             ("gwi", tr("strain.mw_gwi_row"), "mmHg%"),
             ("gwe", tr("strain.mw_gwe_row"), "%"),
+            ("la_lasr", tr("strain.la_lasr_row"), "%"),
+            ("la_lascd", tr("strain.la_lascd_row"), "%"),
+            ("la_lasct", tr("strain.la_lasct_row"), "%"),
             ("ef", tr("strain.ef"), "%"),
             ("edv", tr("strain.edv"), tr("strain.unit_ml")),
             ("esv", tr("strain.esv"), tr("strain.unit_ml")),
@@ -135,6 +138,25 @@ class SummaryTable(QWidget):
 
     def _emit_bp(self) -> None:
         self.bp_edited.emit(self._sbp_edit.text().strip(), self._dbp_edit.text().strip())
+
+    def set_la_values(
+        self,
+        reservoir: float | None,
+        conduit: float | None,
+        booster: float | None,
+    ) -> None:
+        """Fill the LA strain rows (plan А.6) or blank them.
+
+        A phase a view could not measure (no A-onset on the curve) shows
+        ``--``; the whole block stays blank when the study has no LA
+        measurement — the table never fabricates an atrial number.
+        """
+        for key, val in (("la_lasr", reservoir), ("la_lascd", conduit), ("la_lasct", booster)):
+            _lbl, val_label, _unit = self._rows[key]
+            if val is None:
+                val_label.setText("--")
+            else:
+                val_label.setText(f"{val:.1f}%")
 
     def set_mw_values(self, gwi: float | None, gwe: float | None, *, warnings: tuple[str, ...] = ()) -> None:
         """Fill the Myocardial Work rows (plan А.9) or blank them.

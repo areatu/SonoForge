@@ -297,6 +297,14 @@ class StrainReport:
     #: remembers where it is so the mask survives a reload (``None`` when the
     #: clip carries no strip or the user overrode the mask off).
     burned_ecg_strip: tuple[int, int, int, int] | None = None
+    #: А.6 LA strain (plan #644): ``(view, LASr, LAScd, LASct)`` per analysed
+    #: view with an LA measurement, plus the mean of each phase over the views
+    #: that produced a value — ``None``/empty when no view has one, so the
+    #: report simply has no LA section instead of a fabricated one.
+    la_strain_by_view: tuple[tuple[str, float, float | None, float | None], ...] = ()
+    la_reservoir_pct: float | None = None
+    la_conduit_pct: float | None = None
+    la_booster_pct: float | None = None
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
     #: ``(view, contour lineage)`` of the endocardial contour each view was

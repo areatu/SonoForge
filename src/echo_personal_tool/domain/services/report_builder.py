@@ -1229,6 +1229,37 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
         if item:
             values.append(item)
         _append_myocardial_work_values(values, strain, sex=sex)
+        _append_la_strain_report_values(values, strain, sex=sex)
+
+
+def _append_la_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:
+    """Append the LA strain rows (plan А.6, issue #644) when a view measured it.
+
+    Reservoir/conduit/booster magnitudes in percent; no reference-norm label
+    here — the row is honest like the MW rows, the method note travels in the
+    strain section's declarations. The means cover the views that produced
+    each phase; a phase no view measured has no row.
+    """
+    if not strain.la_strain_by_view:
+        return
+    rows = (
+        ("domain.report.la_strain_reservoir", "la.lasr", strain.la_reservoir_pct),
+        ("domain.report.la_strain_conduit", "la.lascd", strain.la_conduit_pct),
+        ("domain.report.la_strain_booster", "la.lasct", strain.la_booster_pct),
+    )
+    for label_key, measurement_id, value in rows:
+        if value is None:
+            continue
+        item = _value(
+            tr(label_key),
+            measurement_id,
+            value,
+            "%",
+            sex=sex,
+            group=GROUP_LEFT_ATRIUM,
+        )
+        if item:
+            values.append(item)
 
 
 def _append_myocardial_work_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:

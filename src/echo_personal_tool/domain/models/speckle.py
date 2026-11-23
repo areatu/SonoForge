@@ -33,6 +33,28 @@ class MyocardialZone:
         object.__setattr__(self, "epi_points", self.epi_points.copy())
 
 
+@dataclass(frozen=True)
+class LaStrainMetrics:
+    """The three clinical LA strain numbers of one beat, plus their provenance.
+
+    All percentages are positive magnitudes (LASr ≈ 25-45 %, LAScd ≈ 15-25 %,
+    LASct ≈ 12-22 % in health). ``conduit_pct``/``booster_pct`` stay ``None``
+    when the A-wave onset could not be measured or estimated — the panel shows
+    the gap, never a fabricated number.
+    """
+
+    reservoir_pct: float
+    conduit_pct: float | None
+    booster_pct: float | None
+    reservoir_index: int
+    a_onset_index: int | None
+    #: How the A-onset was found: ``"curve"`` (measured morphology) or
+    #: ``"window_fraction"`` (stated fallback) or ``"none"``.
+    a_onset_source: str = "curve"
+    booster_min_index: int | None = None
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
 @dataclass
 class TrackingResult:
     """Result of speckle tracking between two frames."""
@@ -294,3 +316,11 @@ class StrainResult:
     #: the user overrode the mask off).  Travels with the analysis record so
     #: the study metadata remembers where the vendor drew the strip.
     burned_ecg_strip: tuple[int, int, int, int] | None = None
+    #: А.6 LA strain of this clip (plan #644): the tracked-roof-arc strain
+    #: curve (zeroed at ventricular ED) and the reservoir/conduit/booster
+    #: metrics, or ``None`` when the study has no LA contour for this clip or
+    #: the tracking could not produce a usable curve.  The tracking quality
+    #: (NCC mean) travels with the numbers.
+    la_strain_curve: np.ndarray | None = None
+    la_strain: LaStrainMetrics | None = None
+    la_tracking_quality: float | None = None

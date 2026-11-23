@@ -347,7 +347,13 @@ def _labels(ru: tuple[str, str] | str, en: tuple[str, str] | str) -> Mapping[str
 # writes GWI/GCW/GWW/GWE, translating them would hide the search terms.
 RU_SYMBOLS: frozenset[str] = frozenset({"E", "A", "e′", "a′", "s′", "Vmax", "Vps", "Ved", "dP/dt", "Qp", "Qs", "RR"})
 RU_UNTRANSLATED_TERMS: frozenset[str] = frozenset({"DT", "IVRT", "VTI", "DVI"})
-RU_PROPER_NAMES: frozenset[str] = frozenset({"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE"})
+#: Proper names kept in Latin: TAPSE/PISA/GLS and the Myocardial Work indices
+#: (GWI/GCW/GWW/GWE, plan А.9) plus the LA strain phases (LASr/LAScd/LASct,
+#: plan А.6) — the write-in and the report both use these exact abbreviations,
+#: translating them would hide the search terms.
+RU_PROPER_NAMES: frozenset[str] = frozenset(
+    {"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE", "LASr", "LAScd", "LASct"}
+)
 RU_LATIN_ALLOWLIST: frozenset[str] = RU_SYMBOLS | RU_UNTRANSLATED_TERMS | RU_PROPER_NAMES
 
 # A Latin "word" in a Russian label: letters plus the prime (e′).  "dP/dt" and
@@ -657,6 +663,13 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        Quantity.RATIO, 0, synonyms=("GWW",)),
     _m("lv.gwe", ("GWE ЛЖ", "Эффективность работы миокарда"), ("LV GWE", "LV work efficiency"),
        Quantity.PERCENT, 1, synonyms=("GWE",)),
+    # ── LA strain (план А.6) — reservoir / conduit / booster of the LA roof arc ──
+    _m("la.lasr", ("LASr ЛП", "Стрейн резервуара ЛП (пик положительный)"), ("LA LASr", "LA reservoir strain"),
+       Quantity.PERCENT, 1, synonyms=("LASr", "резервуар")),
+    _m("la.lascd", ("LAScd ЛП", "Стрейн проводника ЛП"), ("LA LAScd", "LA conduit strain"),
+       Quantity.PERCENT, 1, synonyms=("LAScd", "проводник")),
+    _m("la.lasct", ("LASct ЛП", "Стрейн сокращения ЛП (бустер)"), ("LA LASct", "LA booster (contractile) strain"),
+       Quantity.PERCENT, 1, synonyms=("LASct", "бустер")),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),

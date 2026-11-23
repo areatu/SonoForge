@@ -303,8 +303,7 @@ class StrainWindow(QMainWindow):
             frames: optional full cine (N, H, W[, C]) used as the ultrasound
                 background of the A4C panel. Positions in the result are in the
                 same pixel coordinate space, so overlays line up with the image.
-            study_uid: DICOM Study Instance UID — used as the file-name stem
-                when saving a gold contour (plan §11.2 п.1).
+            study_uid: DICOM Study Instance UID — the gold-contour file-name stem.
             sop_instance_uid: DICOM SOP Instance UID, stored verbatim in the
                 gold-contour JSON for provenance.
             pixel_spacing_mm: physical pixel size (row, col) from the DICOM;
@@ -432,6 +431,7 @@ class StrainWindow(QMainWindow):
             drift=_finite_float(getattr(result, "drift_measured", None)),
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
+        self._refresh_la_strain(result)
         self._refresh_myocardial_work()
 
         # Update Bull's Eye plot
@@ -533,6 +533,21 @@ class StrainWindow(QMainWindow):
             self.show()
         self.raise_()
         self.activateWindow()
+
+    def _refresh_la_strain(self, result: StrainResult) -> None:
+        """Show the LA strain rows and curve overlay (plan А.6).
+
+        The tracked-roof-arc curve overlays the strain plot and the
+        reservoir/conduit/booster rows fill from the worker result — blank
+        rows and no curve when this clip had no LA contour to track.
+        """
+        la_strain = getattr(result, "la_strain", None)
+        self._summary.set_la_values(
+            None if la_strain is None else la_strain.reservoir_pct,
+            None if la_strain is None else la_strain.conduit_pct,
+            None if la_strain is None else la_strain.booster_pct,
+        )
+        self._curves_view.set_la_curve(getattr(result, "la_strain_curve", None), frame_time_ms=result.frame_time_ms)
 
     def _qc_meta_parts(self, result: StrainResult) -> list[str]:
         """QC/closure text for the meta bar; kept out of ``show_result``."""

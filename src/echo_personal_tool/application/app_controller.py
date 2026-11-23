@@ -4344,6 +4344,7 @@ class AppController(QObject):
             source_path=source_path,
             media_format=instance.media_format if instance is not None else "dicom",
             ecg_source_path=ecg_source_path,
+            la_contours=self._state_manager.snapshot.contours,
         )
         # As with ScanWorker, the result is delivered by a queued lambda.  Keep
         # both the QRunnable and its signals QObject alive until the callback is

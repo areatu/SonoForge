@@ -24,6 +24,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGraphicsTextItem,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -105,6 +106,10 @@ class SegmentCurvePanel(QWidget):
         self._curves: dict[int, pg.PlotDataItem] = {}
         self._mean_curve: pg.PlotDataItem | None = None
         self._es_marker: pg.InfiniteLine | None = None
+        # The LA strain curve (plan А.6) overlays the strain plot when the
+        # study carries an LA measurement; both stay None otherwise.
+        self._la_item: pg.PlotDataItem | None = None
+        self._la_note: QGraphicsTextItem | None = None
         self._ecg_item: pg.PlotDataItem | None = None
         self._ecg_marker: pg.InfiniteLine | None = None
         self._label_items: list[pg.TextItem] = []
@@ -313,6 +318,12 @@ class SegmentCurvePanel(QWidget):
         if self._mean_curve is not None:
             self._plot.removeItem(self._mean_curve)
             self._mean_curve = None
+        if self._la_item is not None:
+            self._plot.removeItem(self._la_item)
+            self._la_item = None
+        if self._la_note is not None:
+            self._la_note.hide()
+            self._la_note = None
         if self._legend is not None:
             self._plot.removeItem(self._legend)
             self._legend = None
@@ -380,6 +391,37 @@ class SegmentCurvePanel(QWidget):
         """Move the ECG frame marker (used by animation in the cine panel)."""
         if self._ecg_marker is not None and frame_time_ms > 0:
             self._ecg_marker.setPos(float(frame_index) * frame_time_ms)
+
+    def set_la_curve(self, curve: np.ndarray | None, frame_time_ms: float = 33.3) -> None:
+        """Overlay the LA strain curve (plan А.6) on the strain plot, or hide it.
+
+        One dashed orange curve with its on-plot label — a reader must never
+        mistake it for an LV segment curve. Absent without an LA measurement.
+        """
+        usable = curve is not None and len(curve) >= 2 and bool(np.isfinite(np.asarray(curve)).any())
+        if not usable:
+            if self._la_item is not None:
+                self._plot.removeItem(self._la_item)
+                self._la_item = None
+            if self._la_note is not None:
+                self._la_note.hide()
+                self._la_note = None
+            return
+        data = np.asarray(curve, dtype=np.float64)
+        x = np.arange(len(data)) * float(frame_time_ms)
+        if self._la_item is None:
+            # The LA curve wears the value colour (plan А.6): a new raw literal
+            # would grow the module's colour ceiling, and this palette slot is
+            # exactly the emphasized-metric role the overlay plays.
+            self._la_item = self._plot.plot(x, data, pen=pg.mkPen(_VALUE_COLOR, width=2, style=Qt.PenStyle.DashLine))
+            self._la_item.setZValue(4)
+        else:
+            self._la_item.setData(x, data)
+        if self._la_note is None:
+            self._la_note = QGraphicsTextItem(tr("strain.la_curve_label"), self._plot.plotItem)
+            self._la_note.setDefaultTextColor(_VALUE_COLOR)
+            self._la_note.setPos(8, 4)
+        self._la_note.show()
 
     def set_pressure_loop(self, strain: np.ndarray | None, pressure: np.ndarray | None, *, title: str = "") -> None:
         """Show the pressure–strain loop (plan А.9) or hide the panel.
@@ -630,6 +672,14 @@ class StrainCurvesView(QWidget):
         for other in self._visible_when_data.values():
             if other is not panel:
                 other.set_pressure_loop(None, None)
+
+    def set_la_curve(self, curve: np.ndarray | None, frame_time_ms: float = 33.3) -> None:
+        """Route the LA strain curve (plan А.6) to the active view panel."""
+        panel = self._visible_when_data.get(self._active_view, self._panel_a4c)
+        panel.set_la_curve(curve, frame_time_ms)
+        for other in self._visible_when_data.values():
+            if other is not panel:
+                other.set_la_curve(None)
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Legacy helper (no longer used by the curves view).
