@@ -180,7 +180,19 @@ class TestDownloadModelsChecksBeforeExtract:
         assert set(urls) == {rs_mod._MODELS_RELEASE_URL, rs_mod._VIEW_RECOGNITION_RELEASE_URL}
         manifest = json.loads((models_dir / "model_manifest.json").read_text(encoding="utf-8"))
         assert manifest["view_recognition"]["active_model"] == "view_recognition_efficientnet_b0"
+        assert manifest["view_recognition"]["class_names"] == ["A4C", "A2C", "A3C", "PLAX", "PSAX"]
         assert "view_recognition_efficientnet_b0" in manifest["models"]
+
+        legacy = {
+            "view_recognition": {
+                "active_model": "view_recognition_efficientnet_b0",
+                "class_names": ["A4C", "A2C", "A3C", "PLAX", "SAX", "PSAX", "TEE"],
+            }
+        }
+        (models_dir / "model_manifest.json").write_text(json.dumps(legacy), encoding="utf-8")
+        rs_mod._ensure_view_recognition_manifest(models_dir)
+        updated = json.loads((models_dir / "model_manifest.json").read_text(encoding="utf-8"))
+        assert updated["view_recognition"]["class_names"] == ["A4C", "A2C", "A3C", "PLAX", "PSAX"]
 
 
 class TestManifestNeverShipsUncheckedModels:

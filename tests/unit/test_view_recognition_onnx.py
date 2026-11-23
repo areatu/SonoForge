@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -16,7 +17,12 @@ from echo_personal_tool.infrastructure.view_recognition_onnx import OnnxViewReco
 MODEL_ID = "view_recognition_efficientnet_b0"
 
 
-def _write_manifest(models_dir: Path, *, include_model: bool = True) -> Path:
+def _write_manifest(
+    models_dir: Path,
+    *,
+    include_model: bool = True,
+    class_names: Sequence[str] | None = None,
+) -> Path:
     models_dir.mkdir(parents=True, exist_ok=True)
     onnx_path = models_dir / "view_recognition_efficientnet_b0.onnx"
     if include_model:
@@ -34,7 +40,10 @@ def _write_manifest(models_dir: Path, *, include_model: bool = True) -> Path:
                 "sha256": "deadbeef",
             }
         },
-        "view_recognition": {"active_model": MODEL_ID},
+        "view_recognition": {
+            "active_model": MODEL_ID,
+            **({"class_names": list(class_names)} if class_names else {}),
+        },
     }
     manifest_path = models_dir / "model_manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -87,6 +96,15 @@ def test_recognize_returns_view_from_softmax_logits(tmp_path: Path) -> None:
     result = recognizer.recognize(_frames(4))
     assert result.view == "A3C"
     assert result.confidence > 0.9
+
+    # The published model still emits 7 logits; a 5-class manifest must ignore
+    # SAX/TEE outputs instead of failing on the column-count mismatch.
+    _write_manifest(models_dir, class_names=["A4C", "A2C", "A3C", "PLAX", "PSAX"])
+    raw = np.zeros((4, 7), dtype=np.float32)
+    raw[:, 6] = 5.0  # TEE wins in the raw output
+    recognizer = OnnxViewRecognizer(models_dir=models_dir, session=_fake_session(raw))
+    result = recognizer.recognize(_frames(4))
+    assert result.view == "A4C"
 
 
 def test_recognize_uses_manifest_io_names(tmp_path: Path) -> None:

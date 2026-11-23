@@ -77,7 +77,7 @@ _VIEW_RECOGNITION_MODEL_ENTRY = {
 }
 _VIEW_RECOGNITION_SECTION = {
     "active_model": "view_recognition_efficientnet_b0",
-    "class_names": ["A4C", "A2C", "A3C", "PLAX", "SAX", "PSAX", "TEE"],
+    "class_names": ["A4C", "A2C", "A3C", "PLAX", "PSAX"],
 }
 
 _DATA_DIR = data_dir()
@@ -450,6 +450,9 @@ def _ensure_view_recognition_manifest(models_dir: Path) -> None:
     section = manifest.get("view_recognition")
     if not isinstance(section, dict) or not section.get("active_model"):
         manifest["view_recognition"] = _VIEW_RECOGNITION_SECTION
+        changed = True
+    elif section.get("class_names") != _VIEW_RECOGNITION_SECTION["class_names"]:
+        section["class_names"] = list(_VIEW_RECOGNITION_SECTION["class_names"])
         changed = True
     if changed:
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
