@@ -109,8 +109,13 @@ class SummaryTable(QWidget):
         bp_label.setStyleSheet(f"color: {_DIM_COLOR}; font-size: {font_pixel_size(bp_label, 0.85, minimum=9)}px;")
         self._sbp_edit = QLineEdit()
         self._sbp_edit.setPlaceholderText("120")
+        # The summary column is narrow; without a floor the cuff fields
+        # collapsed to a few pixels and the value could not be typed at all
+        # (user feedback: the placeholder read «1…»).
+        self._sbp_edit.setMinimumWidth(40)
         self._dbp_edit = QLineEdit()
         self._dbp_edit.setPlaceholderText("80")
+        self._dbp_edit.setMinimumWidth(40)
         for edit in (self._sbp_edit, self._dbp_edit):
             edit.setFixedWidth(text_width(edit, "000", padding=18, minimum=44))
             edit.setAccessibleName(tr("strain.mw_bp_label"))

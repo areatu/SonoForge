@@ -229,6 +229,7 @@ files = [
     "src/echo_personal_tool/presentation/imt_editor.py",
     "src/echo_personal_tool/presentation/key_images.py",
     "src/echo_personal_tool/presentation/label_picker.py",
+    "src/echo_personal_tool/presentation/la_strain_trace_action.py",
     "src/echo_personal_tool/presentation/layout/__init__.py",
     "src/echo_personal_tool/presentation/layout/layout_settings.py",
     "src/echo_personal_tool/presentation/layout/presets.py",

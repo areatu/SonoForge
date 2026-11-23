@@ -254,3 +254,62 @@ class TestConstants:
         # The three views together cover the 18 segments exactly once each.
         union = VIEW_SEGMENTS["A4C"] + VIEW_SEGMENTS["A2C"] + VIEW_SEGMENTS["A3C"]
         assert len(union) == len(set(union)) == 18
+
+
+class TestCurveAxesAndColorsFeedback:
+    """User feedback 2026-11-21: оси по окну анализа, различимые цвета, честный GLS."""
+
+    def _windowed_curves(self) -> dict[int, np.ndarray]:
+        from echo_personal_tool.ui.strain_curves_view import VIEW_SEGMENTS
+
+        curves = {}
+        for seg in VIEW_SEGMENTS["A4C"]:
+            c = np.full(156, np.nan)
+            c[24:60] = np.linspace(0.0, -20.0 - seg, 36)
+            curves[seg] = c
+        return curves
+
+    def test_a4c_curves_get_six_distinct_colours(self):
+        from echo_personal_tool.ui.strain_curves_view import VIEW_CURVE_COLORS
+
+        colors = list(VIEW_CURVE_COLORS["A4C"].values())
+        assert len(colors) == len(set(colors)) == 6
+        # Every view maps the hues by position, so no curve repeats its
+        # neighbour's colour.
+        for view, mapping in VIEW_CURVE_COLORS.items():
+            assert len(set(mapping.values())) == len(mapping), view
+
+    def test_x_range_covers_the_analysis_window_not_the_whole_clip(self, qtbot):
+        """156-frame results carry NaN outside the analysis window; the axis
+        used to scale to the full clip, squeezing the curves into a band."""
+        from echo_personal_tool.ui.strain_curves_view import SegmentCurvePanel
+
+        panel = SegmentCurvePanel("A4C")
+        qtbot.addWidget(panel)
+        panel.set_strain_data(self._windowed_curves(), ed_index=24, es_index=30, frame_time_ms=33.3)
+        (x0, x1), (_y0, _y1) = panel._plot.getViewBox().viewRange()
+        assert 700 < x0 < 900, (x0, x1)
+        assert 1900 < x1 < 2100, (x0, x1)
+
+    def test_panel_shows_the_qc_gated_gls_not_the_raw_mean(self, qtbot):
+        """The header number must match the meta bar (0.0% gated), not the
+        raw mean of segment peaks the gate rejected."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
+
+        curves = self._windowed_curves()
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, 105.0, 156),
+            radial=np.linspace(0.0, 40.0, 156),
+            gls=0.0,
+            ed_index=24,
+            es_index=30,
+            view="A4C",
+            frame_time_ms=33.3,
+            segment_strain={seg: float(np.nanmax(c)) for seg, c in curves.items()},
+            segment_curves=curves,
+        )
+        view = StrainCurvesView()
+        qtbot.addWidget(view)
+        view.set_strain_data(result)
+        assert view._panel_a4c._gls_label.text() == "GLS 0.0%"

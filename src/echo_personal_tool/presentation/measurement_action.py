@@ -35,6 +35,7 @@ class MeasurementAction(str, Enum):
     LA_DIAMETER = "la_diameter"
     LAV_4C = "lav_4c"
     LAV_BI = "lav_bi"
+    LA_STRAIN = "la_strain"
     RA_DIAMETER = "ra_diameter"
     RA_AREA = "ra_area"
     RAV_VOLUME = "rav_volume"

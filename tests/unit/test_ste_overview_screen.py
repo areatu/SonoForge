@@ -303,3 +303,50 @@ class TestOverviewScreen:
         pix = w.grab()
         assert pix.width() >= 1000
         assert pix.height() >= 500
+
+
+class TestCardStabilityFeedback:
+    """User feedback 2026-11-21: карточка A4C растягивалась от перерисовок,
+    пустая ECG-полоса оставляла рамку на карточках без данных."""
+
+    def _show_card(self, card) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        card.setFixedWidth(340)
+        card.show()
+        QApplication.processEvents()
+
+    def test_card_does_not_grow_across_re_renders(self):
+        """The QLabel pixmap fed its own sizeHint back into the next scale()
+        call; the card inched taller on every set_analysis until it pushed
+        the row off the screen."""
+        from echo_personal_tool.ui.ste.overview_screen import _ViewCard
+
+        card = _ViewCard("A4C")
+        self._show_card(card)
+        snap = _make_snapshot("A4C")
+        analysis = _make_analysis("A4C", gls=0.0, qc_status="invalid")
+        heights = []
+        from PySide6.QtWidgets import QApplication as _QApplication
+
+        app = _QApplication.instance()
+        for _ in range(6):
+            card.set_analysis(analysis, snap)
+            app.processEvents()
+            heights.append(card.height())
+        assert max(heights) - min(heights) == 0, heights
+
+    def test_ecg_strip_shows_only_with_a_real_trace(self):
+        """Empty card → strip hidden (no outlined box); trace → strip shown."""
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.ui.ste.overview_screen import _ViewCard
+
+        card = _ViewCard("A4C")
+        self._show_card(card)
+        card.set_analysis(_make_analysis("A4C"), _make_snapshot("A4C"))
+        QApplication.processEvents()
+        assert not card._ecg_plot.isHidden()
+        card.clear()
+        QApplication.processEvents()
+        assert card._ecg_plot.isHidden()

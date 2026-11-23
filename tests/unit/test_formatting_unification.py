@@ -400,3 +400,13 @@ class TestDisplayFormatsHelpers:
         assert display_formats.format_storage_bytes(2048) == "2.0 KiB"
         assert display_formats.format_pixel_extent(42.36) == "42.4"
         assert display_formats.format_pixel_extent(42.36, whole=True) == "42"
+
+
+def test_cuff_fields_keep_a_minimum_width() -> None:
+    """User feedback: in the narrow summary column the «АД по манжете» fields
+    collapsed to «1…» — the two QLineEdit floors keep them typable."""
+    from echo_personal_tool.ui.summary_table import SummaryTable
+
+    table = SummaryTable()
+    assert table._sbp_edit.minimumWidth() >= 40
+    assert table._dbp_edit.minimumWidth() >= 40

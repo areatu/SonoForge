@@ -127,6 +127,7 @@ from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLaye
 from echo_personal_tool.presentation.free_wall_trace_action import start_rv_free_wall_trace
 from echo_personal_tool.presentation.imt_editor import show_imt_editor
 from echo_personal_tool.presentation.key_images import show_key_images
+from echo_personal_tool.presentation.la_strain_trace_action import start_la_strain_trace
 from echo_personal_tool.presentation.layout.presets import (
     PRESETS,
     SLOT_GALLERY,
@@ -5390,6 +5391,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
             MeasurementAction.RV_FREE_WALL: lambda: start_rv_free_wall_trace(self),
+            MeasurementAction.LA_STRAIN: lambda: start_la_strain_trace(self),
             MeasurementAction.IVC_MMODE_EXPIR: lambda: start_mode_caliper(self, "IVC-EXP", "menu.ivc_exp"),
             MeasurementAction.IVC_MMODE_INSP: lambda: start_mode_caliper(self, "IVC-INSP", "menu.ivc_insp"),
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
@@ -5922,7 +5924,6 @@ class MainWindow(QMainWindow):
         gls = result.gls
         ncc_pct = result.tracking_quality_mean * 100.0
         qc_pct = result.qc_score * 100.0
-        drift = "ON" if result.drift_compensation_applied else "OFF"
         preset_name = self._format_speckle_preset_name(result.config_preset)
 
         # Quality gate info
@@ -5931,27 +5932,28 @@ class MainWindow(QMainWindow):
         rejected = result.kernels_rejected_count
         if total > 0:
             accepted_pct = (accepted / total) * 100.0
-            quality_info = f"Kernels: {accepted}/{total} ({format_whole_pct(accepted_pct)}%)"
+            kernels_detail = f"{accepted}/{total} ({format_whole_pct(accepted_pct)}%)"
+            quality_info = tr("status.speckle_kernels", detail=kernels_detail)
             if rejected > 0:
-                quality_info += f" [{rejected} rejected]"
+                quality_info += " " + tr("status.speckle_kernels_rejected", count=rejected)
         else:
             quality_info = ""
 
         # Honest QC: NCC alone can read >90% while the deformation is
-        # implausible; the combined QC score and physiology check are shown
-        # alongside it so users are not misled (issue #3).
-        qc_info = f"QC: {format_whole_pct(qc_pct)}%"
+        # implausible; show the score and the physiology check together (issue #3).
+        qc_info = tr("status.speckle_qc", detail=format_whole_pct(qc_pct))
         if not result.qc_physiology_ok and result.qc_physiology_reasons:
             qc_info += f" [⚠ {result.qc_physiology_reasons[0]}]"
 
+        drift_key = "status.speckle_drift_on" if result.drift_compensation_applied else "status.speckle_drift_off"
         status_parts = [
             f"GLS: {_fmt('lv.gls', gls, '%')}%",
             qc_info,
-            f"NCC: {format_whole_pct(ncc_pct)}%",
+            tr("status.speckle_ncc", pct=format_whole_pct(ncc_pct)),
             quality_info,
             f"{tr('status.phase_gating')}: {phase_source_label(str(result.ed_es_source))}",
-            f"Drift: {drift}",
-            f"Preset: {preset_name}",
+            tr("status.speckle_drift", mode=tr(drift_key)),
+            tr("status.speckle_preset", name=preset_name),
         ]
         self._show_status(" | ".join(filter(None, status_parts)))
         self._viewer.show_speckle_result(result)
@@ -5971,8 +5973,7 @@ class MainWindow(QMainWindow):
         # One accumulation of analysed views for the window and the protocol:
         # the controller owns it, the window adopts it (plan §5.3 п.6).
         window.set_study(self._controller.strain_study())
-        # DICOM provenance so the strain window can save a gold-contour JSON
-        # with the correct study UID and pixel spacing (§11.2 п.1).
+        # DICOM provenance for the gold-contour JSON (§11.2 п.1).
         snapshot = self._controller.state_manager.snapshot
         spacing = snapshot.effective_pixel_spacing or (1.0, 1.0)
         study_uid = ""
@@ -6175,15 +6176,13 @@ class MainWindow(QMainWindow):
 
     def _on_lav_4c(self) -> None:
         self._lav_bi_active = False
-        if self._start_chamber_contour(
+        if not self._start_chamber_contour(
             "LA",
             "ES",
             "A4C",
             overlay=tr("status.lav4c_overlay"),
             status=tr("status.lav4c_status"),
         ):
-            pass
-        else:
             self._show_status(f"Load a frame first or cancel the active tool ({shortcut_label('cancel_tool')})")
 
     def _on_lav_4c_auto(self) -> None:
