@@ -212,3 +212,125 @@ class TestSegmentSideDeclarations:
         analysis = StrainAnalysis.from_result(result)
         assert analysis.segment_sides == sides
         assert "mirrored" in analysis.to_dict()["sampling"]["segment_sides"]
+
+
+class TestLayeredStrainRecord:
+    """А.8 (issue 646): per-layer GLS and the transmural gradient in the record."""
+
+    @staticmethod
+    def _layered_result(view: str = "A4C", gls: float = -18.0) -> StrainResult:
+        from dataclasses import replace
+
+        base = _result(view, gls)
+        layer_gls = {"endo": gls, "mid": -14.0, "epi": -10.0}
+        return replace(
+            base,
+            layer_gls=dict(layer_gls),
+            layer_curves={layer: np.linspace(0.0, value, 12) for layer, value in layer_gls.items()},
+            layer_segment_curves={layer: {3: np.linspace(0.0, value, 12)} for layer, value in layer_gls.items()},
+        )
+
+    def test_from_result_maps_layer_gls_and_gradient(self) -> None:
+        analysis = StrainAnalysis.from_result(self._layered_result())
+        assert analysis.layer_gls["endo"] == pytest.approx(-18.0)
+        assert analysis.layer_gls["mid"] == pytest.approx(-14.0)
+        assert analysis.layer_gls["epi"] == pytest.approx(-10.0)
+        # epi −10 − endo −18 = +8 pp: positive when the endocardium deforms more.
+        assert analysis.transmural_gradient_pp == pytest.approx(8.0)
+
+    def test_a_layer_without_a_curve_stays_out_of_the_record(self) -> None:
+        from dataclasses import replace
+
+        result = replace(self._layered_result(), layer_gls={"endo": -18.0})
+        analysis = StrainAnalysis.from_result(result)
+        assert set(analysis.layer_gls) == {"endo"}
+        assert analysis.transmural_gradient_pp is None
+
+    def test_a_plain_result_records_no_layers(self) -> None:
+        analysis = StrainAnalysis.from_result(_result("A4C", -18.0))
+        assert analysis.layer_gls == {}
+        assert analysis.transmural_gradient_pp is None
+
+    def test_the_record_exports_layers_and_stays_json_serialisable(self) -> None:
+        analysis = StrainAnalysis.from_result(self._layered_result())
+        data = analysis.to_dict()
+        assert data["values"]["layer_gls"]["endo"] == pytest.approx(-18.0)
+        assert data["values"]["transmural_gradient_pp"] == pytest.approx(8.0)
+        assert "layers" in data["definitions"]
+        json.dumps(data)  # must not raise
+
+    def test_report_collects_layer_rows_and_means(self) -> None:
+        from echo_personal_tool.domain.models.ste_analysis import (
+            StrainStudy,
+            strain_report_from_study,
+        )
+
+        study = StrainStudy(
+            analyses={
+                "A4C": StrainAnalysis.from_result(self._layered_result("A4C", -18.0)),
+                "A2C": StrainAnalysis.from_result(self._layered_result("A2C", -20.0)),
+            }
+        )
+        report = strain_report_from_study(study)
+        assert report is not None
+        assert report.layer_gls_by_view[0][0] == "A4C"
+        assert report.layer_gls_by_view[0][1] == pytest.approx(-18.0)
+        assert report.layer_gls_by_view[1][1] == pytest.approx(-20.0)
+        assert report.layer_mid_pct == pytest.approx(-14.0)
+        assert report.layer_epi_pct == pytest.approx(-10.0)
+        # Gradients of the two views: epi −10 − endo −18 = +8, epi −10 −
+        # endo −20 = +10 → mean +9 pp.
+        assert report.layer_gradient_pp == pytest.approx(9.0)
+
+    def test_report_without_layers_has_no_layer_section(self) -> None:
+        from echo_personal_tool.domain.models.ste_analysis import (
+            StrainStudy,
+            strain_report_from_study,
+        )
+
+        study = StrainStudy(analyses={"A4C": StrainAnalysis.from_result(_result("A4C", -18.0))})
+        report = strain_report_from_study(study)
+        assert report is not None
+        assert report.layer_gls_by_view == ()
+        assert report.layer_mid_pct is None
+        assert report.layer_epi_pct is None
+        assert report.layer_gradient_pp is None
+
+    def test_layer_rows_reach_the_protocol_in_the_lv_group(self) -> None:
+        from echo_personal_tool.application.localization import set_language
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_VENTRICLE, build_report_groups
+
+        report = StrainReport(
+            gls_by_view=(("A4C", -18.0),),
+            qc_by_view=(("A4C", "valid"),),
+            gls_average=-18.0,
+            views_valid=("A4C",),
+            layer_gls_by_view=(("A4C", -18.0, -14.0, -10.0),),
+            layer_mid_pct=-14.0,
+            layer_epi_pct=-10.0,
+            layer_gradient_pp=8.0,
+        )
+        set_language("ru")
+        try:
+            groups = build_report_groups(MeasurementSnapshot(strain=report, spacing_calibrated=True), sex="M")
+        finally:
+            set_language("en")
+        lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
+        labels = {value.label for value in lv.values}
+        assert any("среднего слоя" in label for label in labels)
+        assert any("эпикарда" in label for label in labels)
+        assert any("эндо−эпи" in label for label in labels)
+
+    def test_no_layers_adds_no_protocol_rows(self) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+        report = StrainReport(
+            gls_by_view=(("A4C", -18.0),),
+            qc_by_view=(("A4C", "valid"),),
+            gls_average=-18.0,
+            views_valid=("A4C",),
+        )
+        groups = build_report_groups(MeasurementSnapshot(strain=report, spacing_calibrated=True), sex="M")
+        assert not any("эндо−эпи" in value.label for group in groups for value in group.values)

@@ -8,7 +8,7 @@
     "presentation/user_preferences_dialog.py::UserPreferencesDialog._build_pages": 328,
     "presentation/viewer_widget.py::ViewerWidget.__init__": 299,
     "ui/bullseye_widget.py::BullseyeWidget.paintEvent": 221,
-    "ui/strain_window.py::StrainWindow.show_result": 246
+    "ui/strain_window.py::StrainWindow.show_result": 237
   },
   "limit": 200,
   "version": 1

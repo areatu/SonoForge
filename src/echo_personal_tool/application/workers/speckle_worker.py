@@ -585,6 +585,7 @@ class SpeckleTrackingWorker(QRunnable):
             self._run_preprocess_and_track(state)
             self._run_trajectories(state)
             self._run_strain_curves(state)
+            self._run_layered_strain(state)
             self._run_la_strain(state)
             self._run_rv_strain(state)
             self._run_clinical_metrics(state)
@@ -1176,6 +1177,65 @@ class SpeckleTrackingWorker(QRunnable):
         # global curve, AVC-independent), ESS (value at AVC), time to peak,
         # post-systolic index and the measured baseline drift.
 
+    def _run_layered_strain(self, state: Any) -> None:
+        """Per-layer endo/mid/epi strain curves and GLS (plan А.8, issue #646).
+
+        Optional evidence computed from the tracking that already happened:
+        each ring of the zone sampling is its own material line, and every
+        layer curve reuses the global curve's exact function and NCC weights,
+        so the endocardial layer reproduces the reported global curve bit for
+        bit. A run whose zone has a single ring — or lost a whole layer to
+        visibility — simply carries fewer layers, never an interpolated one.
+        """
+        state.layer_curves = {}
+        state.layer_gls = {}
+        state.layer_segment_curves = {}
+        # The radial fallback in _run_strain_curves reverts the endocardial
+        # arc to its full line when the paired epi arc disagrees; the layered
+        # curves must describe the same measurement as the reported global
+        # curve, so visibility filtering is dropped exactly while that
+        # fallback is in effect.
+        visible = None if state.strain_endo == state.strain_endo_all else state.visible_nodes
+
+        from echo_personal_tool.domain.services.layered_strain import (
+            compute_layer_gls,
+            compute_layer_longitudinal_curves,
+            compute_layer_segment_curves,
+        )
+
+        window_curves = compute_layer_longitudinal_curves(
+            state.smoothed,
+            state.local_ed,
+            self._pixel_spacing,
+            state.kernels,
+            ncc_weights=state.ed_ncc,
+            visible_nodes=visible,
+            min_visible=MIN_VISIBLE_NODES,
+        )
+        for layer, curve in window_curves.items():
+            state.layer_curves[layer] = _embed_window_curve(curve, state.n_frames, state.phase_start, state.phase_end)
+        state.layer_gls = compute_layer_gls(window_curves, ed_index=state.local_ed, es_index=state.local_es)
+        state.layer_segment_curves = {
+            layer: {
+                int(seg): _embed_window_curve(seg_curve, state.n_frames, state.phase_start, state.phase_end)
+                for seg, seg_curve in per_layer.items()
+            }
+            for layer, per_layer in compute_layer_segment_curves(
+                state.smoothed,
+                state.local_ed,
+                self._pixel_spacing,
+                state.kernels,
+                visible_nodes=visible,
+                smoothing_frames=int(state.config.curve_smoothing_frames),
+                min_visible=MIN_VISIBLE_NODES,
+            ).items()
+        }
+        logger.info(
+            "STE layered strain: layers=%s GLS=%s",
+            sorted(state.layer_curves),
+            {layer: round(value, 2) for layer, value in state.layer_gls.items()},
+        )
+
     def _run_la_strain(self, state: Any) -> None:
         """Track the LA roof arc and compute reservoir/conduit/booster (plan А.6).
 
@@ -1671,6 +1731,9 @@ class SpeckleTrackingWorker(QRunnable):
             la_strain_curve=getattr(state, "la_strain_curve", None),
             la_strain=getattr(state, "la_strain_metrics", None),
             la_tracking_quality=getattr(state, "la_tracking_quality", None),
+            layer_curves=dict(state.layer_curves),
+            layer_gls=dict(state.layer_gls),
+            layer_segment_curves={layer: dict(curves) for layer, curves in state.layer_segment_curves.items()},
             rv_strain_curve=getattr(state, "rv_strain_curve", None),
             rv_strain=getattr(state, "rv_strain_metrics", None),
             rv_tracking_quality=getattr(state, "rv_tracking_quality", None),

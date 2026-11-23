@@ -936,3 +936,44 @@ class TestBullseyeSmallWidgetGeometry:
         widget = BullseyeWidget()
         assert widget.sizePolicy().horizontalPolicy() == widget.sizePolicy().horizontalPolicy().Expanding
         assert widget.sizePolicy().verticalPolicy() == widget.sizePolicy().verticalPolicy().Expanding
+
+
+class TestStrainWindowLayerSelection:
+    """Plan А.8 (issue #646): the myocardial layer selector drives the curves view."""
+
+    def _make_window(self):
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        return StrainWindow()
+
+    def test_the_layer_group_has_three_radios_with_endo_default(self):
+        w = self._make_window()
+        buttons = w._control._layer_buttons
+        assert set(buttons) == {"endo", "mid", "epi"}
+        assert buttons["endo"].isChecked()
+        assert not buttons["mid"].isChecked()
+        assert not buttons["epi"].isChecked()
+
+    def test_toggling_a_layer_radio_switches_the_curves_view(self):
+        w = self._make_window()
+        w._control._layer_buttons["epi"].setChecked(True)
+        assert w._curves_view._active_layer == "epi"
+        w._control._layer_buttons["endo"].setChecked(True)
+        assert w._curves_view._active_layer == "endo"
+
+    def test_unknown_layer_names_are_ignored(self):
+        w = self._make_window()
+        w._curves_view.set_active_layer("basal")
+        assert w._curves_view._active_layer == "endo"
+
+    def test_the_summary_table_has_layer_rows(self):
+        from echo_personal_tool.ui.summary_table import SummaryTable
+
+        table = SummaryTable()
+        table.set_layer_values(-14.0, -10.0, 4.0)
+        assert table._rows["gls_mid"][1].text() == "-14.0"
+        assert table._rows["gls_epi"][1].text() == "-10.0"
+        assert table._rows["gls_grad"][1].text() == "4.0"
+        table.set_layer_values(None, None, None)
+        assert table._rows["gls_mid"][1].text() == "--"
+        assert table._rows["gls_grad"][1].text() == "--"

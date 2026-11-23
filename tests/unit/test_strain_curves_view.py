@@ -313,3 +313,86 @@ class TestCurveAxesAndColorsFeedback:
         qtbot.addWidget(view)
         view.set_strain_data(result)
         assert view._panel_a4c._gls_label.text() == "GLS 0.0%"
+
+
+class TestLayeredCurvesView:
+    """Plan А.8 (issue #646): the layer selector switches the plotted curves."""
+
+    def _layered_result(self):
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.ui.strain_curves_view import VIEW_SEGMENTS
+
+        n = 30
+        segs = VIEW_SEGMENTS["A4C"]
+        curves = {seg: np.linspace(0.0, -18.0 - seg, n) for seg in segs}
+        mid_curves = {seg: np.linspace(0.0, -14.0 - seg, n) for seg in segs}
+        epi_curves = {seg: np.linspace(0.0, -10.0 - seg, n) for seg in segs}
+        return StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, n),
+            radial=np.zeros(n),
+            gls=-18.0,
+            ed_index=0,
+            es_index=14,
+            view="A4C",
+            frame_time_ms=33.3,
+            segment_strain={seg: float(np.min(c)) for seg, c in curves.items()},
+            segment_curves=curves,
+            layer_curves={"endo": np.linspace(0.0, -18.0, n), "mid": np.linspace(0.0, -14.0, n)},
+            layer_gls={"endo": -18.0, "mid": -14.0},
+            layer_segment_curves={"endo": curves, "mid": mid_curves, "epi": epi_curves},
+        )
+
+    def test_default_layer_plots_the_endocardial_curves(self, qtbot):
+        from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
+
+        view = StrainCurvesView()
+        qtbot.addWidget(view)
+        view.set_strain_data(self._layered_result())
+        assert view._active_layer == "endo"
+        assert view._panel_a4c._gls_label.text() == "GLS -18.0%"
+
+    def test_switching_to_mid_plots_the_mid_curves_and_gls(self, qtbot):
+        from echo_personal_tool.ui.strain_curves_view import VIEW_SEGMENTS, StrainCurvesView
+
+        view = StrainCurvesView()
+        qtbot.addWidget(view)
+        result = self._layered_result()
+        view.set_strain_data(result)
+        view.set_active_layer("mid")
+        assert view._active_layer == "mid"
+        assert view._panel_a4c._gls_label.text() == "GLS -14.0%"
+        seg = VIEW_SEGMENTS["A4C"][0]
+        plotted = {s: item.yData.tolist() for s, item in view._panel_a4c._curves.items()}
+        assert plotted[seg][5] == pytest.approx(result.layer_segment_curves["mid"][seg][5])
+
+    def test_a_layer_without_curves_falls_back_to_endo_with_a_note(self, qtbot):
+        from dataclasses import replace
+
+        from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
+
+        view = StrainCurvesView()
+        qtbot.addWidget(view)
+        # The run measured only endo + mid: selecting epi must not fabricate
+        # curves — the endocardial ones stay on the plot and the header says so.
+        result = replace(
+            self._layered_result(),
+            layer_segment_curves={
+                "endo": self._layered_result().segment_curves,
+                "mid": self._layered_result().layer_segment_curves["mid"],
+            },
+        )
+        view.set_strain_data(result)
+        view.set_active_layer("epi")
+        assert view._active_layer == "epi"
+        assert "→" in view._panel_a4c._metric_label.text()
+        assert view._panel_a4c._gls_label.text() == "GLS -18.0%"
+
+    def test_switching_before_any_result_remembers_the_layer(self, qtbot):
+        from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
+
+        view = StrainCurvesView()
+        qtbot.addWidget(view)
+        view.set_active_layer("mid")
+        assert view._active_layer == "mid"
+        view.set_strain_data(self._layered_result())
+        assert view._panel_a4c._gls_label.text() == "GLS -14.0%"

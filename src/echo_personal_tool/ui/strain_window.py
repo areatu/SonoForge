@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
+from echo_personal_tool.domain.services.layered_strain import LAYERS, transmural_gradient_pp
 from echo_personal_tool.domain.services.myocardial_work import (
     build_pressure_curve,
     compute_myocardial_work,
@@ -112,6 +113,7 @@ class StrainWindow(QMainWindow):
         self._control.view_toggled.connect(self._on_view_toggled)
         self._control.display_mode_changed.connect(self._on_display_mode_changed)
         self._control.strain_metric_changed.connect(self._on_strain_metric_changed)
+        self._control.strain_layer_changed.connect(self._on_strain_layer_changed)
         self._control.qc_segment_toggled.connect(self._on_qc_segment_toggled)
         self._control.position_selected.connect(self._on_position_selected)
         self._control._btn_undo.clicked.connect(self._undo_kernel_move)
@@ -448,18 +450,9 @@ class StrainWindow(QMainWindow):
         )
         self._refresh_la_strain(result)
         self._refresh_rv_strain(result)
+        self._refresh_layer_strain(result)
         self._refresh_myocardial_work()
-
-        # Update Bull's Eye plot
-        if result.segment_strain:
-            self._panel_bullseye.update_data(
-                result.segment_strain,
-                result.segment_quality,
-                getattr(result, "segment_ttp_ms", None),
-            )
-
-            # Populate QC checkboxes for available segments
-            self._populate_qc_checkboxes(result.segment_strain)
+        self._update_bullseye(result)
 
         # Get endo kernels and positions
         endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
@@ -575,6 +568,24 @@ class StrainWindow(QMainWindow):
         rv_strain = getattr(result, "rv_strain", None)
         self._summary.set_rv_values(None if rv_strain is None else rv_strain.gls_pct)
         self._curves_view.set_rv_curve(getattr(result, "rv_strain_curve", None), frame_time_ms=result.frame_time_ms)
+
+    def _refresh_layer_strain(self, result: StrainResult) -> None:
+        """Fill the layered-strain rows (plan А.8, issue 646).
+
+        The endocardial GLS is the main ``gls`` row; only mid/epi and the
+        transmural gradient get their own rows, each ``--`` when the run
+        produced no curve for it — a layer that lost its ring to visibility
+        is never shown as a fabricated number.
+        """
+        layer_gls = getattr(result, "layer_gls", {}) or {}
+        mid = layer_gls.get("mid")
+        epi = layer_gls.get("epi")
+        gradient = transmural_gradient_pp({k: v for k, v in layer_gls.items() if np.isfinite(v)})
+        self._summary.set_layer_values(
+            float(mid) if mid is not None and np.isfinite(mid) else None,
+            float(epi) if epi is not None and np.isfinite(epi) else None,
+            gradient,
+        )
 
     def _qc_meta_parts(self, result: StrainResult) -> list[str]:
         """QC/closure text for the meta bar; kept out of ``show_result``."""
@@ -721,6 +732,17 @@ class StrainWindow(QMainWindow):
         self._control._btn_redo.setEnabled(False)
 
         logger.info("Kernel %d moved: (%.1f, %.1f) -> (%.1f, %.1f)", actual_idx, old_x, old_y, new_x, new_y)
+
+    def _update_bullseye(self, result: StrainResult) -> None:
+        """Push the segment values into the bull's-eye and its QC checkboxes."""
+        if not result.segment_strain:
+            return
+        self._panel_bullseye.update_data(
+            result.segment_strain,
+            result.segment_quality,
+            getattr(result, "segment_ttp_ms", None),
+        )
+        self._populate_qc_checkboxes(result.segment_strain)
 
     def _populate_qc_checkboxes(self, segment_strain: dict[int, float]) -> None:
         """Populate QC checkboxes only for segments with data."""
@@ -945,6 +967,14 @@ class StrainWindow(QMainWindow):
                     self._result.segment_strain,
                     self._result.segment_quality,
                 )
+
+    def _on_strain_layer_changed(self, layer: str) -> None:
+        """Switch the myocardial layer the curves view plots (plan А.8)."""
+        if layer not in LAYERS:
+            return
+        self._curves_view.set_active_layer(layer)
+        # If the curves page is already visible the view re-renders itself;
+        # switching while the contour page is up simply remembers the layer.
 
     def _on_qc_segment_toggled(self, segment_id: int, accepted: bool) -> None:
         """Handle quality control checkbox toggle for a segment."""
@@ -1226,6 +1256,17 @@ class StrainWindow(QMainWindow):
             writer.writerow(
                 ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
             )
+            # А.8 (issue 646): per-layer GLS travels with the gradient's
+            # definition, so the file stands alone like the other numbers.
+            if analysis.layer_gls:
+                layer_text = " / ".join(
+                    f"{layer}=" + ("" if analysis.layer_gls.get(layer) is None else f"{analysis.layer_gls[layer]:.2f}")
+                    for layer in LAYERS
+                    if layer in analysis.layer_gls
+                )
+                writer.writerow(["# GLS layers (endo/mid/epi)", layer_text])
+                if analysis.transmural_gradient_pp is not None:
+                    writer.writerow(["# Transmural gradient (endo−epi)", f"{analysis.transmural_gradient_pp:.2f}"])
 
         logger.info("Exported CSV")
 

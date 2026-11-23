@@ -911,3 +911,26 @@ def test_rv_strain_round_trips_and_stays_off_the_wire_when_absent():
 
     plain = dumps(record(complete_data()))
     assert b"rv_strain_by_view" not in plain
+
+
+def test_layered_strain_round_trips_and_stays_off_the_wire_when_absent():
+    """А.8 (#646): per-layer GLS and the transmural gradient persist."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_layers = replace(
+        strain,
+        layer_gls_by_view=(("A4C", -18.0, -14.0, None), ("A2C", -20.0, None, -10.0)),
+        layer_mid_pct=-14.0,
+        layer_epi_pct=-10.0,
+        layer_gradient_pp=8.0,
+    )
+    payload = dumps(record(replace(complete_data(), strain=with_layers)))
+    loaded = loads(payload)["data"]
+    assert loaded.strain.layer_gls_by_view == (("A4C", -18.0, -14.0, None), ("A2C", -20.0, None, -10.0))
+    assert loaded.strain.layer_mid_pct == -14.0
+    assert loaded.strain.layer_epi_pct == -10.0
+    assert loaded.strain.layer_gradient_pp == 8.0
+
+    plain = dumps(record(complete_data()))
+    assert b"layer_gls_by_view" not in plain
+    assert b"layer_gradient_pp" not in plain
