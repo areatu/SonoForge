@@ -60,7 +60,7 @@ presenter = [
 build = [
     "pyinstaller>=6.10",
     "pyinstaller-hooks-contrib>=2024.8",
-    "cyclonedx-bom==8.0.1",
+    "cyclonedx-bom==9.0.0",
     "hatchling>=1.25",
 ]
 dev = [
