@@ -977,3 +977,96 @@ class TestStrainWindowLayerSelection:
         table.set_layer_values(None, None, None)
         assert table._rows["gls_mid"][1].text() == "--"
         assert table._rows["gls_grad"][1].text() == "--"
+
+
+class TestStrainWindowStressEcho:
+    """Plan А.11 (issue #649): the WMSI scoring panel and its honest wiring."""
+
+    def _make_window(self):
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        return StrainWindow()
+
+    def _seed_result(self, w):
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 10),
+            radial=np.zeros(10),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+            segment_strain={3: -20.0, 9: -10.0, 15: -2.0},
+            segment_quality={3: 0.9, 9: 0.9, 15: 0.9},
+        )
+        w.show_result(result, frames=None)
+        return result
+
+    def test_the_stress_group_has_stage_combo_and_scores(self):
+        from echo_personal_tool.domain.models.stress_echo import VALID_SCORES
+
+        w = self._make_window()
+        combo = w._control._stress_stage_combo
+        assert [combo.itemData(i) for i in range(combo.count())] == ["rest", "stress"]
+        assert w._control._stress_stage == "rest"
+        w._control.populate_stress_segments([3, 9])
+        assert set(w._control._stress_combos) == {3, 9}
+        for segment, widget in w._control._stress_combos.items():
+            assert [widget.itemData(i) for i in range(widget.count())] == list(VALID_SCORES)
+
+    def test_score_combo_edit_builds_a_manual_assessment_and_emits(self):
+        received = []
+        w = self._make_window()
+        w.stress_echo_changed.connect(received.append)
+        self._seed_result(w)
+        w._control._stress_stage_combo.setCurrentIndex(1)  # stress
+        w._control._stress_combos[3].setCurrentIndex(2)  # score 3 (akinetic)
+        assert received, "the edit must reach the controller"
+        assessment = received[-1]
+        assert assessment.stress.scores == {3: 3}
+        assert assessment.stress.source_of(3) == "manual"
+        assert assessment.rest.scores == {}
+        assert assessment.verdict_code() == "no_comparison"
+
+    def test_prefill_suggests_scores_and_marks_the_source(self):
+        w = self._make_window()
+        self._seed_result(w)  # strains: -20 → 1, -10 → 2, -2 → 3
+        w._on_stress_prefill_requested()
+        assert w._stress_echo is not None
+        assert w._stress_echo.rest.scores == {3: 1, 9: 2, 15: 3}
+        assert all(w._stress_echo.rest.source_of(seg) == "strain_suggestion" for seg in (3, 9, 15))
+        # The combos show the suggestions with the suggestion tooltip.
+        assert w._control._stress_combos[9].currentData() == 2
+        assert "стрейну" in w._control._stress_combos[9].toolTip()
+
+    def test_prefill_never_overwrites_a_manual_verdict(self):
+        w = self._make_window()
+        self._seed_result(w)
+        w._control._stress_combos[3].setCurrentIndex(3)  # manual score 4
+        w._on_stress_prefill_requested()
+        assert w._stress_echo.rest.scores[3] == 4
+        assert w._stress_echo.rest.source_of(3) == "manual"
+        assert w._stress_echo.rest.source_of(9) == "strain_suggestion"
+
+    def test_rest_and_stress_stages_stay_separate_and_the_verdict_updates(self):
+        w = self._make_window()
+        self._seed_result(w)
+        w._on_stress_prefill_requested()  # rest: all suggested
+        w._control._stress_stage_combo.setCurrentIndex(1)  # stress stage
+        w._control._stress_combos[9].setCurrentIndex(2)  # worse at stress
+        assert w._stress_echo.rest.scores[9] == 2
+        assert w._stress_echo.stress.scores[9] == 3
+        assert w._stress_echo.worsened_segments() == (9,)
+        assert w._stress_echo.verdict_code() == "ischaemia"
+
+    def test_restoring_the_session_scoring_refills_the_combos(self):
+        from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
+
+        w = self._make_window()
+        self._seed_result(w)
+        w.set_stress_echo(StressEchoAssessment(rest=StressEchoScoring(scores={3: 2})))
+        assert w._control._stress_combos[3].currentData() == 2
+        assert w._control._stress_combos[9].currentIndex() == -1

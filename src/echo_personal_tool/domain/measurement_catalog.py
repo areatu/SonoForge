@@ -349,11 +349,11 @@ RU_SYMBOLS: frozenset[str] = frozenset({"E", "A", "e′", "a′", "s′", "Vmax"
 RU_UNTRANSLATED_TERMS: frozenset[str] = frozenset({"DT", "IVRT", "VTI", "DVI"})
 #: Proper names kept in Latin: TAPSE/PISA/GLS and the Myocardial Work indices
 #: (GWI/GCW/GWW/GWE, plan А.9) plus the LA strain phases (LASr/LAScd/LASct,
-#: plan А.6) and the RV free-wall abbreviation (RV, plan А.7) — the write-in
-#: and the report both use these exact abbreviations, translating them would
-#: hide the search terms.
+#: plan А.6), the RV free-wall abbreviation (RV, plan А.7) and the wall-motion
+#: score index (WMSI, plan А.11) — the write-in and the report both use these
+#: exact abbreviations, translating them would hide the search terms.
 RU_PROPER_NAMES: frozenset[str] = frozenset(
-    {"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE", "LASr", "LAScd", "LASct", "RV"}
+    {"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE", "LASr", "LAScd", "LASct", "RV", "WMSI"}
 )
 RU_LATIN_ALLOWLIST: frozenset[str] = RU_SYMBOLS | RU_UNTRANSLATED_TERMS | RU_PROPER_NAMES
 
@@ -684,6 +684,16 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     _m("lv.gls_gradient", ("Градиент эндо−эпи ЛЖ", "Трансмуральный градиент продольной деформации (ГлПродДеф эпикарда минус ГлПродДеф эндокарда)"),
        ("LV endo−epi gradient", "Transmural longitudinal strain gradient (epicardial minus endocardial GLS)"),
        Quantity.PERCENT, 1, synonyms=("transmural gradient", "трансмуральный градиент", "градиент эндо-эпи", "Endo−epi gradient")),
+    # ── Stress echo (план А.11) — WMSI per stage and its delta ──
+    _m("lv.wmsi_rest", ("WMSI покой", "Индекс нарушения локальной сократимости, покой — средний балл по оценённым сегментам"),
+       ("WMSI rest", "Wall Motion Score Index at rest — mean over the scored segments"),
+       Quantity.RATIO, 2, synonyms=("WMSI", "WMSI rest", "ИММ покой", "индекс сократимости")),
+    _m("lv.wmsi_stress", ("WMSI стресс", "Индекс нарушения локальной сократимости, стресс"),
+       ("WMSI stress", "Wall Motion Score Index at stress"),
+       Quantity.RATIO, 2, synonyms=("WMSI stress", "ИММ стресс")),
+    _m("lv.wmsi_delta", ("ΔWMSI (стресс−покой)", "Прирост индекса нарушения локальной сократимости при стрессе (положительный — ухудшилось)"),
+       ("ΔWMSI (stress−rest)", "Wall Motion Score Index change at stress (positive — worse)"),
+       Quantity.RATIO, 2, synonyms=("WMSI delta", "прирост WMSI")),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),

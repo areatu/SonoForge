@@ -23,6 +23,7 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.manual_calculator_input import ManualCalculatorInput
 from echo_personal_tool.domain.models.measurements import StrainReport
+from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
@@ -934,3 +935,40 @@ def test_layered_strain_round_trips_and_stays_off_the_wire_when_absent():
     plain = dumps(record(complete_data()))
     assert b"layer_gls_by_view" not in plain
     assert b"layer_gradient_pp" not in plain
+
+
+def test_stress_echo_scoring_round_trips_and_stays_off_the_wire_when_absent():
+    """А.11 (#649): the WMSI scoring persists inside the measurement record."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_stress = replace(
+        complete_data(),
+        stress_echo=StressEchoAssessment(
+            rest=StressEchoScoring(scores={3: 1, 9: 1, 15: 2}),
+            stress=StressEchoScoring(scores={3: 3, 9: 1, 15: 2}),
+        ),
+    )
+    payload = dumps(record(with_stress))
+    loaded = loads(payload)["data"]
+    assert loaded.stress_echo is not None
+    assert loaded.stress_echo.rest.scores == {3: 1, 9: 1, 15: 2}
+    assert loaded.stress_echo.stress.scores == {3: 3, 9: 1, 15: 2}
+    assert loaded.stress_echo.worsened_segments() == (3,)
+    assert loaded.stress_echo.verdict_code() == "ischaemia"
+
+    plain = dumps(record(complete_data()))
+    assert b"stress_echo" not in plain
+
+
+def test_stress_echo_session_store_replaces_whole_and_clears():
+    """А.11 (#649): the newest scoring wins whole; None clears (honest reset)."""
+    store = StudyMeasurementSessionStore()
+    assessment = StressEchoAssessment(rest=StressEchoScoring(scores={3: 1}))
+    store.set_stress_echo("study-1", assessment)
+    assert store.get("study-1").stress_echo is assessment
+    replacement = StressEchoAssessment(stress=StressEchoScoring(scores={3: 2}))
+    store.set_stress_echo("study-1", replacement)
+    stored = store.get("study-1").stress_echo
+    assert stored.rest.scores == {} and stored.stress.scores == {3: 2}
+    store.set_stress_echo("study-1", None)
+    assert store.get("study-1").stress_echo is None

@@ -29,6 +29,13 @@ if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
+from echo_personal_tool.domain.models.stress_echo import (
+    SOURCE_MANUAL,
+    STAGE_REST,
+    STAGE_STRESS,
+    StressEchoAssessment,
+    StressEchoScoring,
+)
 from echo_personal_tool.domain.services.cine_phase_timeline import build_phase_timeline
 from echo_personal_tool.domain.services.layered_strain import LAYERS, transmural_gradient_pp
 from echo_personal_tool.domain.services.myocardial_work import (
@@ -37,6 +44,7 @@ from echo_personal_tool.domain.services.myocardial_work import (
     detect_valve_events,
 )
 from echo_personal_tool.domain.services.segment_map import normalise_view
+from echo_personal_tool.domain.services.stress_workflow import suggest_scoring_from_strain
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
@@ -79,6 +87,10 @@ class StrainWindow(QMainWindow):
     """Separate window for STE strain visualization with quad-view layout."""
 
     closed = Signal()
+    #: Stress-echo WMSI scoring edited in the panel (plan А.11): the complete
+    #: rest+stress assessment, so the controller's stored copy can never mix
+    #: a stale stage with a fresh one.
+    stress_echo_changed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -123,6 +135,11 @@ class StrainWindow(QMainWindow):
         self._control._btn_export_csv.clicked.connect(self._export_csv)
         self._control.save_gold_contour.connect(self._save_gold_contour)
         self._control.load_gold_contour.connect(self._load_gold_contour)
+        # Stress-echo WMSI scoring (plan А.11): the panel edits per-stage
+        # scores, the window owns the assessment and notifies the controller.
+        self._control.stress_stage_changed.connect(self._on_stress_stage_changed)
+        self._control.stress_score_changed.connect(self._on_stress_score_changed)
+        self._control.stress_prefill_requested.connect(self._on_stress_prefill_requested)
         # Plan §6.5: ``C`` cycles the bull's-eye palette. The combo box stays in
         # sync, so the keyboard and the panel never disagree about the palette.
         install_qshortcuts(self, "strain_palette", self._cycle_bullseye_palette)
@@ -221,6 +238,8 @@ class StrainWindow(QMainWindow):
         # Myocardial Work (plan А.9): cuff BP typed in the summary block; the
         # loop is recomputed per result and never fabricated without it.
         self._blood_pressure: tuple[float, float] | None = None
+        self._stress_echo: StressEchoAssessment | None = None
+        self._stress_stage: str = STAGE_REST
         self._summary.bp_edited.connect(self._on_blood_pressure_edited)
 
         # Undo/Redo stacks for kernel movements
@@ -453,6 +472,8 @@ class StrainWindow(QMainWindow):
         self._refresh_layer_strain(result)
         self._refresh_myocardial_work()
         self._update_bullseye(result)
+        # Stress-echo WMSI combos follow the measured segments (plan А.11).
+        self._refresh_stress_panel()
 
         # Get endo kernels and positions
         endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
@@ -586,6 +607,94 @@ class StrainWindow(QMainWindow):
             float(epi) if epi is not None and np.isfinite(epi) else None,
             gradient,
         )
+
+    # ── Stress-echo WMSI scoring (plan А.11, issue #649) ────────────────────
+
+    def set_stress_echo(self, assessment: StressEchoAssessment | None) -> None:
+        """Restore the session's scoring (called by the window's owner)."""
+        self._stress_echo = assessment
+        self._refresh_stress_panel()
+
+    def _stress_segments_for_scoring(self) -> list[int]:
+        """Segments the scoring UI covers: what this study actually measured."""
+        if self._study is not None and self._study.analyses:
+            measured = self._study.merged_segments(only_valid=False)
+            return sorted(measured)
+        result = self._result
+        if result is not None and result.segment_strain:
+            return sorted(result.segment_strain)
+        return []
+
+    def _refresh_stress_panel(self) -> None:
+        """Rebuild the segment combos + the WMSI/verdict row from the state."""
+        segments = self._stress_segments_for_scoring()
+        self._control.populate_stress_segments(segments)
+        scoring = self._stress_echo.stage(self._stress_stage) if self._stress_echo is not None else None
+        self._control.set_stress_scores(
+            dict(scoring.scores) if scoring is not None else {},
+            dict(scoring.sources) if scoring is not None else {},
+        )
+        self._update_stress_summary()
+
+    def _update_stress_summary(self) -> None:
+        if self._stress_echo is None or self._stress_echo.is_empty():
+            self._control.set_stress_summary(None, None, tr("stress_echo.verdict_no_comparison"))
+            return
+        verdict_key = f"stress_echo.verdict_{self._stress_echo.verdict_code()}"
+        self._control.set_stress_summary(
+            self._stress_echo.wmsi_rest(),
+            self._stress_echo.wmsi_stress(),
+            tr(verdict_key),
+        )
+
+    def _store_stage_scoring(self, scoring: StressEchoScoring) -> None:
+        """Replace the active stage's scoring and notify the controller."""
+        base = self._stress_echo if self._stress_echo is not None else StressEchoAssessment()
+        self._stress_echo = base.with_stage(self._stress_stage, scoring)
+        self._update_stress_summary()
+        self.stress_echo_changed.emit(self._stress_echo)
+
+    def _on_stress_stage_changed(self, stage: str) -> None:
+        if stage not in (STAGE_REST, STAGE_STRESS):
+            return
+        self._stress_stage = stage
+        scoring = self._stress_echo.stage(stage) if self._stress_echo is not None else None
+        self._control.set_stress_scores(
+            dict(scoring.scores) if scoring is not None else {},
+            dict(scoring.sources) if scoring is not None else {},
+        )
+
+    def _on_stress_score_changed(self, segment: int, score: int) -> None:
+        self._store_stage_scoring(
+            (
+                self._stress_echo.stage(self._stress_stage) if self._stress_echo is not None else StressEchoScoring()
+            ).with_score(segment, score, source=SOURCE_MANUAL)
+        )
+
+    def _on_stress_prefill_requested(self) -> None:
+        """Fill the active stage from the measured strain (honest suggestion).
+
+        Segments without a finite value stay unscored — the suggestion may
+        cover part of the wall; the physician completes it by eye. Existing
+        manual scores in the active stage are kept: a prefill never overwrites
+        the physician's verdict.
+        """
+        result = self._result
+        if result is None or not result.segment_strain:
+            return
+        suggested = suggest_scoring_from_strain(
+            result.segment_strain,
+            segment_quality=result.segment_quality or None,
+        )
+        current = self._stress_echo.stage(self._stress_stage) if self._stress_echo is not None else StressEchoScoring()
+        merged = dict(suggested.scores)
+        sources = dict(suggested.sources)
+        for segment, score in current.scores.items():
+            if current.sources.get(segment) == SOURCE_MANUAL:
+                merged[segment] = score
+                sources[segment] = SOURCE_MANUAL
+        self._store_stage_scoring(StressEchoScoring(scores=merged, sources=sources))
+        self._refresh_stress_panel()
 
     def _qc_meta_parts(self, result: StrainResult) -> list[str]:
         """QC/closure text for the meta bar; kept out of ``show_result``."""

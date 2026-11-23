@@ -2184,10 +2184,6 @@ class MainWindow(QMainWindow):
             return
         self._content_splitter.setSizes([width, width])
 
-    def _clear_content_layout(self) -> None:
-        """Backward-compatible alias for tests."""
-        self._release_content_layout()
-
     def _ensure_viewer2(self) -> None:
         """Create the right pane of the Multiview layout (idempotent)."""
         if self._viewer2 is not None:
@@ -5905,6 +5901,8 @@ class MainWindow(QMainWindow):
             # main window is closed.
             self._strain_window = StrainWindow()
             self._strain_window.closed.connect(self._on_strain_window_closed)
+            # Stress-echo WMSI scoring (plan А.11): the window edits the session.
+            self._strain_window.stress_echo_changed.connect(self._controller.set_stress_echo)
         return self._strain_window
 
     def _on_strain_window_closed(self) -> None:
@@ -5973,6 +5971,8 @@ class MainWindow(QMainWindow):
         # One accumulation of analysed views for the window and the protocol:
         # the controller owns it, the window adopts it (plan §5.3 п.6).
         window.set_study(self._controller.strain_study())
+        # Stress-echo WMSI is session state: start from what the session has (plan А.11).
+        window.set_stress_echo(self._controller.stress_echo)
         # DICOM provenance for the gold-contour JSON (§11.2 п.1).
         snapshot = self._controller.state_manager.snapshot
         spacing = snapshot.effective_pixel_spacing or (1.0, 1.0)
@@ -6009,6 +6009,7 @@ class MainWindow(QMainWindow):
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)
         window.set_study(self._controller.strain_study())
+        window.set_stress_echo(self._controller.stress_echo)
         # Reuse metadata captured at the last run — show_result stores it on
         # the window, and the curves page reopens the same result.
         snapshot = self._controller.state_manager.snapshot

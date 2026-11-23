@@ -94,6 +94,7 @@ from echo_personal_tool.domain.models.ste_analysis import (
     StrainStudy,
     strain_report_from_study,
 )
+from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.protocols import StudyProjection
@@ -2107,6 +2108,7 @@ class AppController(QObject):
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
             strain=session.strain,
+            stress_echo=session.stress_echo,
             calculations=calculations,
             bsa_record_status=bsa_record_status,
             simpson_record_status=simpson_record_status,
@@ -2989,22 +2991,6 @@ class AppController(QObject):
             self.step_frame(1)
         self._last_frame_shown_at = tick_started_at
         self._reschedule_playback_timer()
-
-    def _load_playback_frame(self, frame_index: int) -> None:
-        self._prefetch_playback_buffer(frame_index - 1)
-
-    def _on_playback_frame_loaded(self, request_id: int, path: Path, frame_index: int, pixels: np.ndarray) -> None:
-        if request_id != self._pending_load_id:
-            return
-        self._pending_load_id = 0
-        self._pending_source_path = None
-        self._pending_frame_index = None
-        self._frame_cache.set_current(frame_index)
-        self._frame_cache.put(frame_index, pixels)
-        self._loaded_source_path = path
-        self._loaded_frame_index = frame_index
-        self._current_frame_pixels = pixels
-        self.frame_loaded.emit(pixels)
 
     def _on_frame_loaded(
         self,
@@ -4403,3 +4389,13 @@ class AppController(QObject):
     def strain_study(self, study_uid: str | None = None) -> StrainStudy | None:
         """Analysed views of a study (the window and the report share this)."""
         return self._strain_studies.get(study_uid or self._resolve_study_uid())
+
+    @property
+    def stress_echo(self) -> StressEchoAssessment | None:
+        """The current study's stress-echo WMSI scoring (plan А.11, issue #649)."""
+        return self._measurement_session.get(self._resolve_study_uid()).stress_echo
+
+    def set_stress_echo(self, assessment: StressEchoAssessment | None) -> None:
+        """Slot for the strain window's ``stress_echo_changed`` signal (plan А.11)."""
+        self._measurement_session.set_stress_echo(self._resolve_study_uid(), assessment)
+        self._recompute_measurements()

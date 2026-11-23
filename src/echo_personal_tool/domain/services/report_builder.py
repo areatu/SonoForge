@@ -129,6 +129,7 @@ from echo_personal_tool.domain.services.report_groups import GROUP_RIGHT_VENTRIC
 from echo_personal_tool.domain.services.report_groups import GROUP_THYROID as GROUP_THYROID
 from echo_personal_tool.domain.services.report_groups import GROUP_TRICUSPID_VALVE as GROUP_TRICUSPID_VALVE
 from echo_personal_tool.domain.services.report_groups import GROUP_VESSELS as GROUP_VESSELS
+from echo_personal_tool.domain.services.report_stress_echo import stress_echo_report_values
 
 
 def reference_unit_scale(param_id: str) -> float:
@@ -704,6 +705,9 @@ def _append_left_ventricle_report_values(
     if snapshot.diastology_grade:
         values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
     _append_diastology_report_values(values, snapshot, group=GROUP_LEFT_VENTRICLE)
+    # Stress-echo WMSI (plan А.11) lives at the snapshot level, not inside the
+    # strain section: scoring works without strain and without a GLS row.
+    _append_stress_echo_report_values(values, snapshot, group=GROUP_LEFT_VENTRICLE)
 
 
 def _append_diastology_report_values(
@@ -1232,6 +1236,12 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
         _append_la_strain_report_values(values, strain, sex=sex)
         _append_rv_strain_report_values(values, strain, sex=sex)
         _append_layered_strain_report_values(values, strain, sex=sex)
+
+
+def _append_stress_echo_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, group: str) -> None:
+    """Append the stress-echo WMSI section (plan А.11); rows live in report_stress_echo."""
+    if snapshot.stress_echo is not None:
+        values.extend(stress_echo_report_values(snapshot.stress_echo, group=group))
 
 
 def _append_layered_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:

@@ -334,3 +334,49 @@ class TestLayeredStrainRecord:
         )
         groups = build_report_groups(MeasurementSnapshot(strain=report, spacing_calibrated=True), sex="M")
         assert not any("эндо−эпи" in value.label for group in groups for value in group.values)
+
+
+class TestStressEchoReportSection:
+    """Plan А.11 (issue #649): the WMSI section reaches the protocol."""
+
+    @staticmethod
+    def _snapshot(assessment):
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+
+        return MeasurementSnapshot(spacing_calibrated=True, stress_echo=assessment)
+
+    def test_wmsi_rows_reach_the_protocol(self) -> None:
+        from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+        assessment = StressEchoAssessment(
+            rest=StressEchoScoring(scores={seg: 1 for seg in range(1, 7)}),
+            stress=StressEchoScoring(scores={3: 3, **{seg: 1 for seg in range(1, 7) if seg != 3}}),
+        )
+        groups = build_report_groups(self._snapshot(assessment), sex="M")
+        all_values = {value.label: value.value for group in groups for value in group.values}
+        assert any("WMSI покой" in label for label in all_values)
+        assert any("WMSI стресс" in label for label in all_values)
+        assert any("ΔWMSI" in label for label in all_values)
+        assert any("Ухудшенных" in label for label in all_values)
+        # The verdict text is the *value* of the «Вывод» row.
+        assert any("ишемии" in value for value in all_values.values())
+
+    def test_no_scoring_adds_no_rows(self) -> None:
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+        groups = build_report_groups(self._snapshot(None), sex="M")
+        assert not any("WMSI" in value.label for group in groups for value in group.values)
+
+    def test_a_half_comparison_shows_the_honest_verdict(self) -> None:
+        from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+        assessment = StressEchoAssessment(rest=StressEchoScoring(scores={3: 2}))
+        groups = build_report_groups(self._snapshot(assessment), sex="M")
+        values = {value.label: value.value for group in groups for value in group.values}
+        # The rest row exists (2.00), the stress row and the delta do not.
+        assert any("WMSI покой" in label for label in values)
+        assert not any("WMSI стресс" in label for label in values)
+        assert not any("ΔWMSI" in label for label in values)
+        assert any("Недостаточно" in value for value in values.values())

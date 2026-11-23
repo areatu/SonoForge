@@ -79,6 +79,7 @@ from echo_personal_tool.domain.models.result_provenance import (
     ResultQC,
     SourceIdentity,
 )
+from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
 from echo_personal_tool.infrastructure.imt_storage import validate_imt_storage
@@ -128,7 +129,7 @@ FIELDS = frozenset(
     """contours linear_measurements doppler_by_instance doppler_by_instance_frame
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
  cine_segment_roi_by_instance manual_spacing_by_instance mmode_time_by_instance height_cm weight_kg
- height_source weight_source vessel_measurements simpson_area_by_frame strain imt_measurements result_provenance
+ height_source weight_source vessel_measurements simpson_area_by_frame strain stress_echo imt_measurements result_provenance
  manual_bsa_m2 bsa_basis manual_calculator_inputs calibration_by_instance
  simpson_basis doppler_basis derived_snapshot""".split()
 )
@@ -149,6 +150,8 @@ TYPES = frozenset(
         MmodeCalibrationState,
         StrainReport,
         ContourLineage,
+        StressEchoAssessment,
+        StressEchoScoring,
         VesselMeasurement,
         # BSA provenance
         BsaBasis,
@@ -242,6 +245,11 @@ def _encode(value: object) -> object:
             # produced layer curves — a single-layer analysis keeps the exact
             # wire shape older schemas accept.
             fields = fields - {"layer_gls_by_view", "layer_mid_pct", "layer_epi_pct", "layer_gradient_pp"}
+        if isinstance(value, StudyMeasurementData) and value.stress_echo is None:
+            # А.11: the stress-echo scoring is written only when the user
+            # scored something — a study without stress data keeps the exact
+            # wire shape older schemas accept.
+            fields = fields - {"stress_echo"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire
@@ -282,6 +290,24 @@ def _decode(value: Any, hint: Any) -> Any:
                 raise MeasurementStorageError("invalid")
             items = [_decode(v, h) for v, h in zip(value, args)]
         return tuple(items) if origin is tuple else items
+    if origin is dict:
+        # А.11 (issue 649): the stress-echo scoring carries ``dict[int, int]``.
+        # JSON turns every key into a string, so an int key hint accepts the
+        # canonical numeric strings back — anything else stays invalid.
+        if not isinstance(value, dict):
+            raise MeasurementStorageError("invalid")
+        key_hint, value_hint = args
+        decoded: dict[Any, Any] = {}
+        for key, item in value.items():
+            if key_hint is int and type(key) is str:
+                try:
+                    key = int(key)
+                except ValueError:
+                    raise MeasurementStorageError("invalid") from None
+            if type(key) is not key_hint:
+                raise MeasurementStorageError("invalid")
+            decoded[key] = _decode(item, value_hint)
+        return decoded
     if hint in TYPES:
         declared = dataclasses.fields(hint)
         fields = FIELDS if hint is StudyMeasurementData else {field.name for field in declared}
