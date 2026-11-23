@@ -433,7 +433,7 @@ def _ensure_view_recognition_manifest(models_dir: Path) -> None:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("cannot read model manifest for view recognition update: %s", exc)
+        log_boundary_failure(logger, "runtime.setup", exc, code="io")
         return
     if not isinstance(manifest, dict):
         return
