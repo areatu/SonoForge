@@ -305,6 +305,12 @@ class StrainReport:
     la_reservoir_pct: float | None = None
     la_conduit_pct: float | None = None
     la_booster_pct: float | None = None
+    #: А.7 RV free-wall strain (plan #645): ``(view, RV GLS %)`` per analysed
+    #: view with a free-wall measurement, plus the mean over those views —
+    #: ``None``/empty when no view has one, so the report simply has no RV
+    #: strain row instead of a fabricated one.
+    rv_strain_by_view: tuple[tuple[str, float], ...] = ()
+    rv_gls_pct: float | None = None
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
     #: ``(view, contour lineage)`` of the endocardial contour each view was

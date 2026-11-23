@@ -46,11 +46,13 @@ import numpy as np
 
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.speckle import LaStrainMetrics, SpeckleConfig, TrackingKernel
-from echo_personal_tool.domain.services.speckle_tracking import track_cine_bidirectional
-from echo_personal_tool.domain.services.strain_computation import lagrangian_strain_pct
+from echo_personal_tool.domain.services.arc_strain import (
+    MIN_ARC_POINTS,
+    arc_strain_curve,
+    build_arc_kernels,
+    track_arc,
+)
 
-#: A shorter arc cannot carry a meaningful strain curve.
-MIN_ARC_POINTS = 3
 #: A-onset fallback as a fraction of the reservoir-end → MVC window, used only
 #: when the curve morphology cannot resolve the onset (stated in warnings).
 A_ONSET_FALLBACK_FRACTION = 0.6
@@ -59,18 +61,8 @@ MIN_DIASTOLE_FRAMES = 4
 
 
 def build_la_arc_kernels(arc_points: np.ndarray, *, kernel_radius: int) -> list[TrackingKernel]:
-    """One tracking kernel per arc node, ordered along the open arc."""
-    points = np.asarray(arc_points, dtype=np.float64).reshape(-1, 2)
-    return [
-        TrackingKernel(
-            center=(float(p[0]), float(p[1])),
-            radius=int(kernel_radius),
-            node_index=i,
-            layer="endo",
-            aha_segment=0,  # the AHA model is an LV contract; the LA arc is not in it
-        )
-        for i, p in enumerate(points)
-    ]
+    """One tracking kernel per LA-arc node, ordered along the open arc."""
+    return build_arc_kernels(arc_points, kernel_radius=kernel_radius)
 
 
 def track_la_arc(
@@ -82,37 +74,15 @@ def track_la_arc(
     kernel_radius: int,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> tuple[np.ndarray, float, float] | None:
-    """Track the LA arc through the window, anchored at ``anchor_index``.
-
-    Returns ``(positions (n_frames, n_nodes, 2), ncc_mean, valid_fraction)``
-    or ``None`` when the arc is too short to track. The anchor frame is the
-    frame the *contour was drawn on* (ED or ES — either works: the strain
-    reference below re-anchors the zero at the ED frame via its tracked
-    positions).
-    """
-    points = np.asarray(arc_points, dtype=np.float64).reshape(-1, 2)
-    if points.shape[0] < MIN_ARC_POINTS or frames.ndim != 3:
-        return None
-    anchor = int(np.clip(int(anchor_index), 0, frames.shape[0] - 1))
-    kernels = build_la_arc_kernels(points, kernel_radius=kernel_radius)
-    results = track_cine_bidirectional(
+    """Track the LA arc through the window, anchored at ``anchor_index``."""
+    return track_arc(
         frames,
-        kernels,
-        ed_index=anchor,
-        config=config,
+        arc_points,
+        anchor_index,
+        config,
+        kernel_radius=kernel_radius,
         progress_callback=progress_callback,
     )
-    if not results:
-        return None
-    positions = np.stack([result.kernel_positions for result in results], axis=0)
-    ncc = np.stack([result.ncc_scores for result in results], axis=0)
-    valid = np.stack([result.valid_mask for result in results], axis=0)
-    tracked = np.delete(np.arange(ncc.shape[0]), anchor)
-    if tracked.size == 0:
-        return None
-    ncc_mean = float(np.nanmean(ncc[tracked]))
-    valid_fraction = float(np.mean(valid[tracked]))
-    return positions, ncc_mean, valid_fraction
 
 
 def compute_la_strain_curve(
@@ -120,30 +90,13 @@ def compute_la_strain_curve(
     ed_index: int,
     pixel_spacing: tuple[float, float],
 ) -> np.ndarray:
-    """Lagrangian arc-length strain of the tracked arc, zeroed at ``ed_index``.
+    """Lagrangian arc-length strain of the tracked LA arc, zeroed at ``ed_index``.
 
     The LA strain zero sits at *ventricular* end-diastole (MVc) regardless of
     which frame anchored the kernels — the reference length is measured on
     the tracked positions at the ED frame.
     """
-    positions = np.asarray(positions, dtype=np.float64)
-    n_frames = positions.shape[0]
-    curve = np.full(n_frames, np.nan, dtype=np.float64)
-    ed = int(np.clip(int(ed_index), 0, n_frames - 1))
-    avg = float(np.mean(pixel_spacing)) if len(pixel_spacing) else 1.0
-    if avg <= 0.0:
-        return curve
-
-    def arc_len(t: int) -> float:
-        diffs = np.diff(positions[t], axis=0)
-        return float(np.sum(np.linalg.norm(diffs, axis=1)) * avg)
-
-    l0 = arc_len(ed)
-    if l0 < 1e-6:
-        return curve
-    for t in range(n_frames):
-        curve[t] = lagrangian_strain_pct(arc_len(t), l0)
-    return curve
+    return arc_strain_curve(positions, ed_index, pixel_spacing)
 
 
 def _smooth_small(curve: np.ndarray, window: int = 3) -> np.ndarray:

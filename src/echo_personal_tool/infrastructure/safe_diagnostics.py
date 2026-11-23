@@ -57,6 +57,7 @@ _OPERATIONS = frozenset(
         "optical_flow.refine",
         "speckle.track",
         "speckle.la_strain",
+        "speckle.rv_strain",
         "mp4.export",
         "dcm.export",
         "orthanc.download",

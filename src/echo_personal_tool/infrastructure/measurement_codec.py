@@ -232,6 +232,11 @@ def _encode(value: object) -> object:
                 "la_conduit_pct",
                 "la_booster_pct",
             }
+        if isinstance(value, StrainReport) and not value.rv_strain_by_view:
+            # А.7: the same rule for the RV free-wall strain — written only
+            # when a view measured it; otherwise the wire shape stays exactly
+            # what older schemas accept.
+            fields = fields - {"rv_strain_by_view", "rv_gls_pct"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire

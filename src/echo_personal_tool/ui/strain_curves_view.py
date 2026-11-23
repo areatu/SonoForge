@@ -109,6 +109,8 @@ class SegmentCurvePanel(QWidget):
         # The LA strain curve (plan А.6) overlays the strain plot when the
         # study carries an LA measurement; both stay None otherwise.
         self._la_item: pg.PlotDataItem | None = None
+        self._rv_item: pg.PlotDataItem | None = None
+        self._rv_note: QGraphicsTextItem | None = None
         self._la_note: QGraphicsTextItem | None = None
         self._ecg_item: pg.PlotDataItem | None = None
         self._ecg_marker: pg.InfiniteLine | None = None
@@ -423,6 +425,38 @@ class SegmentCurvePanel(QWidget):
             self._la_note.setPos(8, 4)
         self._la_note.show()
 
+    def set_rv_curve(self, curve: np.ndarray | None, frame_time_ms: float = 33.3) -> None:
+        """Overlay the RV free-wall strain curve (plan А.7), or hide it.
+
+        One dashed green curve with its on-plot label — a reader must never
+        mistake it for an LV segment curve or the LA overlay (yellow). Absent
+        without an RV free-wall measurement.
+        """
+        usable = curve is not None and len(curve) >= 2 and bool(np.isfinite(np.asarray(curve)).any())
+        if not usable:
+            if self._rv_item is not None:
+                self._plot.removeItem(self._rv_item)
+                self._rv_item = None
+            if self._rv_note is not None:
+                self._rv_note.hide()
+                self._rv_note = None
+            return
+        data = np.asarray(curve, dtype=np.float64)
+        x = np.arange(len(data)) * float(frame_time_ms)
+        if self._rv_item is None:
+            # The RV curve wears the ok-colour (plan А.7): a new raw literal
+            # would grow the module's colour ceiling, and this palette slot is
+            # exactly the distinct-from-LA role the overlay plays.
+            self._rv_item = self._plot.plot(x, data, pen=pg.mkPen(_OK_COLOR, width=2, style=Qt.PenStyle.DashLine))
+            self._rv_item.setZValue(4)
+        else:
+            self._rv_item.setData(x, data)
+        if self._rv_note is None:
+            self._rv_note = QGraphicsTextItem(tr("strain.rv_curve_label"), self._plot.plotItem)
+            self._rv_note.setDefaultTextColor(_OK_COLOR)
+            self._rv_note.setPos(8, 24)
+        self._rv_note.show()
+
     def set_pressure_loop(self, strain: np.ndarray | None, pressure: np.ndarray | None, *, title: str = "") -> None:
         """Show the pressure–strain loop (plan А.9) or hide the panel.
 
@@ -680,6 +714,14 @@ class StrainCurvesView(QWidget):
         for other in self._visible_when_data.values():
             if other is not panel:
                 other.set_la_curve(None)
+
+    def set_rv_curve(self, curve: np.ndarray | None, frame_time_ms: float = 33.3) -> None:
+        """Route the RV free-wall curve (plan А.7) to the active view panel."""
+        panel = self._visible_when_data.get(self._active_view, self._panel_a4c)
+        panel.set_rv_curve(curve, frame_time_ms)
+        for other in self._visible_when_data.values():
+            if other is not panel:
+                other.set_rv_curve(None)
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Legacy helper (no longer used by the curves view).

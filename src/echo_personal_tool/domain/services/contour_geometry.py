@@ -8,6 +8,8 @@ from collections.abc import Sequence
 import numpy as np
 from scipy.interpolate import splev, splprep
 
+from echo_personal_tool.domain.models.contour import RV_FREE_WALL_CHAMBER, Contour
+
 DEFAULT_NODE_COUNT = 32  # Число узлов после ресемплинга открытой дуги.
 
 # R-key open-arc smoothing (manual/model LV after node edits).
@@ -527,6 +529,54 @@ def long_axis_endpoints(
         (base_start[1] + base_end[1]) / 2.0,
     )
     return base, apex_point(arc, annulus)
+
+
+def freehand_open_arc_contour(
+    points: Sequence[tuple[float, float]],
+    *,
+    chamber: str,
+    phase: str,
+    view: str,
+    frame_index: int | None,
+    unassisted: bool,
+    num_nodes: int = DEFAULT_NODE_COUNT,
+) -> Contour:
+    """A finished freehand trace as its domain contour.
+
+    The trace endpoints close the cavity base with the annulus chord (the
+    LV/atrial open-arc contract — Simpson volume is independent of which end
+    is septal, so only the strain numbering needs the trace to start at the
+    septum). The exception is the RV free wall (plan А.7): there the trace is
+    the whole measurement — an open wall line with no annulus chord (nothing
+    is closed: a wall is not a cavity) and no apex landmark, so it also never
+    reaches the edge snap (``is_open_arc`` stays ``False``).
+    """
+    pts = [(float(p[0]), float(p[1])) for p in np.asarray(points, dtype=np.float64).reshape(-1, 2)]
+    resampled = resample_open_arc(pts, num_nodes=num_nodes)
+    if chamber.upper() == RV_FREE_WALL_CHAMBER:
+        return Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            source="manual",
+            points=resampled,
+            num_nodes=num_nodes,
+            frame_index=frame_index,
+            unassisted=unassisted,
+        )
+    septal, lateral = pts[0], pts[-1]
+    return Contour(
+        phase=phase,
+        view=view,
+        chamber=chamber,
+        source="manual",
+        mitral_annulus=(septal, lateral),
+        apex_landmark=apex_point(pts, (septal, lateral)),
+        points=resampled,
+        num_nodes=num_nodes,
+        frame_index=frame_index,
+        unassisted=unassisted,
+    )
 
 
 def resample_open_arc(

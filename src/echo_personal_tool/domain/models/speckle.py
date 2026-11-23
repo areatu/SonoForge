@@ -55,6 +55,21 @@ class LaStrainMetrics:
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
+@dataclass(frozen=True)
+class RvStrainMetrics:
+    """The RV free-wall GLS of one beat, plus where the peak was found.
+
+    The value carries the LV-convention sign: a contracting free wall reads
+    negative (≈ −20…−30 % in health). ``warnings`` carries the honesty keys —
+    ``rv_strain.no_systolic_shortening`` when the measured peak is ≈0 (still
+    a measurement, never presented as a normal strain number).
+    """
+
+    gls_pct: float
+    gls_index: int
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
 @dataclass
 class TrackingResult:
     """Result of speckle tracking between two frames."""
@@ -324,3 +339,11 @@ class StrainResult:
     la_strain_curve: np.ndarray | None = None
     la_strain: LaStrainMetrics | None = None
     la_tracking_quality: float | None = None
+    #: А.7 RV strain of this clip (plan #645): the tracked free-wall strain
+    #: curve (zeroed at ventricular ED) and the peak-systolic GLS, or ``None``
+    #: when the study has no RV free-wall trace for this clip or the tracking
+    #: could not produce a usable curve. The tracking quality (NCC mean)
+    #: travels with the numbers.
+    rv_strain_curve: np.ndarray | None = None
+    rv_strain: RvStrainMetrics | None = None
+    rv_tracking_quality: float | None = None

@@ -110,6 +110,11 @@ class StrainAnalysis:
     la_conduit_pct: float | None = None
     la_booster_pct: float | None = None
     la_tracking_quality: float | None = None
+    #: А.7 RV free-wall strain of this view (plan #645): the peak-systolic
+    #: GLS of the traced free wall (LV sign convention) and the NCC mean of
+    #: the wall tracking. Both ``None`` when the clip has no free-wall trace.
+    rv_gls_pct: float | None = None
+    rv_tracking_quality: float | None = None
     ed_index: int = 0
     es_index: int = 0
     avc_index: int = 0
@@ -269,6 +274,7 @@ class StrainAnalysis:
         metrics = getattr(result, "segment_metrics", {}) or {}
         segment_ess = {int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()}
         la_metrics = getattr(result, "la_strain", None)
+        rv_metrics = getattr(result, "rv_strain", None)
         return cls(
             view=normalise_view(view or getattr(result, "view", "A4C")),
             source_contour=source if source is not None and source.recorded else None,
@@ -285,6 +291,8 @@ class StrainAnalysis:
             la_conduit_pct=None if la_metrics is None else _finite(la_metrics.conduit_pct),
             la_booster_pct=None if la_metrics is None else _finite(la_metrics.booster_pct),
             la_tracking_quality=_finite(getattr(result, "la_tracking_quality", None)),
+            rv_gls_pct=None if rv_metrics is None else _finite(rv_metrics.gls_pct),
+            rv_tracking_quality=_finite(getattr(result, "rv_tracking_quality", None)),
             ed_index=int(result.ed_index),
             es_index=int(result.es_index),
             avc_index=int(getattr(result, "avc_index", result.es_index)),
@@ -463,6 +471,7 @@ def strain_report_from_study(
     lineage_by_view: list[tuple[str, ContourLineage]] = []
     mw_by_view: list[tuple[str, float, float, float, float]] = []
     la_by_view: list[tuple[str, float, float | None, float | None]] = []
+    rv_by_view: list[tuple[str, float]] = []
     for view in study.views_measured():
         analysis = study.analyses[view]
         value = _finite(analysis.gls)
@@ -483,6 +492,9 @@ def strain_report_from_study(
                     _finite(analysis.la_booster_pct),
                 )
             )
+        rv_gls = _finite(analysis.rv_gls_pct)
+        if rv_gls is not None:
+            rv_by_view.append((view, rv_gls))
         if blood_pressure is not None:
             work = myocardial_work_from_analysis(
                 analysis.global_curve,
@@ -513,6 +525,10 @@ def strain_report_from_study(
         for key, column in (("la_reservoir_pct", 1), ("la_conduit_pct", 2), ("la_booster_pct", 3)):
             values = _column(column)
             la_summary[key] = float(np.mean(values)) if values else None
+
+    rv_gls_pct: float | None = None
+    if rv_by_view:
+        rv_gls_pct = float(np.mean([row[1] for row in rv_by_view]))
 
     first = study.analyses[gls_by_view[0][0]]
     mw_summary: dict[str, float | None] = {
@@ -552,6 +568,8 @@ def strain_report_from_study(
         la_reservoir_pct=la_summary["la_reservoir_pct"],
         la_conduit_pct=la_summary["la_conduit_pct"],
         la_booster_pct=la_summary["la_booster_pct"],
+        rv_strain_by_view=tuple(rv_by_view),
+        rv_gls_pct=rv_gls_pct,
         contour_source=contour_source,
         lineage_by_view=tuple(lineage_by_view),
     )

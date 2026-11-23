@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+#: Chamber id of an RV free-wall *trace* (plan А.7): the drawn material line
+#: the RV strain tracks, not a cavity boundary. A separate id keeps the
+#: free-wall trace out of every cavity calculation — the FAC/volume grouping
+#: selects chamber ``"RV"`` exactly, and a wall is not an area.
+RV_FREE_WALL_CHAMBER = "RV_FW"
+
 
 @dataclass(frozen=True)
 class Contour:
