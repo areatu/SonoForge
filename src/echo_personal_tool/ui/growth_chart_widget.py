@@ -27,9 +27,15 @@ from echo_personal_tool.domain.services.report_document import ReportDocument
 from echo_personal_tool.domain.services.report_zscore import CHART_PERCENTILES
 from echo_personal_tool.domain.services.zscore import BsaBandModel, percentile_curve, percentile_to_z, z_to_percentile
 from echo_personal_tool.domain.translation import get_language
-from echo_personal_tool.presentation.theme.palettes import GROWTH_CURVE, GROWTH_MEDIAN
 
 _Z_RE = re.compile(r"^[+-]?\d+\.?\d*")
+
+#: Chart colours (the ui layer keeps its own small palette, like
+#: ``strain_curves_view``): the percentile band is one calm blue, the median
+#: and the patient's point carry the accent red.  The chart sits on the
+#: always-light A4 paper, so these do not follow the theme.
+_CURVE_COLOR = "#1f77b4"
+_MEDIAN_COLOR = "#d62728"
 
 
 class _ChartEntry:
@@ -127,7 +133,7 @@ class GrowthChartWidget(QWidget):
                 [point[0] for point in points],
                 [point[1] for point in points],
                 pen=pg.mkPen(
-                    GROWTH_MEDIAN if median else GROWTH_CURVE,
+                    _MEDIAN_COLOR if median else _CURVE_COLOR,
                     width=2 if median else 1,
                     style=Qt.PenStyle.SolidLine if median else Qt.PenStyle.DashLine,
                 ),
@@ -135,9 +141,10 @@ class GrowthChartWidget(QWidget):
             )
         raw = entry.model.value_at_z(entry.z, entry.axis)
         if raw is not None:
-            plot.addItem(pg.ScatterPlotItem([entry.axis], [raw], size=12, brush=pg.mkBrush(GROWTH_MEDIAN)))
+            plot.addItem(pg.ScatterPlotItem([entry.axis], [raw], size=12, brush=pg.mkBrush(_MEDIAN_COLOR)))
             tag = pg.TextItem(
-                f"Z {entry.z:+.2f} ({tr('growth_chart.p_tag')}{round(z_to_percentile(entry.z))})", color=GROWTH_MEDIAN
+                f"Z {entry.z:+.2f} ({tr('growth_chart.p_tag')}{round(z_to_percentile(entry.z))})",
+                color=_MEDIAN_COLOR,
             )
             tag.setPos(entry.axis, raw)
             plot.addItem(tag)

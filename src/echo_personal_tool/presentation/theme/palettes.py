@@ -48,13 +48,6 @@ PAPER_TEXT = "#1b1f24"
 PAPER_TEXT_DIM = "#5b6169"
 PAPER_LINE = "#d6d9dd"
 
-#: Growth-chart curves (plan А.12): the percentile band is one calm blue and
-#: the median / the patient's point carry the accent red.  The chart sits on
-#: the always-light A4 paper, so these stay theme-independent like the paper
-#: colours above.
-GROWTH_CURVE = "#1f77b4"
-GROWTH_MEDIAN = "#d62728"
-
 #: Stable thumbnail and label colours retained from the Orthanc row delegate.
 THUMBNAIL_SURFACE = "#05070a"
 ACCENT_ACTION_TEXT = "#062026"
