@@ -40,6 +40,12 @@ from echo_personal_tool.infrastructure.paths import models_dirs_for_read
 #: collide with the segmentation models' ``inference`` / ``la_inference``.
 MANIFEST_SECTION = "view_recognition"
 
+#: Output order of the published ONNX asset. The active set can be shorter
+#: (SAX/TEE are not used); raw logits are subset to the active names before
+#: aggregation. A future export trained directly on the active set needs no
+#: subsetting because the column count then matches ``class_names``.
+_TRAINED_CLASS_NAMES: tuple[str, ...] = ("A4C", "A2C", "A3C", "PLAX", "SAX", "PSAX", "TEE")
+
 
 def _default_models_dir() -> Path:
     meipass = getattr(sys, "_MEIPASS", None)
@@ -63,6 +69,16 @@ def _load_manifest(models_dir: Path) -> dict[str, Any] | None:
         return None
     with manifest_path.open(encoding="utf-8") as handle:
         return cast(dict[str, Any], json.load(handle))
+
+
+def _resolve_class_names(manifest: dict[str, Any] | None, default: Sequence[str]) -> tuple[str, ...]:
+    if manifest is not None:
+        section = manifest.get(MANIFEST_SECTION, {})
+        if isinstance(section, dict):
+            raw = section.get("class_names")
+            if isinstance(raw, (list, tuple)) and raw:
+                return tuple(str(name) for name in raw)
+    return tuple(default)
 
 
 def _resolve_model_path(models_dir: Path, manifest: dict[str, Any]) -> Path | None:
@@ -159,8 +175,8 @@ class OnnxViewRecognizer:
         class_names: Sequence[str] = KNOWN_VIEWS,
     ) -> None:
         self._models_dir = models_dir or _default_models_dir()
-        self._class_names = tuple(class_names)
         self._manifest = _load_manifest(self._models_dir)
+        self._class_names = _resolve_class_names(self._manifest, class_names)
         self._model_path = _resolve_model_path(self._models_dir, self._manifest) if self._manifest is not None else None
         if self._manifest is not None:
             self._input_name, self._output_name = _resolve_io_names(self._manifest)
@@ -196,8 +212,19 @@ class OnnxViewRecognizer:
         if self._session is None:
             raise RuntimeError("ONNX view-recognition model is not available")
         batch = batch_to_channels(clip_to_batch(frames, self._input_size))
-        probs = self._softmax_logits(batch)
+        probs = self._select_active_columns(self._softmax_logits(batch))
         return aggregate_predictions(probs, self._class_names)
+
+    def _select_active_columns(self, probs: np.ndarray) -> np.ndarray:
+        """Drop logits of classes that are not in the active manifest set."""
+        if probs.shape[1] == len(self._class_names):
+            return probs
+        indices: list[int] = []
+        for name in self._class_names:
+            if name not in _TRAINED_CLASS_NAMES:
+                raise RuntimeError(f"class {name!r} is not in the published model output")
+            indices.append(_TRAINED_CLASS_NAMES.index(name))
+        return probs[:, indices]
 
     def _softmax_logits(self, batch: np.ndarray) -> np.ndarray:
         outputs = self._session.run(
