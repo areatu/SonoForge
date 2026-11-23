@@ -380,3 +380,17 @@ class TestStressEchoReportSection:
         assert not any("WMSI стресс" in label for label in values)
         assert not any("ΔWMSI" in label for label in values)
         assert any("Недостаточно" in value for value in values.values())
+
+    def test_the_stress_rows_module_builds_honest_rows_directly(self) -> None:
+        """Direct coverage of report_stress_echo: nothing scored → no rows at all."""
+        from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
+        from echo_personal_tool.domain.services.report_stress_echo import stress_echo_report_values
+
+        assert stress_echo_report_values(StressEchoAssessment(), group="LV") == ()
+        assessment = StressEchoAssessment(rest=StressEchoScoring(scores={3: 1}))
+        values = stress_echo_report_values(assessment, group="LV")
+        assert [value.parameter_id for value in values] == ["lv.wmsi_rest", "lv.wmsi", "lv.wmsi"]
+        assert all(value.group == "LV" for value in values)
+        assert "1.00" in values[0].value  # rest WMSI of a single normal segment
+        # The verdict of a half comparison is the honest "not enough data".
+        assert "Недостаточно" in values[-1].value
