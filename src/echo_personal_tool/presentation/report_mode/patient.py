@@ -30,6 +30,10 @@ BP_FIELDS = (
     ("diastolic_bp_mmhg", "report.bp_diastolic"),
 )
 
+#: Gestational age (plan А.12): a text editor parsed to float weeks the same
+#: way — the fetal Z-scores need it, an adult study leaves it empty.
+GA_FIELDS = (("gestational_weeks", "report.gestational_age"),)
+
 
 class ReportPatientEditor(QGroupBox):
     field_changed = Signal(str, str)
@@ -54,6 +58,15 @@ class ReportPatientEditor(QGroupBox):
             editor = QLineEdit()
             editor.setMinimumWidth(0)
             editor.setPlaceholderText(self._translate("report.bp_unit_hint"))
+            editor.setAccessibleName(self._translate(key))
+            editor.textEdited.connect(lambda text, field=name: self.field_changed.emit(field, text))
+            self._fields[name] = editor
+            form.addRow(self._translate(key), editor)
+            self._labels[name] = form.labelForField(editor)
+        for name, key in GA_FIELDS:
+            editor = QLineEdit()
+            editor.setMinimumWidth(0)
+            editor.setPlaceholderText(self._translate("report.gestational_age_hint"))
             editor.setAccessibleName(self._translate(key))
             editor.textEdited.connect(lambda text, field=name: self.field_changed.emit(field, text))
             self._fields[name] = editor

@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from PySide6.QtCore import QBuffer, QEvent, QIODevice, QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget
@@ -73,6 +74,23 @@ _ZOOM_FIT_PAGE = "fit_page"
 #: Custom factors of the zoom combo; 1.0 is Qt's «100 %» (spike §4.1:
 #: ``zoomFactor`` 1.0 means ``logicalDPI/72`` px per point, not 1 px/pt).
 _ZOOM_FACTORS: tuple[float, ...] = (0.5, 0.75, 1.0, 1.5, 2.0)
+
+
+@lru_cache(maxsize=1)
+def _growth_norm_ids() -> frozenset[str]:
+    """Measurement ids that have a norm table (plan А.12 growth charts)."""
+    from echo_personal_tool.domain.services.pediatric_norms import cached_norms
+
+    try:
+        return frozenset(cached_norms().measurement_ids())
+    except Exception:  # noqa: BLE001 - a broken norms table must not kill the sheet
+        return frozenset()
+
+
+def _document_has_growth_rows(document: ReportDocument) -> bool:
+    """Whether the sheet carries Z-score rows a growth chart can draw."""
+    ids = _growth_norm_ids()
+    return any(value.parameter_id in ids for group in document.groups for value in group.values)
 
 
 def _pdf_view_classes() -> tuple[type, type] | None:
@@ -122,6 +140,9 @@ class ReportPreview(QWidget):
     #: card (2026-11-18 list, item 1): ``(repeat_key, candidate_id)``; an empty
     #: candidate id returns the row to following the latest acquisition.
     value_choice_changed = Signal(str, str)
+    #: «Ростовые графики» (plan А.12): the Z-score rows of a paediatric or
+    #: fetal sheet open the percentile charts.
+    growth_chart_requested = Signal()
 
     def __init__(
         self,
@@ -181,6 +202,11 @@ class ReportPreview(QWidget):
         self._inputs_button.setCheckable(True)
         self._inputs_button.setAutoRaise(True)
         self._inputs_button.toggled.connect(lambda checked: self.inputs_visibility_changed.emit(bool(checked)))
+        self._growth_button = QToolButton()
+        self._growth_button.setObjectName("reportGrowthChart")
+        self._growth_button.setAutoRaise(True)
+        self._growth_button.setVisible(False)
+        self._growth_button.clicked.connect(lambda: self.growth_chart_requested.emit())
         self._profile_id = DEFAULT_PROFILE_ID
         #: Formats this study is allowed to print.  An organ study shows its own
         #: protocol only; the cardiac one keeps the generic ultrasound format
@@ -208,6 +234,7 @@ class ReportPreview(QWidget):
         toolbar.addWidget(self._profile_row)
         toolbar.addWidget(self._values_button)
         toolbar.addWidget(self._inputs_button)
+        toolbar.addWidget(self._growth_button)
         toolbar.addWidget(self._zoom_label)
         toolbar.addWidget(self._zoom)
         toolbar.addWidget(self._pages_label)
@@ -407,6 +434,7 @@ class ReportPreview(QWidget):
             return False
         self._document = document
         self._update_notice_banner()
+        self._growth_button.setVisible(_document_has_growth_rows(document))
         self._anchors = dict(rendered.anchors)
         self._pdf_bytes = rendered.pdf
         self._show_status("")
@@ -763,6 +791,12 @@ class ReportPreview(QWidget):
         self._values_button.setAccessibleName(tr("report.values.title"))
         self._inputs_button.setText(tr("report.inputs_toggle"))
         self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
+        # The growth-chart button stays hidden until the sheet carries Z rows
+        # (plan А.12); the accessibility inventory still counts it, so it
+        # names itself like the rest of the toolbar.
+        self._growth_button.setText(tr("growth_chart.open_button"))
+        self._growth_button.setAccessibleName(tr("growth_chart.open_button"))
+        self._growth_button.setToolTip(tr("growth_chart.open_hint"))
         self._zoom_label.setText(tr("report_mode.zoom"))
         current = self._zoom.currentData() if self._zoom.count() else _ZOOM_FIT_WIDTH
         self._zoom.blockSignals(True)

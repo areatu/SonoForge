@@ -48,6 +48,7 @@ SECTION_PRECEREBRAL = "precerebral"
 SECTION_ABDOMEN = "abdomen"
 SECTION_KIDNEY = "kidney"
 SECTION_THYROID = "thyroid"
+SECTION_FETAL = "fetal"
 
 #: The sections of a cardiac study: everything but the vascular block, which
 #: moved to its own profile (the owner's complaint — «Сосуды» crowded the echo
@@ -159,6 +160,8 @@ _THYROID_TOOLS: tuple[str, ...] = _ORGAN_GENERAL_TOOLS + (
 )
 
 STUDY_PROFILE_ECHO = "builtin.adult_echo"
+STUDY_PROFILE_PEDIATRIC_ECHO = "builtin.pediatric_echo"
+STUDY_PROFILE_FETAL = "builtin.fetal_echo"
 STUDY_PROFILE_VASCULAR = "builtin.vascular"
 STUDY_PROFILE_ABDOMEN = "builtin.abdomen"
 STUDY_PROFILE_KIDNEY = "builtin.kidney"
@@ -235,6 +238,25 @@ PROFILES: dict[str, StudyProfile] = {
         report_profile_id=PROFILE_ECHO,
         cardiac=True,
     ),
+    # Plan А.12 (issue #650): the paediatric study prints the same cardiac
+    # sheet — the difference is the reference *interpretation* (Z-scores
+    # against body size), not the measured structures.
+    STUDY_PROFILE_PEDIATRIC_ECHO: StudyProfile(
+        id=STUDY_PROFILE_PEDIATRIC_ECHO,
+        title_key="study_profile.pediatric_echo",
+        sections=_CARDIAC_SECTIONS,
+        report_profile_id=PROFILE_ECHO,
+        cardiac=True,
+    ),
+    # Fetal echo: the fetal biometry section plus the general one; the fetal
+    # norms are gestational-age tables, the report needs the GA input.
+    STUDY_PROFILE_FETAL: StudyProfile(
+        id=STUDY_PROFILE_FETAL,
+        title_key="study_profile.fetal_echo",
+        sections=(SECTION_GENERAL, SECTION_FETAL),
+        report_profile_id=PROFILE_ECHO,
+        cardiac=True,
+    ),
     STUDY_PROFILE_VASCULAR: StudyProfile(
         id=STUDY_PROFILE_VASCULAR,
         title_key="study_profile.vascular",
@@ -267,6 +289,8 @@ PROFILES: dict[str, StudyProfile] = {
 #: Display order of the switch — the order the owner listed the buttons in.
 PROFILE_ORDER: tuple[str, ...] = (
     STUDY_PROFILE_ECHO,
+    STUDY_PROFILE_PEDIATRIC_ECHO,
+    STUDY_PROFILE_FETAL,
     STUDY_PROFILE_VASCULAR,
     STUDY_PROFILE_ABDOMEN,
     STUDY_PROFILE_KIDNEY,

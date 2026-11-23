@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total": 165,
+  "total": 167,
   "roots": [
     "presentation",
     "ui",
@@ -26,6 +26,7 @@
     "ui/bullseye_widget.py": 1,
     "ui/cine_panel.py": 13,
     "ui/control_panel.py": 5,
+    "ui/growth_chart_widget.py": 2,
     "ui/ste/overview_screen.py": 32,
     "ui/strain_curves_view.py": 8,
     "ui/strain_window.py": 6,

@@ -155,6 +155,21 @@ def _parse_mmhg(raw: object) -> float | None:
     return value if 0.0 < value < 400.0 else None
 
 
+def _parse_weeks(raw: object) -> float | None:
+    """Parse a header gestational-age field to weeks; junk → ``None``.
+
+    Same contract as :func:`_parse_mmhg`: a cleared or malformed field means
+    «not filled in» — the fetal Z-scores then stay off the protocol instead
+    of running against an invented gestational age.
+    """
+    text = str(raw or "").strip().replace(",", ".")
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if 0.0 < value <= 45.0 else None
+
+
 class ReportCoordinator(QObject):
     """Owns the report page of the window and every reaction of the report mode."""
 
@@ -296,6 +311,7 @@ class ReportCoordinator(QObject):
         overrides = dict(raw_overrides)
         sbp = _parse_mmhg(overrides.pop("systolic_bp_mmhg", None))
         dbp = _parse_mmhg(overrides.pop("diastolic_bp_mmhg", None))
+        weeks = _parse_weeks(overrides.pop("gestational_weeks", None))
         patient = replace(patient, **overrides)
         if "systolic_bp_mmhg" in raw_overrides:
             patient = replace(patient, systolic_bp_mmhg=sbp)
@@ -303,6 +319,8 @@ class ReportCoordinator(QObject):
             # A touched field that did not parse (cleared or junk) means "no
             # pressure": it must not resurrect the header value.
             patient = replace(patient, diastolic_bp_mmhg=dbp)
+        if "gestational_weeks" in raw_overrides:
+            patient = replace(patient, gestational_weeks=weeks)
         return patient
 
     def default_report_name(self) -> str:

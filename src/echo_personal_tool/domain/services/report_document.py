@@ -94,6 +94,11 @@ class PatientInfo:
     #: then absent from the protocol instead of showing an invented loop.
     systolic_bp_mmhg: float | None = None
     diastolic_bp_mmhg: float | None = None
+    #: Gestational age in weeks — the fetal-echo input (plan А.12, issue
+    #: #650). ``None`` means "not filled in": without it the fetal norms
+    #: cannot be applied, so the protocol gets no Z-score rows instead of
+    #: inventing a reference.
+    gestational_weeks: float | None = None
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,7 @@
     "tests/unit/test_layered_strain.py",
     "tests/unit/test_rv_strain.py",
     "tests/unit/test_stress_workflow.py",
+    "tests/unit/test_zscore.py",
     "tests/unit/test_p3_pixel_cache.py",
     "tests/unit/test_phase_field.py",
     "tests/unit/test_phase_source.py",
