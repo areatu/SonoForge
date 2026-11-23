@@ -1070,3 +1070,172 @@ class TestStrainWindowStressEcho:
         w.set_stress_echo(StressEchoAssessment(rest=StressEchoScoring(scores={3: 2})))
         assert w._control._stress_combos[3].currentData() == 2
         assert w._control._stress_combos[9].currentIndex() == -1
+
+
+class TestArcStrainWindow:
+    """The dedicated LA/RV results window (user feedback: not the LV window)."""
+
+    def _window(self):
+        from echo_personal_tool.ui.arc_strain_window import ArcStrainWindow
+
+        return ArcStrainWindow()
+
+    def _result(self, *, la=True, rv=True):
+        from echo_personal_tool.domain.models.speckle import LaStrainMetrics, RvStrainMetrics, StrainResult
+
+        return StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 12),
+            radial=np.linspace(0.0, 20.0, 12),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+            la_strain=LaStrainMetrics(reservoir_pct=28.0, conduit_pct=18.0, booster_pct=15.0, reservoir_index=0, a_onset_index=8)
+            if la
+            else None,
+            la_strain_curve=np.linspace(0.0, 28.0, 12) if la else None,
+            la_tracking_quality=0.92 if la else None,
+            rv_strain=RvStrainMetrics(gls_pct=-22.0, gls_index=6) if rv else None,
+            rv_strain_curve=np.linspace(0.0, -22.0, 12) if rv else None,
+            rv_tracking_quality=0.88 if rv else None,
+        )
+
+    def test_values_and_curves_fill_from_the_result(self):
+        w = self._window()
+        w.show_result(self._result())
+        assert w._values["la_lasr"].text() == "28.0%"
+        assert w._values["la_lascd"].text() == "18.0%"
+        assert w._values["la_lasct"].text() == "15.0%"
+        assert w._values["rv_gls"].text() == "-22.0%"
+        assert w._la_item is not None and w._rv_item is not None
+        assert "92%" in w._meta_label.text() and "88%" in w._meta_label.text()
+        assert w._absent_label.text() == ""
+        w.close()
+
+    def test_absent_arcs_show_honest_gaps(self):
+        w = self._window()
+        w.show_result(self._result(la=False, rv=False))
+        assert w._values["la_lasr"].text() == "--"
+        assert w._values["rv_gls"].text() == "--"
+        assert w._la_item is None and w._rv_item is None
+        assert "ЛП" in w._absent_label.text() and "ПЖ" in w._absent_label.text()
+        w.close()
+
+    def test_second_result_replaces_the_curves(self):
+        w = self._window()
+        w.show_result(self._result())
+        first = w._la_item
+        w.show_result(self._result())
+        assert w._la_item is first, "the same plot item is reused, not stacked"
+        w.close()
+
+    def test_close_emits_the_signal(self):
+        w = self._window()
+        received = []
+        w.closed.connect(lambda: received.append(True))
+        w.show_result(self._result())
+        w.close()
+        assert received == [True]
+
+    def test_strain_window_opens_and_closes_the_arc_window(self):
+        """The combined window's owner asked for a SEPARATE results window."""
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        w = StrainWindow()
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(self._result())
+        assert w._arc_window is not None and w._arc_window.isVisible()
+        arc = w._arc_window
+        assert arc._values["rv_gls"].text() == "-22.0%"
+        w.hide()
+        assert w._arc_window is None and not arc.isVisible()
+
+    def test_strain_window_survives_manual_arc_close(self):
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        w = StrainWindow()
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(self._result())
+        arc = w._arc_window
+        arc.close()  # the user closed it — next result must reopen cleanly
+        assert w._arc_window is None
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(self._result())
+        assert w._arc_window is not None and w._arc_window.isVisible()
+
+
+class TestBurnedEcgVisibility:
+    """The burned-ECG trim must be visible (user feedback: «не видно, как работает»)."""
+
+    def _panel(self):
+        from echo_personal_tool.ui.strain_window import CinePanel
+
+        return CinePanel("A4C")
+
+    def _items(self, panel):
+        import pyqtgraph as pg
+
+        return [item for item in panel._plot.plotItem.items if isinstance(item, pg.LinearRegionItem)]
+
+    def test_strip_draws_a_band_on_the_image(self):
+        panel = self._panel()
+        panel.set_burned_ecg_strip((0, 210, 200, 220))
+        bands = self._items(panel)
+        assert len(bands) == 1, "the excluded strip shows as a shaded band"
+
+    def test_none_clears_the_band(self):
+        panel = self._panel()
+        panel.set_burned_ecg_strip((0, 210, 200, 220))
+        panel.set_burned_ecg_strip(None)
+        assert self._items(panel) == [], "a clip without a burned strip must show none"
+
+    def test_degenerate_rect_is_ignored(self):
+        panel = self._panel()
+        panel.set_burned_ecg_strip((0, 220, 200, 210))  # y1 <= y0
+        assert self._items(panel) == []
+
+    def test_clear_resets_the_band(self):
+        panel = self._panel()
+        panel.set_burned_ecg_strip((0, 210, 200, 220))
+        panel.clear()
+        assert self._items(panel) == []
+
+    def test_show_result_passes_the_strip_to_the_panel(self):
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 12),
+            radial=np.linspace(0.0, 20.0, 12),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+            burned_ecg_strip=(0, 210, 200, 220),
+        )
+        w = StrainWindow()
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(result)
+        w._panel_a4c.set_burned_ecg_strip((0, 210, 200, 220))
+        assert len(self._items(w._panel_a4c)) == 1
+        assert "Вшитая ЭКГ" in w._meta_label.text()
+
+    def test_meta_line_carries_the_detection_confidence(self):
+        """А.3 evidence: the source travels with its confidence."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 12),
+            radial=np.linspace(0.0, 20.0, 12),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+            ed_es_source="image",
+            ed_es_confidence=0.82,
+        )
+        w = StrainWindow()
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(result)
+        assert "ED/ES 0/5 (image), 82%" in w._meta_label.text()

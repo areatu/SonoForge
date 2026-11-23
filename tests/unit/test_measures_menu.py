@@ -80,13 +80,14 @@ def test_general_doppler_heart_rate_routes_time_interval_and_requires_time(qtbot
     assert any(spec.action == MeasurementAction.HEART_RATE for _, spec in menu._tool_buttons)
 
 
-def _menu_keys(profile_id: str) -> set[str]:
+def _menu_keys(profile_id: str, *, show_strain: bool = False) -> set[str]:
     """Label keys of the buttons the study profile leaves in the menu."""
     from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
     from echo_personal_tool.presentation.measures_menu import build_measure_menu
 
     preferences = default_user_preferences()
     preferences.study_profile = profile_id
+    preferences.show_strain = show_strain
     return {spec.label_key for _group, specs in build_measure_menu(preferences) for spec in specs}
 
 
@@ -183,15 +184,49 @@ def test_the_la_strain_trace_has_its_own_menu_button() -> None:
     from echo_personal_tool.infrastructure.i18n import tr
     from echo_personal_tool.presentation.measurement_action import MeasurementAction
 
-    assert "menu.la_strain_trace" in _menu_keys(STUDY_PROFILE_ECHO)
+    # The strain buttons moved into the experimental «Стрейн» section
+    # (follow-up: hide together with the LV STE tools), so the flag applies.
+    assert "menu.la_strain_trace" in _menu_keys(STUDY_PROFILE_ECHO, show_strain=True)
 
     from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
     from echo_personal_tool.presentation.measures_menu import build_measure_menu
 
+    preferences = default_user_preferences()
+    preferences.show_strain = True
     specs = {
         spec.label_key: spec
-        for _group, group_specs in build_measure_menu(default_user_preferences())
+        for _group, group_specs in build_measure_menu(preferences)
         for spec in group_specs
     }
     assert specs["menu.la_strain_trace"].action is MeasurementAction.LA_STRAIN
     assert tr("menu.la_strain_trace").startswith("Контур ЛП")
+
+
+def test_the_la_and_rv_strain_buttons_hide_with_the_strain_section() -> None:
+    """Follow-up: the arc-strain buttons live in the experimental «Стрейн» group.
+
+    The physician asked for the LA and RV strain buttons next to the LV STE
+    tools (one section) — and for the whole section to behave like one
+    experimental feature: hidden unless «Показать Стрейн» is on, and with no
+    stray copies left in the LA/RV size sections.
+    """
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+    from echo_personal_tool.presentation.measures_menu import build_measure_menu, tool_menu_catalog
+
+    catalog = {group: [b.label_key for b in buttons] for group, buttons in tool_menu_catalog()}
+    assert "menu.la_strain_trace" in catalog["menu.strain_group"]
+    assert "menu.rv_free_wall" in catalog["menu.strain_group"]
+    assert "menu.la_strain_trace" not in catalog["menu.la_group"]
+    assert "menu.rv_free_wall" not in catalog["menu.rv_group"]
+
+    preferences = default_user_preferences()
+    assert preferences.show_strain is False
+    groups = {group: {spec.label_key for spec in specs} for group, specs in build_measure_menu(preferences)}
+    strain_group = groups.get("menu.strain_group", set())
+    assert "menu.la_strain_trace" not in strain_group
+    assert "menu.rv_free_wall" not in strain_group
+
+    preferences.show_strain = True
+    groups = {group: {spec.label_key for spec in specs} for group, specs in build_measure_menu(preferences)}
+    strain_group = groups.get("menu.strain_group", set())
+    assert {"menu.strain_pos_a4c", "menu.speckle_tracking", "menu.la_strain_trace", "menu.rv_free_wall"} <= strain_group

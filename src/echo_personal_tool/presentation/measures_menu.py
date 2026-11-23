@@ -156,7 +156,6 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.lav_4c_ai_plus", MeasurementAction.LAV_4C_AI_PLUS, experimental=True),
             _btn("menu.lav_4c_auto", MeasurementAction.LAV_4C_AUTO, experimental=True),
             _btn("menu.lav_bi", MeasurementAction.LAV_BI),
-            _btn("menu.la_strain_trace", MeasurementAction.LA_STRAIN, view="A4C"),
         ),
     ),
     (
@@ -176,7 +175,6 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.rv_tapse", MeasurementAction.RV_TAPSE),
             _btn("menu.s_prime_rv", MeasurementAction.RV_S_PRIME),
             _btn("menu.rv_fac", MeasurementAction.RV_FAC, view="A4C"),
-            _btn("menu.rv_free_wall", MeasurementAction.RV_FREE_WALL, view="A4C"),
         ),
     ),
     (
@@ -261,6 +259,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.strain_pos_a2c", MeasurementAction.STE_VIEW_A2C),
             _btn("menu.strain_pos_a3c", MeasurementAction.STE_VIEW_A3C),
             _btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
+            _btn("menu.la_strain_trace", MeasurementAction.LA_STRAIN, view="A4C"),
+            _btn("menu.rv_free_wall", MeasurementAction.RV_FREE_WALL, view="A4C"),
         ),
     ),
     (

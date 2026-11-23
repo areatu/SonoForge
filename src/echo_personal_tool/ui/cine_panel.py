@@ -151,6 +151,10 @@ class CinePanel(QWidget):
         self._tracked_es_index: int = 0
         self._anim_contour_item: pg.PlotDataItem | None = None
         self._anim_scatter: pg.ScatterPlotItem | None = None
+        # А.5 (issue #643) follow-up: the burned-ECG band stays visible on the
+        # image — what the auto-trim excludes must be seeable, not just believed.
+        self._burned_ecg_band: pg.LinearRegionItem | None = None
+        self._burned_ecg_label: pg.TextItem | None = None
 
         # ECG state
         self._ecg_data: np.ndarray | None = None
@@ -359,6 +363,48 @@ class CinePanel(QWidget):
         )
         self._anim_scatter.setZValue(10)
         self._plot.addItem(self._anim_scatter)
+
+    # -- Burned-ECG band (А.5, issue #643) --------------------------------------
+
+    # One literal per colour per module: the ratchet counts occurrences, so
+    # the band's pen and its label share this constant (the alarm red the
+    # ECG marker already uses).
+    _BURNED_ECG_COLOR = "#ff1744"
+
+    def set_burned_ecg_strip(self, strip: tuple[int, int, int, int] | None) -> None:
+        """Shade the burned-ECG band the auto-trim excludes, or clear it.
+
+        ``strip`` is the ``(x0, y0, x1, y1)`` rectangle in frame pixels from
+        ``detect_burned_ecg_strip``. Drawing it on the image is the visible
+        half of the feature (user feedback: «не видно, как работает»): the
+        physician sees exactly which rows left the analysis ROI, next to the
+        «Burned ECG» HR provenance in the status bar. ``None`` clears the
+        band — the honest state for a clip without an embedded strip.
+        """
+        if self._burned_ecg_band is not None:
+            self._plot.removeItem(self._burned_ecg_band)
+            self._burned_ecg_band = None
+        if self._burned_ecg_label is not None:
+            self._plot.removeItem(self._burned_ecg_label)
+            self._burned_ecg_label = None
+        if strip is None:
+            return
+        x0, y0, x1, y1 = (float(v) for v in strip)
+        if not (x1 > x0 and y1 > y0):
+            return
+        self._burned_ecg_band = pg.LinearRegionItem(
+            orientation="horizontal",
+            span=(y0, y1),
+            brush=pg.mkBrush(255, 23, 68, 46),
+            pen=pg.mkPen(self._BURNED_ECG_COLOR, width=1, style=Qt.PenStyle.DashLine),
+            movable=False,
+        )
+        self._burned_ecg_band.setZValue(5)
+        self._plot.addItem(self._burned_ecg_band)
+        self._burned_ecg_label = pg.TextItem(tr("cine.burned_ecg_band"), color=self._BURNED_ECG_COLOR)
+        self._burned_ecg_label.setPos(x0, y0)
+        self._burned_ecg_label.setZValue(11)
+        self._plot.addItem(self._burned_ecg_label)
 
     # -- ECG strip -------------------------------------------------------------
 
@@ -668,6 +714,7 @@ class CinePanel(QWidget):
 
     def clear(self) -> None:
         self._stop_playback()
+        self.set_burned_ecg_strip(None)
         if self._ed_contour_item is not None:
             self._plot.removeItem(self._ed_contour_item)
             self._ed_contour_item = None
