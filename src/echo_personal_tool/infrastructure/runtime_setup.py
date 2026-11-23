@@ -44,8 +44,7 @@ MODELS_RELEASE_SHA256 = "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b296453370
 #: pinned archive. The archive contains both the .onnx and its .onnx.data
 #: sidecar, so its digest covers the complete model.
 _VIEW_RECOGNITION_RELEASE_URL = (
-    "https://github.com/areatu/sonoforge-models/releases/download/"
-    "view-recognition-v1/view-recognition-v1.tar.gz"
+    "https://github.com/areatu/sonoforge-models/releases/download/view-recognition-v1/view-recognition-v1.tar.gz"
 )
 VIEW_RECOGNITION_RELEASE_SHA256 = "c0fc22fe350ddfaa798b719dff2c0ed57d35399a9872a8edddbed95b974caaaa"
 _VIEW_RECOGNITION_FILES = (

@@ -335,8 +335,7 @@ class TestValidateDownloadUrl:
     def test_release_url_is_accepted(self):
         assert rs_mod._validate_download_url(rs_mod._MODELS_RELEASE_URL) == rs_mod._MODELS_RELEASE_URL
         assert (
-            rs_mod._validate_download_url(rs_mod._VIEW_RECOGNITION_RELEASE_URL)
-            == rs_mod._VIEW_RECOGNITION_RELEASE_URL
+            rs_mod._validate_download_url(rs_mod._VIEW_RECOGNITION_RELEASE_URL) == rs_mod._VIEW_RECOGNITION_RELEASE_URL
         )
 
     def test_plain_http_is_rejected(self):

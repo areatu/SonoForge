@@ -36,13 +36,17 @@ class TestPinnedDigest:
 
     def test_is_full_sha256(self) -> None:
         assert HEX64.match(rs_mod.MODELS_RELEASE_SHA256), "pinned digest is not 64 lowercase hex chars"
-        assert HEX64.match(rs_mod.VIEW_RECOGNITION_RELEASE_SHA256), "view recognition digest is not 64 lowercase hex chars"
+        assert HEX64.match(rs_mod.VIEW_RECOGNITION_RELEASE_SHA256), (
+            "view recognition digest is not 64 lowercase hex chars"
+        )
 
     def test_matches_pinned_value(self) -> None:
         # The literals live in the module; if a release asset is re-uploaded,
         # the corresponding constant must be updated deliberately.
         assert rs_mod.MODELS_RELEASE_SHA256 == "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b2964533703ed50825d"
-        assert rs_mod.VIEW_RECOGNITION_RELEASE_SHA256 == "c0fc22fe350ddfaa798b719dff2c0ed57d35399a9872a8edddbed95b974caaaa"
+        assert (
+            rs_mod.VIEW_RECOGNITION_RELEASE_SHA256 == "c0fc22fe350ddfaa798b719dff2c0ed57d35399a9872a8edddbed95b974caaaa"
+        )
 
     def test_launcher_cli_prints_the_pinned_value(self) -> None:
         result = subprocess.run(
