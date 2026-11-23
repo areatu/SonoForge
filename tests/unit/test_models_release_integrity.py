@@ -127,6 +127,7 @@ class TestDownloadModelsChecksBeforeExtract:
         models_dir = tmp_path / "models"
         monkeypatch.setattr(rs_mod, "_DATA_DIR", tmp_path)
         monkeypatch.setattr(rs_mod, "_MODELS_DIR", models_dir)
+        monkeypatch.setattr(rs_mod, "models_dirs_for_read", lambda: (models_dir,))
         monkeypatch.setattr(
             rs_mod,
             "MODELS_RELEASE_SHA256",
@@ -158,6 +159,7 @@ class TestDownloadModelsChecksBeforeExtract:
         models_dir = tmp_path / "models"
         monkeypatch.setattr(rs_mod, "_DATA_DIR", tmp_path)
         monkeypatch.setattr(rs_mod, "_MODELS_DIR", models_dir)
+        monkeypatch.setattr(rs_mod, "models_dirs_for_read", lambda: (models_dir,))
 
         urls: list[str] = []
 
@@ -166,6 +168,8 @@ class TestDownloadModelsChecksBeforeExtract:
             payload = _make_release_tarball(Path(dest))
             if url == rs_mod._VIEW_RECOGNITION_RELEASE_URL:
                 monkeypatch.setattr(rs_mod, "VIEW_RECOGNITION_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
+                for name in rs_mod._VIEW_RECOGNITION_FILES:
+                    (models_dir / name).write_bytes(b"weights")
             else:
                 monkeypatch.setattr(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
 

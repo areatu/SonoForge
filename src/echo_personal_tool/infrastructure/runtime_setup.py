@@ -48,6 +48,10 @@ _VIEW_RECOGNITION_RELEASE_URL = (
     "view-recognition-v1/view-recognition-v1.tar.gz"
 )
 VIEW_RECOGNITION_RELEASE_SHA256 = "c0fc22fe350ddfaa798b719dff2c0ed57d35399a9872a8edddbed95b974caaaa"
+_VIEW_RECOGNITION_FILES = (
+    "view_recognition_efficientnet_b0.onnx",
+    "view_recognition_efficientnet_b0.onnx.data",
+)
 
 #: The published models-v1 manifest predates view recognition, so a fresh
 #: install needs these two entries restored before the adapter can use the
@@ -229,10 +233,15 @@ def check_deps(modules: Iterable[str] | None = None) -> bool:
     return True
 
 
+def _view_recognition_weights_exist(candidates: Iterable[Path]) -> bool:
+    return all(any((candidate / name).is_file() for candidate in candidates) for name in _VIEW_RECOGNITION_FILES)
+
+
 def check_models() -> bool:
-    """Return True if the manifest exists in the canonical or legacy models dir."""
+    """Return True if the manifest and view-recognition weights are present."""
     candidates = dict.fromkeys((_MODELS_DIR, *models_dirs_for_read()))
-    return any((candidate / "model_manifest.json").is_file() for candidate in candidates)
+    has_manifest = any((candidate / "model_manifest.json").is_file() for candidate in candidates)
+    return has_manifest and _view_recognition_weights_exist(candidates)
 
 
 def get_setup_status() -> SetupStatus:
@@ -464,41 +473,47 @@ def _extract_release_archive(archive: Path, dest: Path) -> None:
 
 
 def download_models(progress_callback: Callable[[str, int], None] | None = None) -> bool:
-    """Download and extract the base models and view-recognition weights."""
+    """Download the missing model assets; an upgrade fetches only new weights."""
     _MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    candidates = dict.fromkeys((_MODELS_DIR, *models_dirs_for_read()))
+    need_base = not any((candidate / "model_manifest.json").is_file() for candidate in candidates)
+    need_view = not _view_recognition_weights_exist(candidates)
 
     _report(progress_callback, "Downloading models...", 10)
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            archive = Path(tmp_dir) / "models.tar.gz"
-            _download_file(_MODELS_RELEASE_URL, archive, progress_callback)
+            if need_base:
+                archive = Path(tmp_dir) / "models.tar.gz"
+                _download_file(_MODELS_RELEASE_URL, archive, progress_callback)
 
-            _report(progress_callback, "Verifying archive...", 80)
-            if not verify_models_archive(archive):
-                logger.error("refusing to extract: model archive failed the SHA256 check")
-                return False
+                _report(progress_callback, "Verifying archive...", 80)
+                if not verify_models_archive(archive):
+                    logger.error("refusing to extract: model archive failed the SHA256 check")
+                    return False
 
-            _report(progress_callback, "Extracting models...", 85)
-            _extract_release_archive(archive, _DATA_DIR)
+                _report(progress_callback, "Extracting models...", 85)
+                _extract_release_archive(archive, _DATA_DIR)
 
-            view_archive = Path(tmp_dir) / "view-recognition-v1.tar.gz"
-            _report(progress_callback, "Downloading view recognition model...", 10)
-            _download_file(_VIEW_RECOGNITION_RELEASE_URL, view_archive, progress_callback)
+            if need_view:
+                view_archive = Path(tmp_dir) / "view-recognition-v1.tar.gz"
+                _report(progress_callback, "Downloading view recognition model...", 10)
+                _download_file(_VIEW_RECOGNITION_RELEASE_URL, view_archive, progress_callback)
 
-            _report(progress_callback, "Verifying view recognition archive...", 80)
-            if not verify_view_recognition_archive(view_archive):
-                logger.error("refusing to extract: view recognition archive failed the SHA256 check")
-                return False
+                _report(progress_callback, "Verifying view recognition archive...", 80)
+                if not verify_view_recognition_archive(view_archive):
+                    logger.error("refusing to extract: view recognition archive failed the SHA256 check")
+                    return False
 
-            _report(progress_callback, "Extracting view recognition model...", 85)
-            _extract_release_archive(view_archive, _MODELS_DIR)
+                _report(progress_callback, "Extracting view recognition model...", 85)
+                _extract_release_archive(view_archive, _MODELS_DIR)
+
             _ensure_view_recognition_manifest(_MODELS_DIR)
 
-        if (_MODELS_DIR / "model_manifest.json").is_file():
+        if check_models():
             _report(progress_callback, "Models ready.", 100)
             return True
         else:
-            logger.error("model_manifest.json not found after extraction")
+            logger.error("model assets not found after extraction")
             return False
     except Exception as exc:  # noqa: BLE001 - reviewed boundary
         log_boundary_failure(logger, "runtime.setup", exc, code="io", level=logging.ERROR)
