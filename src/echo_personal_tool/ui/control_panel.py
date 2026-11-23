@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QRadioButton,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.models.stress_echo import SOURCE_MANUAL, STAGE_REST, STAGE_STRESS, VALID_SCORES
 from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.ui.strain_helpers import PALETTES
 from echo_personal_tool.ui.ui_metrics import text_width
@@ -25,6 +27,7 @@ from echo_personal_tool.ui.ui_metrics import text_width
 # occurrences, so every repeat references the constant instead.
 _TEXT_STYLE = "color: #e0e0e0;"
 _GROUP_TITLE_STYLE = "QGroupBox { font-weight: bold; color: #e0e0e0; }"
+_DIM_STYLE = "color: #9e9e9e; font-size: 10px;"
 
 
 class ControlPanel(QWidget):
@@ -40,6 +43,9 @@ class ControlPanel(QWidget):
     palette_changed = Signal(str)  # bull's-eye palette i18n key
     save_gold_contour = Signal()  # user asked to save ED endo as gold
     load_gold_contour = Signal()  # user asked to load an existing gold contour
+    stress_stage_changed = Signal(str)  # "rest" | "stress" (plan А.11)
+    stress_score_changed = Signal(int, int)  # segment_id, ASE score 1..5
+    stress_prefill_requested = Signal()  # «по стрейну» pressed
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -63,6 +69,7 @@ class ControlPanel(QWidget):
         self._init_metric_group(layout)
         self._init_layer_group(layout)
         self._init_views_group(layout)
+        self._init_stress_group(layout)
         self._init_position_group(layout)
         self._init_quality_group(layout)
         self._init_qc_scroll(layout)
@@ -264,7 +271,7 @@ class ControlPanel(QWidget):
         self._qc_checkboxes: dict[int, QCheckBox] = {}
         # Will be populated when results arrive
         self._qc_placeholder: QLabel | None = QLabel(tr("strain.load_results"))
-        self._qc_placeholder.setStyleSheet("color: #9e9e9e; font-size: 10px;")
+        self._qc_placeholder.setStyleSheet(_DIM_STYLE)
         self._qc_layout.addWidget(self._qc_placeholder)
 
         self._qc_group.setLayout(self._qc_layout)
@@ -276,6 +283,109 @@ class ControlPanel(QWidget):
         qc_scroll.setMaximumHeight(150)
         qc_scroll.setFrameShape(QFrame.Shape.NoFrame)
         layout.addWidget(qc_scroll)
+
+    def _init_stress_group(self, layout: QVBoxLayout) -> None:
+        """Stress-echo WMSI scoring (plan А.11): stage + per-segment ASE 1–5."""
+        self._stress_stage = "rest"
+        group_stress = QGroupBox(tr("stress_echo.group"))
+        group_stress.setStyleSheet(_GROUP_TITLE_STYLE)
+        stress_layout = QVBoxLayout()
+
+        stage_row = QHBoxLayout()
+        stage_label = QLabel(tr("stress_echo.stage_label"))
+        stage_label.setStyleSheet(_TEXT_STYLE)
+        stage_row.addWidget(stage_label)
+        self._stress_stage_combo = QComboBox()
+        for stage in (STAGE_REST, STAGE_STRESS):
+            self._stress_stage_combo.addItem(tr(f"stress_echo.stage_{stage}"), stage)
+        self._stress_stage_combo.currentIndexChanged.connect(
+            lambda _index: self._on_stage_combo(self._stress_stage_combo.currentData())
+        )
+        stage_row.addWidget(self._stress_stage_combo, stretch=1)
+        stress_layout.addLayout(stage_row)
+
+        self._stress_prefill_btn = QPushButton(tr("stress_echo.prefill_btn"))
+        self._stress_prefill_btn.setToolTip(tr("stress_echo.prefill_hint"))
+        self._stress_prefill_btn.clicked.connect(self.stress_prefill_requested.emit)
+        stress_layout.addWidget(self._stress_prefill_btn)
+
+        self._stress_rows_layout = QVBoxLayout()
+        self._stress_rows_layout.setSpacing(2)
+        self._stress_combos: dict[int, QComboBox] = {}
+        self._stress_placeholder: QLabel | None = QLabel(tr("stress_echo.load_results"))
+        self._stress_placeholder.setStyleSheet(_DIM_STYLE)
+        self._stress_placeholder.setWordWrap(True)
+        self._stress_rows_layout.addWidget(self._stress_placeholder)
+        stress_layout.addLayout(self._stress_rows_layout)
+
+        self._stress_wmsi_label = QLabel("")
+        self._stress_wmsi_label.setStyleSheet(_TEXT_STYLE)
+        self._stress_wmsi_label.setWordWrap(True)
+        stress_layout.addWidget(self._stress_wmsi_label)
+
+        group_stress.setLayout(stress_layout)
+        layout.addWidget(group_stress)
+
+    def _on_stage_combo(self, stage: object) -> None:
+        if not isinstance(stage, str):
+            return
+        self._stress_stage = stage
+        self.stress_stage_changed.emit(stage)
+
+    def populate_stress_segments(self, segment_ids: list[int]) -> None:
+        """One ASE score combo per measured segment (order = arc/label order)."""
+        for combo in self._stress_combos.values():
+            combo.setParent(None)
+            combo.deleteLater()
+        self._stress_combos.clear()
+        if self._stress_placeholder is not None:
+            self._stress_placeholder.setParent(None)
+            self._stress_placeholder.deleteLater()
+            self._stress_placeholder = None
+        for segment in segment_ids:
+            combo = QComboBox()
+            for score in VALID_SCORES:
+                combo.addItem(tr(f"stress_echo.score_{score}"), score)
+            combo.currentIndexChanged.connect(
+                lambda _index, seg=segment: self.stress_score_changed.emit(
+                    seg, int(self._stress_combos[seg].currentData())
+                )
+            )
+            self._stress_rows_layout.addWidget(combo)
+            self._stress_combos[segment] = combo
+
+    def set_stress_scores(self, scores: dict[int, int], sources: dict[int, str] | None = None) -> None:
+        """Reflect the stage's scoring into the combos without re-emitting.
+
+        A suggested score gets its own tooltip, so a suggestion can never be
+        read as the physician's verdict.
+        """
+        sources = sources or {}
+        for segment, combo in self._stress_combos.items():
+            score = scores.get(segment)
+            with QSignalBlocker(combo):
+                if score is None:
+                    combo.setCurrentIndex(-1)
+                else:
+                    index = combo.findData(int(score))
+                    combo.setCurrentIndex(index)
+                source = sources.get(segment)
+                combo.setToolTip("" if source == SOURCE_MANUAL else tr("stress_echo.suggested_tooltip"))
+
+    def set_stress_summary(self, rest: float | None, stress: float | None, verdict: str) -> None:
+        """The WMSI row: per-stage indices (when scored) + the honest verdict."""
+
+        def _fmt(value: float | None) -> str:
+            return "--" if value is None else f"{value:.2f}"
+
+        self._stress_wmsi_label.setText(
+            tr(
+                "stress_echo.wmsi_summary",
+                rest=_fmt(rest),
+                stress=_fmt(stress),
+                verdict=verdict,
+            )
+        )
 
     def _init_actions_group(self, layout: QVBoxLayout) -> None:
         """Action buttons (undo/redo/export/gold/close)."""

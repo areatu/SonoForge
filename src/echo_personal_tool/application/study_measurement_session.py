@@ -28,6 +28,7 @@ from echo_personal_tool.domain.models.manual_calculator_input import ManualCalcu
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, ResultProvenance
+from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
@@ -340,6 +341,12 @@ class StudyMeasurementData:
     #: live in different clips of the same study.
     imt_measurements: tuple[ImtDraft, ...] = ()
     strain: StrainReport | None = None
+    #: Stress-echo wall-motion scoring per stage (plan А.11, issue #649).
+    #: Manual physician scoring (+ strain-suggested starts) with honest
+    #: provenance; the rest/stress comparison travels inside the record.
+    #: ``None`` until the user scored something — the wire shape of a study
+    #: without stress data stays what older schemas accept.
+    stress_echo: StressEchoAssessment | None = None
     #: Provenance for derived results (QH-1b.1, spec §5.2). Empty for legacy docs
     #: (v1/v2) — those results become UNVERIFIED, not automatically FRESH.
     result_provenance: tuple[ResultProvenance, ...] = ()
@@ -932,6 +939,16 @@ class StudyMeasurementSessionStore:
         """
         data = self.get(study_uid)
         self._set(study_uid, replace(data, strain=report))
+
+    def set_stress_echo(self, study_uid: str, assessment: StressEchoAssessment | None) -> None:
+        """Store the study's stress-echo WMSI scoring (plan А.11, issue #649).
+
+        The newest scoring wins as a whole — the window sends the complete
+        rest+stress assessment, so the report's comparison can never mix a
+        stale stage with a fresh one. ``None`` clears the scoring.
+        """
+        data = self.get(study_uid)
+        self._set(study_uid, replace(data, stress_echo=assessment))
 
     def set_manual_bsa(self, study_uid: str, value: float | None) -> None:
         """Persist (or clear) the manual BSA of one study — QH-1b.2, slice 2.

@@ -10,6 +10,7 @@ from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, Dopp
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
+from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.doppler_repeats import RepeatStatistics
 
@@ -367,6 +368,10 @@ class MeasurementSnapshot:
     #: ``None`` until the study has Doppler data; not persisted — rebuilt on
     #: every snapshot.
     diastology: DiastologyAssessment | None = None
+    #: Stress-echo WMSI scoring + rest/stress comparison (plan А.11, issue
+    #: #649). Carried from the study's measurement session; ``None`` until
+    #: the user scored something — the report then has no stress section.
+    stress_echo: StressEchoAssessment | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     #: Whether a physical 2D scale was available when the snapshot was built.
     #: The default is deliberately ``False``: a snapshot constructed without
