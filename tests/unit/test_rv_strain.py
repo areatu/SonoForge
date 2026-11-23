@@ -270,3 +270,79 @@ class TestSyntheticGold:
         assert (
             track_rv_free_wall(frames, _wall_points(n=2), 0, SpeckleConfig.preset_standard(), kernel_radius=6) is None
         )
+
+
+class TestCavityFallback:
+    """The FAC-style closed RV cavity contour as a strain source (follow-up).
+
+    The physician asked to reuse the cavity outline he already draws for FAC
+    instead of tracing a second, dedicated free-wall arc. The wall is derived
+    geometrically: the septum is the cavity side facing the LV, so the free
+    wall is the arc of the cavity border facing away from the LV centroid of
+    the same clip. A dedicated RV_FW trace always wins; without an LV contour
+    the septal side is unknowable and nothing is selected.
+    """
+
+    @staticmethod
+    def _cavity_points(
+        cx: float, cy: float, rx: float = 60.0, ry: float = 50.0, n: int = 32
+    ) -> list[tuple[float, float]]:
+        angles = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+        return [(float(cx + rx * np.cos(a)), float(cy + ry * np.sin(a))) for a in angles]
+
+    def test_cavity_contour_with_lv_yields_the_far_arc(self) -> None:
+        # RV cavity right of centre, LV far to the left: the free wall is the
+        # right side of the cavity border.
+        cavity = self._cavity_points(300.0, 200.0)
+        lv = Contour(phase="ed", view="A4C", chamber="LV", points=self._cavity_points(80.0, 200.0), frame_index=3)
+        rv = Contour(phase="ed", view="A4C", chamber="RV", points=cavity, frame_index=3)
+        choice = select_rv_free_wall_contour((rv, lv), sop_instance_uid=None, view="A4C")
+        assert choice is not None
+        arc, frame = choice
+        assert frame == 3
+        assert len(arc) >= 6
+        assert float(arc[:, 0].min()) >= 300.0  # only points at/behind the far edge
+
+    def test_cavity_without_lv_contour_selects_nothing(self) -> None:
+        """No LV on the clip → septum unknowable → an honest refusal."""
+        rv = Contour(phase="ed", view="A4C", chamber="RV", points=self._cavity_points(300.0, 200.0), frame_index=3)
+        assert select_rv_free_wall_contour((rv,), sop_instance_uid=None, view="A4C") is None
+
+    def test_dedicated_trace_wins_over_the_cavity(self) -> None:
+        wall = _wall_points()
+        rv_fw = Contour(
+            phase="ed", view="A4C", chamber=RV_FREE_WALL_CHAMBER, points=[tuple(p) for p in wall], frame_index=2
+        )
+        rv = Contour(phase="ed", view="A4C", chamber="RV", points=self._cavity_points(300.0, 200.0), frame_index=3)
+        lv = Contour(phase="ed", view="A4C", chamber="LV", points=self._cavity_points(80.0, 200.0), frame_index=3)
+        choice = select_rv_free_wall_contour((rv, lv, rv_fw), sop_instance_uid=None, view="A4C")
+        assert choice is not None
+        pts, frame = choice
+        assert frame == 2
+        assert pts.shape == wall.shape
+
+    def test_es_cavity_loses_to_ed_cavity(self) -> None:
+        ed_lv = Contour(phase="ed", view="A4C", chamber="LV", points=self._cavity_points(80.0, 200.0), frame_index=3)
+        ed_rv = Contour(phase="ed", view="A4C", chamber="RV", points=self._cavity_points(300.0, 200.0), frame_index=3)
+        es_rv = Contour(phase="es", view="A4C", chamber="RV", points=self._cavity_points(300.0, 200.0), frame_index=8)
+        choice = select_rv_free_wall_contour((es_rv, ed_rv, ed_lv), sop_instance_uid=None, view="A4C")
+        assert choice is not None
+        assert choice[1] == 3
+
+    def test_degenerate_geometry_is_refused(self) -> None:
+        """A cavity whose wall cannot be told from the septum produces nothing."""
+        cavity = self._cavity_points(300.0, 200.0)
+        same_spot_lv = Contour(
+            phase="ed", view="A4C", chamber="LV", points=self._cavity_points(300.0, 200.0), frame_index=3
+        )
+        rv = Contour(phase="ed", view="A4C", chamber="RV", points=cavity, frame_index=3)
+        assert select_rv_free_wall_contour((rv, same_spot_lv), sop_instance_uid=None, view="A4C") is None
+
+    def test_free_wall_arc_extraction_units(self) -> None:
+        from echo_personal_tool.domain.services.rv_strain import free_wall_arc_from_cavity
+
+        cavity = np.asarray(self._cavity_points(300.0, 200.0))
+        arc = free_wall_arc_from_cavity(cavity, np.asarray([80.0, 200.0]))
+        assert arc is not None and len(arc) >= 6
+        assert free_wall_arc_from_cavity(cavity[:4], np.asarray([80.0, 200.0])) is None
+        assert free_wall_arc_from_cavity(cavity, np.asarray([300.0, 200.0])) is None  # no separation

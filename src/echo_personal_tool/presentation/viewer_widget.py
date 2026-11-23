@@ -185,7 +185,11 @@ CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 _FREEHAND_ROLLBACK_POINTS = 8
 
 #: Freehand-trace prompt per chamber; the atrial prompt is the fallback.
-_TRACE_PROMPT_KEYS = {"LV": "viewer.lv_trace_prompt", RV_FREE_WALL_CHAMBER: "viewer.rv_fw_trace_prompt"}
+_TRACE_PROMPT_KEYS = {
+    "LV": "viewer.lv_trace_prompt",
+    "LA": "viewer.la_trace_prompt",
+    RV_FREE_WALL_CHAMBER: "viewer.rv_fw_trace_prompt",
+}
 
 
 def _hint_bar_style() -> str:

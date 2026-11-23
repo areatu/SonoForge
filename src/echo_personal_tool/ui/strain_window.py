@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QByteArray, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QHideEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -45,6 +45,7 @@ from echo_personal_tool.domain.services.myocardial_work import (
 )
 from echo_personal_tool.domain.services.segment_map import normalise_view
 from echo_personal_tool.domain.services.stress_workflow import suggest_scoring_from_strain
+from echo_personal_tool.ui.arc_strain_window import ArcStrainWindow
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
@@ -81,6 +82,38 @@ def _finite_float(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if np.isfinite(number) else None
+
+
+def _phase_provenance_parts(result: StrainResult) -> list[str]:
+    """Kernel count + ED/ES provenance for the meta bar (А.3/А.5 evidence).
+
+    The source travels with its confidence (a number without its confidence
+    is not evidence), and a burned-ECG clip states which pixel band the
+    auto-trim cut — the status bar alone kept the feature invisible.
+    """
+    parts: list[str] = []
+    total_k = result.kernels_total_count
+    if total_k:
+        parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")
+    source_map = {
+        "manual": "manual",
+        "manual_ed+auto": "manual ED + auto ES",
+        "manual_es+auto": "manual ES + auto ED",
+        "ecg": "ECG",
+        "simpson": "Simpson",
+        "image": "image",
+        "image_fallback": "image",
+    }
+    source_label = source_map.get(result.ed_es_source, result.ed_es_source)
+    ed_es_text = f"ED/ES {result.ed_index}/{result.es_index} ({source_label})"
+    if result.ed_es_confidence > 0:
+        ed_es_text += f", {result.ed_es_confidence * 100.0:.0f}%"
+    parts.append(ed_es_text)
+    burned_strip = getattr(result, "burned_ecg_strip", None)
+    if burned_strip is not None:
+        _x0, y0, _x1, y1 = (int(v) for v in burned_strip)
+        parts.append(tr("strain.burned_ecg_meta", y0=str(y0), y1=str(y1)))
+    return parts
 
 
 class StrainWindow(QMainWindow):
@@ -198,6 +231,10 @@ class StrainWindow(QMainWindow):
         # Curves mode
         self._curves_view = StrainCurvesView()
         self._stacked.addWidget(self._curves_view)  # index 1
+
+        # Plan А.6/А.7 (user feedback): LA/RV arc-strain results live in their
+        # own window next to this one — created lazily on the first result.
+        self._arc_window: ArcStrainWindow | None = None
 
         # «3 Point Contour» overview (plan §5.3 п.2): three per-view cards, the
         # 18-segment bull's-eye from ``StrainStudy``, and a per-view status list.
@@ -418,20 +455,7 @@ class StrainWindow(QMainWindow):
         # Round-trip verification of the tracking and QC reasons (extracted to
         # keep the grandfathered show_result from growing).
         parts.extend(self._qc_meta_parts(result))
-        total_k = result.kernels_total_count
-        if total_k:
-            parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")
-        source_map = {
-            "manual": "manual",
-            "manual_ed+auto": "manual ED + auto ES",
-            "manual_es+auto": "manual ES + auto ED",
-            "ecg": "ECG",
-            "simpson": "Simpson",
-            "image": "image",
-            "image_fallback": "image",
-        }
-        source_label = source_map.get(result.ed_es_source, result.ed_es_source)
-        parts.append(f"ED/ES {result.ed_index}/{result.es_index} ({source_label})")
+        parts.extend(_phase_provenance_parts(result))
         parts.append(f"{tr('strain.position')}: {self._position}")
         if result.drift_compensation_applied:
             parts.append("drift on")
@@ -523,6 +547,9 @@ class StrainWindow(QMainWindow):
             ed_index=result.ed_index,
             es_index=result.es_index,
         )
+        # А.5 visible half (user feedback): shade the burned-ECG band the
+        # auto-trim excludes right on the A4C image.
+        self._panel_a4c.set_burned_ecg_strip(getattr(result, "burned_ecg_strip", None))
 
         # ECG trace: real DICOM ECG only. No real ECG → strip hidden entirely
         # (no synthetic placeholder — issue #2).
@@ -558,11 +585,36 @@ class StrainWindow(QMainWindow):
         # Keep the overview in sync even when it's not the active page, so
         # switching to it later shows the latest study without a second click.
         self._refresh_overview()
+        # User feedback (А.6/А.7 follow-up): the arc strains surface in their
+        # own window — same result, separate from the LV machinery below.
+        self._update_arc_window(result)
 
         if not self.isVisible():
             self.show()
         self.raise_()
         self.activateWindow()
+
+    def _update_arc_window(self, result: StrainResult) -> None:
+        """Open/raise the dedicated LA/RV window and fill it (А.6/А.7)."""
+        if self._arc_window is None:
+            self._arc_window = ArcStrainWindow()
+            self._arc_window.closed.connect(self._on_arc_window_closed)
+        self._arc_window.show_result(result)
+
+    def _on_arc_window_closed(self) -> None:
+        # The user closed it for this result; the next analysis reopens it.
+        self._arc_window = None
+
+    def _close_arc_window(self) -> None:
+        if self._arc_window is not None:
+            self._arc_window.close()
+            self._arc_window = None
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802 - Qt naming
+        # The combined window hiding (a view change, a new clip) closes the
+        # arc window too — its numbers belong to the analysis just hidden.
+        self._close_arc_window()
+        super().hideEvent(event)
 
     def _refresh_la_strain(self, result: StrainResult) -> None:
         """Show the LA strain rows and curve overlay (plan А.6).

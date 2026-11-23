@@ -1073,13 +1073,6 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        ru=("ОЛП · 4-кам. ИИ", "Объём ЛП, 4-камерная позиция — ИИ"), en=("LAV A4C AI", "LA volume, apical 4-chamber — AI"),
        requires=_SP, flags=_LA_AUTO, synonyms=("ОЛП 4C ИИ", "LAV 4C AI")),
     _t("la.lav_a2c", _K.VOLUME, "la", "menu.lav_bi", _A("lav_bi"), _2D, requires=_SP),
-    # А.6: the LA strain trace — the roof arc is a line of its own; the tool
-    # yields the reservoir/conduit/booster triple of the tracked arc.
-    _t("la.strain", _K.PEAK, "la", "menu.la_strain_trace", _A("la_strain", view="A4C"), _2D,
-       results=("la.lasr", "la.lascd", "la.lasct"), requires=_SP,
-       ru=("Стрейн ЛП", "Стрейн ЛП: резервуар/проводник/бустер"),
-       en=("LA strain", "LA strain: reservoir/conduit/booster"),
-       synonyms=("LA strain", "LA contour (strain)", "стрейн ЛП", "Контур ЛП (стрейн)")),
     # ── Right atrium ──
     _t("ra.d", _K.DISTANCE, "ra", "menu.ra_diameter", _A("ra_diameter"), _2D, requires=_SP),
     _t("ra.vol", _K.VOLUME, "ra", "menu.rav_volume", _A("rav_volume"), _2D, requires=_SP),
@@ -1092,8 +1085,6 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        requires=frozenset({REQ_MMODE})),
     _t("rv.s_prime", _K.PEAK, "rv", "menu.s_prime_rv", _A("rv_s_prime"), _TDI, requires=_DC),
     _t("rv.fac", _K.AREA, "rv", "menu.rv_fac", _A("rv_fac", view="A4C"), _2D, requires=_SP),
-    # А.7: the free-wall strain trace — a contour of its own kind (RV_FW), not an area.
-    _t("rv.gls", _K.PEAK, "rv", "menu.rv_free_wall", _A("rv_free_wall", view="A4C"), _2D, requires=_SP),
     # ── Diastolic function ──
     _t("mv.inflow", _K.PEAK, "diastolic", "menu.mitral_inflow", _A("doppler_mitral_inflow"), _PW, results=_MI,
        ru=("Митральный поток", "Митральный поток: E, DT, A"), en=("Mitral inflow", "Mitral inflow: E, DT, A"),
@@ -1221,6 +1212,18 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        results=("lv.gls",), ru=("Спекл-трекинг", "Спекл-трекинг: продольная деформация ЛЖ"),
        en=("Speckle tracking", "Speckle tracking: LV longitudinal strain"), requires=_SP, flags=_STRAIN,
        synonyms=("Speckle Tracking", "ste", "gls", "стрейн")),
+    # А.6/А.7: the LA roof-arc and RV free-wall strain traces live in the same
+    # «Стрейн» section as the LV STE tools (user feedback, issue #643/#641
+    # follow-up): one experimental section hides and shows them together.
+    _t("la.strain", _K.PEAK, "strain", "menu.la_strain_trace", _A("la_strain", view="A4C"), _2D,
+       results=("la.lasr", "la.lascd", "la.lasct"), requires=_SP, flags=_STRAIN,
+       ru=("Стрейн ЛП", "Стрейн ЛП: резервуар/проводник/бустер"),
+       en=("LA strain", "LA strain: reservoir/conduit/booster"),
+       synonyms=("LA strain", "LA contour (strain)", "стрейн ЛП", "Контур ЛП (стрейн)")),
+    _t("rv.gls", _K.PEAK, "strain", "menu.rv_free_wall", _A("rv_free_wall", view="A4C"), _2D, requires=_SP,
+       flags=_STRAIN, ru=("Стрейн ПЖ", "Стрейн ПЖ: свободная стенка"),
+       en=("RV strain", "RV strain: free wall"),
+       synonyms=("RV strain", "RV free wall", "стрейн ПЖ", "Стенка ПЖ (стрейн)")),
     # ── Vessels ──
     _t("vessel.psv_edv", _K.PEAK, "vessels", "menu.vessel_psv_edv", _A("vessel_psv_edv", vessel=True), _VES,
        results=("vessel.psv", "vessel.edv"), ru=("Vps / Ved", "Пиковая систолическая и конечная диастолическая скорость"),
