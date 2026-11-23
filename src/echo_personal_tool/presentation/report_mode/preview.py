@@ -791,6 +791,12 @@ class ReportPreview(QWidget):
         self._values_button.setAccessibleName(tr("report.values.title"))
         self._inputs_button.setText(tr("report.inputs_toggle"))
         self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
+        # The growth-chart button stays hidden until the sheet carries Z rows
+        # (plan А.12); the accessibility inventory still counts it, so it
+        # names itself like the rest of the toolbar.
+        self._growth_button.setText(tr("growth_chart.open_button"))
+        self._growth_button.setAccessibleName(tr("growth_chart.open_button"))
+        self._growth_button.setToolTip(tr("growth_chart.open_hint"))
         self._zoom_label.setText(tr("report_mode.zoom"))
         current = self._zoom.currentData() if self._zoom.count() else _ZOOM_FIT_WIDTH
         self._zoom.blockSignals(True)

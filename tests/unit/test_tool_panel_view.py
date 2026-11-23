@@ -104,7 +104,8 @@ def test_empty_search_returns_nothing() -> None:
 
 def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     view = panel_view(default_layout(), "2d", language="ru")
-    assert len(view.sections) == 16
+    # 16 anatomical sections + the fetal biometry one (plan А.12).
+    assert len(view.sections) == 17
     assert _ids(view.quick) == ["tool.caliper", "tool.area", "lv.linear_ed", "lv.edv_a4c"]
     assert _ids(view.favorites) == [
         "lv.linear_ed",

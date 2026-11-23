@@ -375,10 +375,13 @@ class TestStudyProfileButton:
         qtbot.addWidget(bar)
         return bar
 
-    def test_one_button_with_the_five_profiles(self, qtbot) -> None:
+    def test_one_button_with_the_seven_profiles(self, qtbot) -> None:
+        """The switch grew by the paediatric and fetal studies (plan А.12)."""
         bar = self._bar(qtbot)
         assert [action.text() for action in bar._study_profile_menu.actions()] == [
             "Эхокардиография",
+            "ЭхоКГ педиатрическая",
+            "Фетальная ЭхоКГ",
             "УЗИ прецеребральных артерий",
             "УЗИ ОБП и почек",
             "УЗИ почек",
@@ -431,7 +434,9 @@ class TestStudyProfileButton:
         try:
             set_language("en")
             bar.reload_text()
-            assert [action.text() for action in bar._study_profile_menu.actions()][1] == "Precerebral artery ultrasound"
+            # The switch grew to the cardiac family + organ studies (А.12):
+            # echo, paediatric echo, fetal, vascular, abdomen, kidney, thyroid.
+            assert [action.text() for action in bar._study_profile_menu.actions()][3] == "Precerebral artery ultrasound"
             assert bar._btn_study_profile.text() == "Echocardiography"
         finally:
             set_language("ru")

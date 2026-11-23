@@ -1988,6 +1988,8 @@
   "growth_chart.axis_ga": "Срок гестации, нед",
   "growth_chart.axis_input": "Ось графика",
   "growth_chart.p_tag": "P",
+  "growth_chart.open_button": "Ростовые графики",
+  "growth_chart.open_hint": "Перцентильные кривые по Z-строкам протокола",
   "study_profile.pediatric_echo": "ЭхоКГ педиатрическая",
   "study_profile.fetal_echo": "Фетальная ЭхоКГ",
   "report.bp_unit_hint": "мм рт. ст.",

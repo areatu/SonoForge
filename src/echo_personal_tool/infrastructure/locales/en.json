@@ -1989,6 +1989,8 @@
   "growth_chart.axis_ga": "Gestational age, weeks",
   "growth_chart.axis_input": "Chart axis",
   "growth_chart.p_tag": "P",
+  "growth_chart.open_button": "Growth charts",
+  "growth_chart.open_hint": "Percentile curves of the protocol's Z-score rows",
   "study_profile.pediatric_echo": "Paediatric echo",
   "study_profile.fetal_echo": "Fetal echo",
   "domain.report.mw_gwi": "GWI (global work index)",
