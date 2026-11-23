@@ -175,6 +175,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.rv_tapse", MeasurementAction.RV_TAPSE),
             _btn("menu.s_prime_rv", MeasurementAction.RV_S_PRIME),
             _btn("menu.rv_fac", MeasurementAction.RV_FAC, view="A4C"),
+            _btn("menu.rv_free_wall", MeasurementAction.RV_FREE_WALL, view="A4C"),
         ),
     ),
     (

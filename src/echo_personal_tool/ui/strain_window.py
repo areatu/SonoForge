@@ -310,8 +310,7 @@ class StrainWindow(QMainWindow):
                 defaults to the value carried on the worker result, then 1 mm.
         """
         self._result = result
-        # Record DICOM provenance for gold-contour saves (newer value wins;
-        # unknown fields stay at their default so older callers keep working).
+        # DICOM provenance for gold-contour saves (newest value wins; unknown fields keep the default).
         self._study_uid = str(study_uid or getattr(result, "study_instance_uid", "") or "")
         self._sop_instance_uid = str(sop_instance_uid or getattr(result, "sop_instance_uid", "") or "")
         self._source_path = str(getattr(result, "source_path", "") or "")
@@ -432,6 +431,7 @@ class StrainWindow(QMainWindow):
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
         self._refresh_la_strain(result)
+        self._refresh_rv_strain(result)
         self._refresh_myocardial_work()
 
         # Update Bull's Eye plot
@@ -548,6 +548,17 @@ class StrainWindow(QMainWindow):
             None if la_strain is None else la_strain.booster_pct,
         )
         self._curves_view.set_la_curve(getattr(result, "la_strain_curve", None), frame_time_ms=result.frame_time_ms)
+
+    def _refresh_rv_strain(self, result: StrainResult) -> None:
+        """Show the RV free-wall row and curve overlay (plan А.7).
+
+        The traced-wall curve overlays the strain plot and the GLS row fills
+        from the worker result — a blank row and no curve when this clip had
+        no free-wall trace to track.
+        """
+        rv_strain = getattr(result, "rv_strain", None)
+        self._summary.set_rv_values(None if rv_strain is None else rv_strain.gls_pct)
+        self._curves_view.set_rv_curve(getattr(result, "rv_strain_curve", None), frame_time_ms=result.frame_time_ms)
 
     def _qc_meta_parts(self, result: StrainResult) -> list[str]:
         """QC/closure text for the meta bar; kept out of ``show_result``."""

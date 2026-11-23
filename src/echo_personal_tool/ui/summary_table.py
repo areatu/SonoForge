@@ -77,6 +77,7 @@ class SummaryTable(QWidget):
             ("la_lasr", tr("strain.la_lasr_row"), "%"),
             ("la_lascd", tr("strain.la_lascd_row"), "%"),
             ("la_lasct", tr("strain.la_lasct_row"), "%"),
+            ("rv_gls", tr("strain.rv_gls_row"), "%"),
             ("ef", tr("strain.ef"), "%"),
             ("edv", tr("strain.edv"), tr("strain.unit_ml")),
             ("esv", tr("strain.esv"), tr("strain.unit_ml")),
@@ -157,6 +158,18 @@ class SummaryTable(QWidget):
                 val_label.setText("--")
             else:
                 val_label.setText(f"{val:.1f}%")
+
+    def set_rv_values(self, gls: float | None) -> None:
+        """Fill the RV free-wall strain row (plan А.7) or blank it.
+
+        Blank when this clip had no free-wall trace to track — the table
+        never fabricates a right-ventricular number.
+        """
+        _lbl, val_label, _unit = self._rows["rv_gls"]
+        if gls is None:
+            val_label.setText("--")
+        else:
+            val_label.setText(f"{gls:.1f}%")
 
     def set_mw_values(self, gwi: float | None, gwe: float | None, *, warnings: tuple[str, ...] = ()) -> None:
         """Fill the Myocardial Work rows (plan А.9) or blank them.

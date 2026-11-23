@@ -24,6 +24,7 @@ from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
     compute_gls_from_segments,
 )
+from echo_personal_tool.domain.services.arc_strain import arc_strain_curve
 from echo_personal_tool.domain.services.burned_ecg_mask import (
     BurnedEcgStrip,
     detect_burned_ecg_strip,
@@ -42,6 +43,7 @@ from echo_personal_tool.domain.services.phase_source import (
     resolve_phase_source,
 )
 from echo_personal_tool.domain.services.quality import assess_tracking_quality
+from echo_personal_tool.domain.services.rv_strain import select_rv_free_wall_contour
 from echo_personal_tool.domain.services.segment_map import describe_segment_sides
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
@@ -453,6 +455,9 @@ class SpeckleTrackingWorker(QRunnable):
         la_contour: np.ndarray | None = None,
         la_contour_frame: int | None = None,
         la_contours: tuple[Any, ...] = (),
+        rv_contour: np.ndarray | None = None,
+        rv_contour_frame: int | None = None,
+        rv_contours: tuple[Any, ...] = (),
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -483,6 +488,15 @@ class SpeckleTrackingWorker(QRunnable):
             choice = select_la_strain_contour(la_contours, sop_instance_uid=None, view=self._view)
             if choice is not None:
                 self._la_contour, self._la_contour_frame = choice
+        # А.7 RV free wall (n×2) + its frame; None keeps the RV stage off.
+        self._rv_contour = None if rv_contour is None else np.asarray(rv_contour, dtype=np.float64)
+        self._rv_contour_frame = None if rv_contour_frame is None else int(rv_contour_frame)
+        if self._rv_contour is None and rv_contours:
+            # No direct trace: pick the view-matched RV free-wall contour of
+            # this clip (the freehand strain tool's trace, chamber RV_FW).
+            choice = select_rv_free_wall_contour(rv_contours, sop_instance_uid=None, view=self._view)
+            if choice is not None:
+                self._rv_contour, self._rv_contour_frame = choice
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -572,6 +586,7 @@ class SpeckleTrackingWorker(QRunnable):
             self._run_trajectories(state)
             self._run_strain_curves(state)
             self._run_la_strain(state)
+            self._run_rv_strain(state)
             self._run_clinical_metrics(state)
             self._run_quality_gate(state)
             self._run_quality_assessment(state)
@@ -1208,6 +1223,49 @@ class SpeckleTrackingWorker(QRunnable):
         state.la_strain_metrics = metrics
         state.la_tracking_quality = float(ncc_mean)
 
+    def _run_rv_strain(self, state: Any) -> None:
+        """Track the RV free-wall trace and compute the free-wall GLS (plan А.7).
+
+        Optional evidence: without an RV free-wall trace for this clip (the
+        study has none, or the trace sits on another clip) the result simply
+        carries no RV strain — the strain window and the report show no RV row
+        instead of a fabricated one.
+        """
+        state.rv_strain_curve = None
+        state.rv_strain_metrics = None
+        state.rv_tracking_quality = None
+        wall = self._rv_contour
+        if wall is None or wall.shape[0] < 3:
+            return
+        from echo_personal_tool.domain.services.rv_strain import compute_rv_gls, track_rv_free_wall
+
+        try:
+            anchor = (
+                int(np.clip(self._rv_contour_frame - state.phase_start, 0, state.preprocessed.shape[0] - 1))
+                if self._rv_contour_frame is not None
+                else state.track_ed_index
+            )
+            tracked = track_rv_free_wall(
+                state.preprocessed,
+                wall,
+                anchor,
+                state.config,
+                kernel_radius=int(state.kernel_radius),
+            )
+            if tracked is None:
+                return
+            positions, ncc_mean, _valid_fraction = tracked
+            curve = arc_strain_curve(positions, state.track_ed_index, self._pixel_spacing)
+            metrics = compute_rv_gls(curve, ed_index=state.track_ed_index, es_index=state.local_es)
+        except (TypeError, ValueError) as exc:
+            # A malformed trace (degenerate wall) — RV strain is optional
+            # evidence; the LV analysis itself still completes.
+            log_boundary_failure(logger, "speckle.rv_strain", exc, code="invalid", level=logging.DEBUG)
+            return
+        state.rv_strain_curve = curve
+        state.rv_strain_metrics = metrics
+        state.rv_tracking_quality = float(ncc_mean)
+
     def _run_clinical_metrics(self, state: Any) -> None:
         """Derive AVC, strain metrics, and per-segment tracking quality."""
         state.avc_frame, state.avc_source, state.avc_confidence = detect_avc_frame(
@@ -1613,6 +1671,9 @@ class SpeckleTrackingWorker(QRunnable):
             la_strain_curve=getattr(state, "la_strain_curve", None),
             la_strain=getattr(state, "la_strain_metrics", None),
             la_tracking_quality=getattr(state, "la_tracking_quality", None),
+            rv_strain_curve=getattr(state, "rv_strain_curve", None),
+            rv_strain=getattr(state, "rv_strain_metrics", None),
+            rv_tracking_quality=getattr(state, "rv_tracking_quality", None),
             avc_index=int(state.avc_frame + state.phase_start),
             avc_source=state.avc_source,
             avc_confidence=float(state.avc_confidence),

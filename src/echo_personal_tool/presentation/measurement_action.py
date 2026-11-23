@@ -42,6 +42,8 @@ class MeasurementAction(str, Enum):
     RV_TAPSE = "rv_tapse"
     RV_S_PRIME = "rv_s_prime"
     RV_FAC = "rv_fac"
+    #: RV free-wall strain trace (plan А.7): a freehand material line, not an area.
+    RV_FREE_WALL = "rv_free_wall"
     IVC_MMODE_EXPIR = "ivc_mmode_expir"
     IVC_MMODE_INSP = "ivc_mmode_insp"
     DOPPLER_PEAK = "doppler_peak"

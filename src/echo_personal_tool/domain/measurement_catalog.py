@@ -349,10 +349,11 @@ RU_SYMBOLS: frozenset[str] = frozenset({"E", "A", "e′", "a′", "s′", "Vmax"
 RU_UNTRANSLATED_TERMS: frozenset[str] = frozenset({"DT", "IVRT", "VTI", "DVI"})
 #: Proper names kept in Latin: TAPSE/PISA/GLS and the Myocardial Work indices
 #: (GWI/GCW/GWW/GWE, plan А.9) plus the LA strain phases (LASr/LAScd/LASct,
-#: plan А.6) — the write-in and the report both use these exact abbreviations,
-#: translating them would hide the search terms.
+#: plan А.6) and the RV free-wall abbreviation (RV, plan А.7) — the write-in
+#: and the report both use these exact abbreviations, translating them would
+#: hide the search terms.
 RU_PROPER_NAMES: frozenset[str] = frozenset(
-    {"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE", "LASr", "LAScd", "LASct"}
+    {"TAPSE", "PISA", "GLS", "GWI", "GCW", "GWW", "GWE", "LASr", "LAScd", "LASct", "RV"}
 )
 RU_LATIN_ALLOWLIST: frozenset[str] = RU_SYMBOLS | RU_UNTRANSLATED_TERMS | RU_PROPER_NAMES
 
@@ -670,6 +671,9 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        Quantity.PERCENT, 1, synonyms=("LAScd", "проводник")),
     _m("la.lasct", ("LASct ЛП", "Стрейн сокращения ЛП (бустер)"), ("LA LASct", "LA booster (contractile) strain"),
        Quantity.PERCENT, 1, synonyms=("LASct", "бустер")),
+    # ── RV strain (план А.7) — free-wall GLS of the traced RV wall ──
+    _m("rv.gls", ("RV GLS ПЖ", "Стрейн свободной стенки ПЖ (пик систолический)"), ("RV GLS", "RV free-wall strain"),
+       Quantity.PERCENT, 1, synonyms=("RV FWLS", "RV free-wall strain", "стенка ПЖ (стрейн)", "RV free wall (strain)")),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),
@@ -1051,6 +1055,8 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        requires=frozenset({REQ_MMODE})),
     _t("rv.s_prime", _K.PEAK, "rv", "menu.s_prime_rv", _A("rv_s_prime"), _TDI, requires=_DC),
     _t("rv.fac", _K.AREA, "rv", "menu.rv_fac", _A("rv_fac", view="A4C"), _2D, requires=_SP),
+    # А.7: the free-wall strain trace — a contour of its own kind (RV_FW), not an area.
+    _t("rv.gls", _K.PEAK, "rv", "menu.rv_free_wall", _A("rv_free_wall", view="A4C"), _2D, requires=_SP),
     # ── Diastolic function ──
     _t("mv.inflow", _K.PEAK, "diastolic", "menu.mitral_inflow", _A("doppler_mitral_inflow"), _PW, results=_MI,
        ru=("Митральный поток", "Митральный поток: E, DT, A"), en=("Mitral inflow", "Mitral inflow: E, DT, A"),

@@ -124,6 +124,7 @@ from echo_personal_tool.presentation.focus_mode import (
     should_enter_focus,
 )
 from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLayer
+from echo_personal_tool.presentation.free_wall_trace_action import start_rv_free_wall_trace
 from echo_personal_tool.presentation.imt_editor import show_imt_editor
 from echo_personal_tool.presentation.key_images import show_key_images
 from echo_personal_tool.presentation.layout.presets import (
@@ -5388,6 +5389,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_TAPSE: lambda: start_mode_caliper_hint(self, "TAPSE", "status.rv_tapse_tool"),
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
+            MeasurementAction.RV_FREE_WALL: lambda: start_rv_free_wall_trace(self),
             MeasurementAction.IVC_MMODE_EXPIR: lambda: start_mode_caliper(self, "IVC-EXP", "menu.ivc_exp"),
             MeasurementAction.IVC_MMODE_INSP: lambda: start_mode_caliper(self, "IVC-INSP", "menu.ivc_insp"),
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,

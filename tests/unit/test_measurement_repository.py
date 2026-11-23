@@ -893,3 +893,21 @@ def test_la_strain_round_trips_and_stays_off_the_wire_when_absent():
 
     plain = dumps(record(complete_data()))
     assert b"la_strain_by_view" not in plain
+
+
+def test_rv_strain_round_trips_and_stays_off_the_wire_when_absent():
+    """А.7 (#645): the RV free-wall GLS persists inside the strain record."""
+    strain = complete_data().strain
+    assert strain is not None
+    with_rv = replace(
+        strain,
+        rv_strain_by_view=(("A4C", -20.0), ("A2C", -24.0)),
+        rv_gls_pct=-22.0,
+    )
+    payload = dumps(record(replace(complete_data(), strain=with_rv)))
+    loaded = loads(payload)["data"]
+    assert loaded.strain.rv_strain_by_view == (("A4C", -20.0), ("A2C", -24.0))
+    assert loaded.strain.rv_gls_pct == -22.0
+
+    plain = dumps(record(complete_data()))
+    assert b"rv_strain_by_view" not in plain

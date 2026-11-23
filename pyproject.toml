@@ -222,6 +222,7 @@ files = [
     "src/echo_personal_tool/presentation/focus_mode.py",
     "src/echo_personal_tool/presentation/focus_widgets.py",
     "src/echo_personal_tool/presentation/frame_range_export_dialog.py",
+    "src/echo_personal_tool/presentation/free_wall_trace_action.py",
     "src/echo_personal_tool/presentation/ge_labeled_slider.py",
     "src/echo_personal_tool/presentation/help_dialog.py",
     "src/echo_personal_tool/presentation/icon_loader.py",

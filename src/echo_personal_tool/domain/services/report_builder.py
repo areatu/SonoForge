@@ -1230,6 +1230,30 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
             values.append(item)
         _append_myocardial_work_values(values, strain, sex=sex)
         _append_la_strain_report_values(values, strain, sex=sex)
+        _append_rv_strain_report_values(values, strain, sex=sex)
+
+
+def _append_rv_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:
+    """Append the RV free-wall strain row (plan А.7, issue #645) when measured.
+
+    One row: the peak-systolic free-wall GLS with the LV sign convention.
+    No reference-norm label — the row is honest like the MW/LA rows; the mean
+    covers the views that produced the measurement.
+    """
+    if not strain.rv_strain_by_view:
+        return
+    if strain.rv_gls_pct is None:
+        return
+    item = _value(
+        tr("domain.report.rv_strain_free_wall"),
+        "rv.gls",
+        strain.rv_gls_pct,
+        "%",
+        sex=sex,
+        group=GROUP_RIGHT_VENTRICLE,
+    )
+    if item:
+        values.append(item)
 
 
 def _append_la_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:

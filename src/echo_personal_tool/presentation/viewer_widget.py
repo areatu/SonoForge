@@ -59,6 +59,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
 )
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
 from echo_personal_tool.domain.models import Contour
+from echo_personal_tool.domain.models.contour import RV_FREE_WALL_CHAMBER
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
@@ -90,6 +91,7 @@ from echo_personal_tool.domain.services.contour_geometry import (
     MIN_DELTA_NORM,
     apex_point,
     apply_gaussian_displacement,
+    freehand_open_arc_contour,
     nearest_control_point_index,
     rbf_influence_weights,
     resample_open_arc,
@@ -103,7 +105,6 @@ from echo_personal_tool.domain.services.depth_scale_detector import (
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
-    infer_apex_from_open_arc,
     refine_open_arc_contour,
 )
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
@@ -182,6 +183,9 @@ CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 
 #: Points removed per freehand rollback (Backspace / right-click).
 _FREEHAND_ROLLBACK_POINTS = 8
+
+#: Freehand-trace prompt per chamber; the atrial prompt is the fallback.
+_TRACE_PROMPT_KEYS = {"LV": "viewer.lv_trace_prompt", RV_FREE_WALL_CHAMBER: "viewer.rv_fw_trace_prompt"}
 
 
 def _hint_bar_style() -> str:
@@ -3685,7 +3689,7 @@ class ViewerWidget(QWidget):
             return self.contour_state.lv_input == "trace"
         if key in {"LA", "RA"}:
             return self.contour_state.atrial_input == "trace"
-        return False
+        return key == RV_FREE_WALL_CHAMBER  # the wall is always freehand (А.7)
 
     def start_contour(
         self,
@@ -3741,7 +3745,7 @@ class ViewerWidget(QWidget):
         self._view.addItem(self._active_contour_item)
         self._clear_contour_hover()
         self._set_contour_nodes_pickable(False)
-        prompt_key = "viewer.lv_trace_prompt" if chamber.upper() == "LV" else "viewer.atrial_trace_prompt"
+        prompt_key = _TRACE_PROMPT_KEYS.get(chamber.upper(), "viewer.atrial_trace_prompt")
         self._measurement_label.setText(tr(prompt_key, finish_key=shortcut_label("finish_tool")))
         return True
 
@@ -4341,27 +4345,21 @@ class ViewerWidget(QWidget):
         reduced = reduce_polygon_points(points, epsilon=3.0, closed=False)
         if len(reduced) < 3:
             reduced = points
-        septal = reduced[0]
-        lateral = reduced[-1]
-        apex = infer_apex_from_open_arc(reduced, septal, lateral)
-
-        resampled = resample_open_arc(reduced, num_nodes=DEFAULT_NODE_COUNT)
-        contour = Contour(
+        contour = freehand_open_arc_contour(
+            reduced,
+            chamber=self.contour_state.active_chamber,
             phase=self.contour_state.active_phase or "ED",
             view=self.contour_state.active_view,
-            chamber=self.contour_state.active_chamber,
-            source="manual",
-            mitral_annulus=(septal, lateral),
-            apex_landmark=apex,
-            points=resampled,
-            num_nodes=DEFAULT_NODE_COUNT,
             frame_index=self._contour_frame_index(),
             unassisted=unassisted,
         )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
-        if not unassisted:
+        if not unassisted and contour.is_open_arc:
             self._auto_snap_new_contour(contour)
+        self.contour_completed.emit(contour)
+        return True
+
         self.contour_completed.emit(contour)
         return True
 
