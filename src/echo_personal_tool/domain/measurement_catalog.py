@@ -674,6 +674,16 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
     # ── RV strain (план А.7) — free-wall GLS of the traced RV wall ──
     _m("rv.gls", ("RV GLS ПЖ", "Стрейн свободной стенки ПЖ (пик систолический)"), ("RV GLS", "RV free-wall strain"),
        Quantity.PERCENT, 1, synonyms=("RV FWLS", "RV free-wall strain", "стенка ПЖ (стрейн)", "RV free wall (strain)")),
+    # ── Layered LV strain (план А.8) — per-layer GLS and the transmural gradient ──
+    _m("lv.gls_mid", ("ГлПродДеф среднего слоя ЛЖ", "Глобальная продольная деформация среднего слоя миокарда ЛЖ"),
+       ("LV GLS mid-wall", "LV mid-wall global longitudinal strain"),
+       Quantity.PERCENT, 1, synonyms=("GLS mid-wall", "GLS mid", "средний слой (стрейн)", "Mid-wall (strain)")),
+    _m("lv.gls_epi", ("ГлПродДеф эпикарда ЛЖ", "Глобальная продольная деформация эпикарда ЛЖ"),
+       ("LV GLS epicardial", "LV epicardial global longitudinal strain"),
+       Quantity.PERCENT, 1, synonyms=("GLS epicardial", "GLS epi", "эпикард (стрейн)", "Epicardial (strain)")),
+    _m("lv.gls_gradient", ("Градиент эндо−эпи ЛЖ", "Трансмуральный градиент продольной деформации (ГлПродДеф эпикарда минус ГлПродДеф эндокарда)"),
+       ("LV endo−epi gradient", "Transmural longitudinal strain gradient (epicardial minus endocardial GLS)"),
+       Quantity.PERCENT, 1, synonyms=("transmural gradient", "трансмуральный градиент", "градиент эндо-эпи", "Endo−epi gradient")),
     # ── Vessels ──
     _m("vessel.psv", ("Vps", "Пиковая систолическая скорость"), ("PSV", "Peak systolic velocity"), _VEL, 1, mode=CTX_PW,
        synonyms=("PSV", "ПСС")),

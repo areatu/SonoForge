@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.services.layered_strain import LAYERS
 from echo_personal_tool.domain.services.segment_map import (
     VIEW_WALLS,
     segment_ids_in_bullseye_order,
@@ -137,7 +138,8 @@ class SegmentCurvePanel(QWidget):
         title_label = QLabel(title)
         title_label.setStyleSheet(f"font-weight: bold; color: {_TITLE_COLOR}; font-size: 13px;")
         header.addWidget(title_label)
-        metric_label = QLabel(tr("strain.metric_deformation").lower())
+        self._metric_label = QLabel(tr("strain.metric_deformation").lower())
+        metric_label = self._metric_label
         metric_label.setStyleSheet(f"color: {_AXIS_COLOR}; font-size: 11px;")
         header.addWidget(metric_label)
         header.addStretch()
@@ -364,6 +366,20 @@ class SegmentCurvePanel(QWidget):
         else:
             self._gls_label.setText(f"GLS {gls:.1f}%")
 
+    def set_metric_label(self, metric: str, layer_label: str = "", note: str = "") -> None:
+        """Set the small metric caption: «деформация · <layer>[ · <note>]».
+
+        The layer name (plan А.8) tells the user whose curves are plotted;
+        the note appears only when the selected layer had no curves and the
+        endocardial ones are shown instead — never a silent substitution.
+        """
+        parts = [metric]
+        if layer_label:
+            parts.append(layer_label)
+        if note:
+            parts.append(note)
+        self._metric_label.setText(" · ".join(parts))
+
     # ── ECG ───────────────────────────────────────────────────────────────
 
     def set_ecg_visible(self, visible: bool) -> None:
@@ -565,6 +581,24 @@ class StrainCurvesView(QWidget):
         for panel in self._visible_when_data.values():
             panel.clear()
 
+        # А.8 (issue 646): the myocardial layer the panels plot. The
+        # endocardial layer is the reported GLS — the default; mid/epi switch
+        # the panels to that layer's own segment curves when the run
+        # produced them.
+        self._active_layer: str = "endo"
+        self._last_result: StrainResult | None = None
+        self._last_frame_time_ms: float = 33.3
+
+    def set_active_layer(self, layer: str) -> None:
+        """Switch the plotted myocardial layer (plan А.8) and re-render."""
+        if layer not in LAYERS:
+            return
+        if layer == self._active_layer:
+            return
+        self._active_layer = layer
+        if self._last_result is not None:
+            self.set_strain_data(self._last_result, frame_time_ms=self._last_frame_time_ms)
+
     def set_active_view(self, view: str) -> None:
         """Mark which view the result belongs to (A4C/A2C/A3C)."""
         view = view.upper()
@@ -578,6 +612,8 @@ class StrainCurvesView(QWidget):
         frame_time_ms: float = 33.3,
     ) -> None:
         """Update the panels with per-segment strain curves from the result."""
+        self._last_result = result
+        self._last_frame_time_ms = float(frame_time_ms)
         has_model_curves = bool(getattr(result, "segment_curves", None))
         # ``per_kernel_longitudinal`` was only needed because the view used to
         # re-derive the curves itself; with model curves present it is not
@@ -595,6 +631,16 @@ class StrainCurvesView(QWidget):
             segment_curves = {int(k): np.asarray(v, dtype=np.float64) for k, v in result.segment_curves.items()}
         else:
             segment_curves = self._segment_curves_from_tracking(result, n_frames)
+
+        # А.8 (issue 646): the selected myocardial layer's own segment curves
+        # when the run produced them; otherwise the panels stay on the
+        # endocardial layer and the header says so honestly.
+        layer_note = ""
+        layer_curves = (getattr(result, "layer_segment_curves", {}) or {}).get(self._active_layer)
+        if layer_curves:
+            segment_curves = {int(k): np.asarray(v, dtype=np.float64) for k, v in layer_curves.items()}
+        elif self._active_layer != "endo":
+            layer_note = tr("strain.layer_fallback")
 
         ecg = (
             result.ecg_trace_for_display
@@ -616,6 +662,13 @@ class StrainCurvesView(QWidget):
         # the meta bar).
         gls_ok = result.gls is not None and np.isfinite(result.gls)
         gls = result.gls if gls_ok else _gls_for(VIEW_SEGMENTS.get(self._active_view, VIEW_SEGMENTS["A4C"]))
+        # А.8: a non-endocardial layer shows its own GLS (the peak of that
+        # layer's curve) — the endocardial number stays the reported one in
+        # the meta bar and the summary table.
+        if self._active_layer != "endo":
+            layer_gls = (getattr(result, "layer_gls", {}) or {}).get(self._active_layer)
+            if layer_gls is not None and np.isfinite(layer_gls):
+                gls = float(layer_gls)
 
         # Vendor look: the analysed view gets the whole height; the other
         # panels hide instead of leaving half-empty placeholder stacks.
@@ -633,6 +686,8 @@ class StrainCurvesView(QWidget):
             ecg,
             ecg_sample_rate,
             color_map=VIEW_CURVE_COLORS.get(self._active_view, VIEW_CURVE_COLORS["A4C"]),
+            layer_note=layer_note,
+            layer_label=tr(f"strain.layer_{self._active_layer}"),
         )
         for panel in self._visible_when_data.values():
             if panel is not analysed:
@@ -717,8 +772,11 @@ class StrainCurvesView(QWidget):
         ecg_sample_rate: float | None,
         *,
         color_map: dict[int, tuple[int, int, int]] | None = None,
+        layer_note: str = "",
+        layer_label: str = "",
     ) -> None:
         panel.set_gls(gls)
+        panel.set_metric_label(tr("strain.metric_deformation").lower(), layer_label, layer_note)
         if curves:
             panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms, color_map=color_map)
             if ecg is not None:
@@ -731,6 +789,7 @@ class StrainCurvesView(QWidget):
             panel.set_ecg_visible(False)
 
     def clear(self) -> None:
+        self._last_result = None
         self._panel_a4c.clear()
         self._panel_a2c.clear()
         self._panel_dao.clear()

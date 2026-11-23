@@ -311,6 +311,17 @@ class StrainReport:
     #: strain row instead of a fabricated one.
     rv_strain_by_view: tuple[tuple[str, float], ...] = ()
     rv_gls_pct: float | None = None
+    #: А.8 layered strain (plan #646): ``(view, GLS endo, GLS mid, GLS epi)``
+    #: per analysed view whose run produced layer curves (``mid``/``epi``
+    #: optional — a layer the run could not measure is ``None``), plus the
+    #: mean of the mid/epi GLS and the transmural gradient ``GLS_epi −
+    #: GLS_endo`` (percentage points, positive when the endocardium deforms
+    #: more) over the views that measured them. ``None``/empty when no view
+    #: produced layers — no fabricated layer section.
+    layer_gls_by_view: tuple[tuple[str, float, float | None, float | None], ...] = ()
+    layer_mid_pct: float | None = None
+    layer_epi_pct: float | None = None
+    layer_gradient_pp: float | None = None
     #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
     contour_source: str = "manual"
     #: ``(view, contour lineage)`` of the endocardial contour each view was

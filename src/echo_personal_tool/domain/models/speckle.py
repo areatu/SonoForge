@@ -338,6 +338,19 @@ class StrainResult:
     #: (NCC mean) travels with the numbers.
     la_strain_curve: np.ndarray | None = None
     la_strain: LaStrainMetrics | None = None
+    #: А.8 layered strain (issue #646): global longitudinal strain per
+    #: myocardial layer (``endo``/``mid``/``epi``), embedded full-length on the
+    #: same time base as ``longitudinal`` — the endocardial layer *is* the
+    #: global curve, computed through the same columns and weights. Layers the
+    #: run could not measure are absent (never a fabricated curve).
+    layer_curves: dict[str, np.ndarray] = field(default_factory=dict)
+    #: Per-layer GLS (peak of that layer's window curve, same ``compute_gls``
+    #: definition as ``gls``). Empty when layered strain was not produced.
+    layer_gls: dict[str, float] = field(default_factory=dict)
+    #: Per-layer per-segment curves over the same time base — the layer the
+    #: curves view plots when the user selects it (``segment_curves`` is the
+    #: endocardial layer's copy of this).
+    layer_segment_curves: dict[str, dict[int, np.ndarray]] = field(default_factory=dict)
     la_tracking_quality: float | None = None
     #: А.7 RV strain of this clip (plan #645): the tracked free-wall strain
     #: curve (zeroed at ventricular ED) and the peak-systolic GLS, or ``None``

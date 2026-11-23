@@ -237,6 +237,11 @@ def _encode(value: object) -> object:
             # when a view measured it; otherwise the wire shape stays exactly
             # what older schemas accept.
             fields = fields - {"rv_strain_by_view", "rv_gls_pct"}
+        if isinstance(value, StrainReport) and not value.layer_gls_by_view:
+            # А.8: layered strain (issue 646) is written only when a view
+            # produced layer curves — a single-layer analysis keeps the exact
+            # wire shape older schemas accept.
+            fields = fields - {"layer_gls_by_view", "layer_mid_pct", "layer_epi_pct", "layer_gradient_pp"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire

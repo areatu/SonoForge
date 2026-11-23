@@ -1231,6 +1231,39 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
         _append_myocardial_work_values(values, strain, sex=sex)
         _append_la_strain_report_values(values, strain, sex=sex)
         _append_rv_strain_report_values(values, strain, sex=sex)
+        _append_layered_strain_report_values(values, strain, sex=sex)
+
+
+def _append_layered_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:
+    """Append the layered LV strain rows (plan А.8, issue #646) when measured.
+
+    Three rows, all in the LV group and honest like the MW/LA/RV ones: the
+    mid-wall and epicardial GLS (the endocardial GLS *is* the main GLS row —
+    it is not repeated) and the transmural gradient ``GLS_epi − GLS_endo`` in
+    percentage points, positive when the endocardium deforms more. Each mean
+    covers the views that produced that value; a value no view measured has
+    no row, and a view without layers adds nothing.
+    """
+    if not strain.layer_gls_by_view:
+        return
+    rows = (
+        ("domain.report.strain_layer_mid", "lv.gls_mid", strain.layer_mid_pct),
+        ("domain.report.strain_layer_epi", "lv.gls_epi", strain.layer_epi_pct),
+        ("domain.report.strain_gradient", "lv.gls_gradient", strain.layer_gradient_pp),
+    )
+    for label_key, measurement_id, value in rows:
+        if value is None:
+            continue
+        item = _value(
+            tr(label_key),
+            measurement_id,
+            value,
+            "%",
+            sex=sex,
+            group=GROUP_LEFT_VENTRICLE,
+        )
+        if item:
+            values.append(item)
 
 
 def _append_rv_strain_report_values(values: list[ReportValue], strain: StrainReport, *, sex: str) -> None:

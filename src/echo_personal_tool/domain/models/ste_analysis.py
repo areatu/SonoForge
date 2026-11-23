@@ -40,6 +40,11 @@ DEFINITION_GLS = "GLS = peak of the global longitudinal strain curve over one ca
 DEFINITION_ESS = "ESS = longitudinal strain at aortic valve closure (AVC)"
 DEFINITION_TTP = "TTP = time from end-diastole to the segment strain peak"
 DEFINITION_LAYER = "endocardial layer (kernels on the endocardial contour)"
+DEFINITION_LAYERS = (
+    "LV layers endo/mid/epi of one segmentation; a layer's GLS is the peak of "
+    "that layer's global longitudinal curve — the same definition as the "
+    "reported GLS, computed on the layer's own material line (issue 646)"
+)
 #: Voigt 2015 requires the report to declare the sampling extent, the handling of
 #: LV translation and the regularization — otherwise "GLS" is not comparable.
 DEFINITION_COMPARABILITY = (
@@ -78,6 +83,7 @@ class StrainAnalysis:
     definition_ess: str = DEFINITION_ESS
     definition_ttp: str = DEFINITION_TTP
     layer: str = DEFINITION_LAYER
+    definition_layers: str = DEFINITION_LAYERS
     definition_comparability: str = DEFINITION_COMPARABILITY
     definition_segment_sides: str = DEFINITION_SEGMENT_SIDES
     # Spatial extent of the sampling (mm) and the processing that shaped the
@@ -115,6 +121,14 @@ class StrainAnalysis:
     #: the wall tracking. Both ``None`` when the clip has no free-wall trace.
     rv_gls_pct: float | None = None
     rv_tracking_quality: float | None = None
+    #: А.8 layered strain of this view (plan #646): per-layer GLS
+    #: (``endo``/``mid``/``epi``, same definition as ``gls`` — the endocardial
+    #: entry repeats it as the layer-record cross-check) and the transmural
+    #: gradient ``GLS_epi − GLS_endo`` in percentage points (positive when the
+    #: endocardium deforms more — the normal direction). Empty/``None`` when
+    #: the run produced no layer curves.
+    layer_gls: dict[str, float | None] = field(default_factory=dict)
+    transmural_gradient_pp: float | None = None
     ed_index: int = 0
     es_index: int = 0
     avc_index: int = 0
@@ -187,6 +201,7 @@ class StrainAnalysis:
                 "ess": self.definition_ess,
                 "ttp": self.definition_ttp,
                 "layer": self.layer,
+                "layers": self.definition_layers,
                 "comparability": self.definition_comparability,
                 "segment_sides_convention": self.definition_segment_sides,
             },
@@ -207,6 +222,12 @@ class StrainAnalysis:
                 "post_systolic_index": self.post_systolic_index,
                 "drift": self.drift,
                 "is_post_systolic": self.is_post_systolic,
+                # А.8: written only when the run measured layers — the wire
+                # shape of a single-layer analysis stays what it was.
+                "layer_gls": {layer: _finite(self.layer_gls.get(layer)) for layer in sorted(self.layer_gls)}
+                if self.layer_gls
+                else {},
+                "transmural_gradient_pp": _finite(self.transmural_gradient_pp) if self.layer_gls else None,
             },
             "frames": {
                 "ed": self.ed_index,
@@ -275,6 +296,14 @@ class StrainAnalysis:
         segment_ess = {int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()}
         la_metrics = getattr(result, "la_strain", None)
         rv_metrics = getattr(result, "rv_strain", None)
+        # А.8 (issue 646): the gradient is derived from the result's layer
+        # GLS values here, so the record, the report and the window all read
+        # the same number from the same conversion point.
+        layer_gls = {str(layer): _finite(value) for layer, value in (getattr(result, "layer_gls", {}) or {}).items()}
+        from echo_personal_tool.domain.services.layered_strain import transmural_gradient_pp
+
+        finite_layer_gls = {layer: value for layer, value in layer_gls.items() if value is not None}
+        gradient = transmural_gradient_pp(finite_layer_gls)
         return cls(
             view=normalise_view(view or getattr(result, "view", "A4C")),
             source_contour=source if source is not None and source.recorded else None,
@@ -293,6 +322,8 @@ class StrainAnalysis:
             la_tracking_quality=_finite(getattr(result, "la_tracking_quality", None)),
             rv_gls_pct=None if rv_metrics is None else _finite(rv_metrics.gls_pct),
             rv_tracking_quality=_finite(getattr(result, "rv_tracking_quality", None)),
+            layer_gls=layer_gls,
+            transmural_gradient_pp=gradient,
             ed_index=int(result.ed_index),
             es_index=int(result.es_index),
             avc_index=int(getattr(result, "avc_index", result.es_index)),
@@ -472,6 +503,8 @@ def strain_report_from_study(
     mw_by_view: list[tuple[str, float, float, float, float]] = []
     la_by_view: list[tuple[str, float, float | None, float | None]] = []
     rv_by_view: list[tuple[str, float]] = []
+    layers_by_view: list[tuple[str, float, float | None, float | None]] = []
+    layer_gradients: list[float] = []
     for view in study.views_measured():
         analysis = study.analyses[view]
         value = _finite(analysis.gls)
@@ -495,6 +528,21 @@ def strain_report_from_study(
         rv_gls = _finite(analysis.rv_gls_pct)
         if rv_gls is not None:
             rv_by_view.append((view, rv_gls))
+        # А.8 (issue 646): a view enters the layer rows when its run measured
+        # the endocardial layer curve — mid/epi may be missing on their own.
+        layer_endo = _finite(analysis.layer_gls.get("endo"))
+        if layer_endo is not None:
+            layers_by_view.append(
+                (
+                    view,
+                    layer_endo,
+                    _finite(analysis.layer_gls.get("mid")),
+                    _finite(analysis.layer_gls.get("epi")),
+                )
+            )
+            view_gradient = _finite(analysis.transmural_gradient_pp)
+            if view_gradient is not None:
+                layer_gradients.append(view_gradient)
         if blood_pressure is not None:
             work = myocardial_work_from_analysis(
                 analysis.global_curve,
@@ -529,6 +577,17 @@ def strain_report_from_study(
     rv_gls_pct: float | None = None
     if rv_by_view:
         rv_gls_pct = float(np.mean([row[1] for row in rv_by_view]))
+
+    layer_summary: dict[str, float | None] = {"layer_mid_pct": None, "layer_epi_pct": None, "layer_gradient_pp": None}
+    if layers_by_view:
+        # Means cover the views that produced each layer; the gradient mean
+        # covers the views that measured both layers — never averaged from
+        # missing halves.
+        mids = [row[2] for row in layers_by_view if row[2] is not None]
+        epis = [row[3] for row in layers_by_view if row[3] is not None]
+        layer_summary["layer_mid_pct"] = float(np.mean(mids)) if mids else None
+        layer_summary["layer_epi_pct"] = float(np.mean(epis)) if epis else None
+        layer_summary["layer_gradient_pp"] = float(np.mean(layer_gradients)) if layer_gradients else None
 
     first = study.analyses[gls_by_view[0][0]]
     mw_summary: dict[str, float | None] = {
@@ -570,6 +629,10 @@ def strain_report_from_study(
         la_booster_pct=la_summary["la_booster_pct"],
         rv_strain_by_view=tuple(rv_by_view),
         rv_gls_pct=rv_gls_pct,
+        layer_gls_by_view=tuple(layers_by_view),
+        layer_mid_pct=layer_summary["layer_mid_pct"],
+        layer_epi_pct=layer_summary["layer_epi_pct"],
+        layer_gradient_pp=layer_summary["layer_gradient_pp"],
         contour_source=contour_source,
         lineage_by_view=tuple(lineage_by_view),
     )

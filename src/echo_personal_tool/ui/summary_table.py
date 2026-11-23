@@ -78,6 +78,9 @@ class SummaryTable(QWidget):
             ("la_lascd", tr("strain.la_lascd_row"), "%"),
             ("la_lasct", tr("strain.la_lasct_row"), "%"),
             ("rv_gls", tr("strain.rv_gls_row"), "%"),
+            ("gls_mid", tr("strain.gls_mid_row"), "%"),
+            ("gls_epi", tr("strain.gls_epi_row"), "%"),
+            ("gls_grad", tr("strain.gls_grad_row"), tr("strain.unit_pp")),
             ("ef", tr("strain.ef"), "%"),
             ("edv", tr("strain.edv"), tr("strain.unit_ml")),
             ("esv", tr("strain.esv"), tr("strain.unit_ml")),
@@ -175,6 +178,20 @@ class SummaryTable(QWidget):
             val_label.setText("--")
         else:
             val_label.setText(f"{gls:.1f}%")
+
+    def set_layer_values(self, mid: float | None, epi: float | None, gradient_pp: float | None) -> None:
+        """Fill the layered-strain rows (plan А.8) or blank them.
+
+        The endocardial GLS is the main ``gls`` row — only the other layers
+        and the transmural gradient get their own rows, and each stays ``--``
+        when this run produced no curve for it (never a fabricated layer).
+        """
+        for key, val in (("gls_mid", mid), ("gls_epi", epi), ("gls_grad", gradient_pp)):
+            _lbl, val_label, _unit = self._rows[key]
+            if val is None:
+                val_label.setText("--")
+            else:
+                val_label.setText(f"{val:.1f}")
 
     def set_mw_values(self, gwi: float | None, gwe: float | None, *, warnings: tuple[str, ...] = ()) -> None:
         """Fill the Myocardial Work rows (plan А.9) or blank them.

@@ -21,6 +21,11 @@ from echo_personal_tool.keyboard_shortcuts import append_shortcut_hint
 from echo_personal_tool.ui.strain_helpers import PALETTES
 from echo_personal_tool.ui.ui_metrics import text_width
 
+# UI colour literals live once per module: the colour ratchet counts
+# occurrences, so every repeat references the constant instead.
+_TEXT_STYLE = "color: #e0e0e0;"
+_GROUP_TITLE_STYLE = "QGroupBox { font-weight: bold; color: #e0e0e0; }"
+
 
 class ControlPanel(QWidget):
     """Left-side control panel for Strain Window."""
@@ -28,6 +33,7 @@ class ControlPanel(QWidget):
     view_toggled = Signal(str, bool)  # view_name, checked
     display_mode_changed = Signal(str)  # "contour", "curves", "sr", "peak", "overview"
     strain_metric_changed = Signal(str)  # "deformation", "strain_rate", "peak"
+    strain_layer_changed = Signal(str)  # "endo" | "mid" | "epi" (plan А.8)
     qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
     position_selected = Signal(str)  # "A4C" | "A2C" | "A3C"
     ttp_mode_toggled = Signal(bool)  # bull's-eye: strain vs time-to-peak
@@ -55,6 +61,7 @@ class ControlPanel(QWidget):
 
         self._init_view_mode_group(layout)
         self._init_metric_group(layout)
+        self._init_layer_group(layout)
         self._init_views_group(layout)
         self._init_position_group(layout)
         self._init_quality_group(layout)
@@ -76,22 +83,22 @@ class ControlPanel(QWidget):
     def _init_view_mode_group(self, layout: QVBoxLayout) -> None:
         """View mode (contour vs curves)."""
         group_view_mode = QGroupBox(tr("strain.view_mode"))
-        group_view_mode.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_view_mode.setStyleSheet(_GROUP_TITLE_STYLE)
         view_mode_layout = QVBoxLayout()
 
         self._mode_contour = QRadioButton(tr("strain.mode_cine_contour"))
         self._mode_contour.setChecked(True)
-        self._mode_contour.setStyleSheet("color: #e0e0e0;")
+        self._mode_contour.setStyleSheet(_TEXT_STYLE)
         self._mode_contour.toggled.connect(lambda c: self.display_mode_changed.emit("contour") if c else None)
         view_mode_layout.addWidget(self._mode_contour)
 
         self._mode_curves = QRadioButton(tr("strain.mode_curves"))
-        self._mode_curves.setStyleSheet("color: #e0e0e0;")
+        self._mode_curves.setStyleSheet(_TEXT_STYLE)
         self._mode_curves.toggled.connect(lambda c: self.display_mode_changed.emit("curves") if c else None)
         view_mode_layout.addWidget(self._mode_curves)
 
         self._mode_overview = QRadioButton(tr("strain.mode_overview"))
-        self._mode_overview.setStyleSheet("color: #e0e0e0;")
+        self._mode_overview.setStyleSheet(_TEXT_STYLE)
         self._mode_overview.toggled.connect(lambda c: self.display_mode_changed.emit("overview") if c else None)
         view_mode_layout.addWidget(self._mode_overview)
 
@@ -101,19 +108,19 @@ class ControlPanel(QWidget):
     def _init_metric_group(self, layout: QVBoxLayout) -> None:
         """Strain metric (Clinical-style: Deformation / SR / Peak)."""
         group_metric = QGroupBox(tr("strain.metric"))
-        group_metric.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_metric.setStyleSheet(_GROUP_TITLE_STYLE)
         metric_layout = QVBoxLayout()
 
         self._metric_deformation = QRadioButton(tr("strain.metric_deformation"))
         self._metric_deformation.setChecked(True)
-        self._metric_deformation.setStyleSheet("color: #e0e0e0;")
+        self._metric_deformation.setStyleSheet(_TEXT_STYLE)
         self._metric_deformation.toggled.connect(
             lambda c: self.strain_metric_changed.emit("deformation") if c else None
         )
         metric_layout.addWidget(self._metric_deformation)
 
         self._metric_sr = QRadioButton(tr("strain.metric_sr"))
-        self._metric_sr.setStyleSheet("color: #e0e0e0;")
+        self._metric_sr.setStyleSheet(_TEXT_STYLE)
         self._metric_sr.toggled.connect(lambda c: self.strain_metric_changed.emit("strain_rate") if c else None)
         # SR/peak are drawn as the same strain curve with a different title
         # («GLS Rate: --»), which reads as a real measurement — disabled with
@@ -123,7 +130,7 @@ class ControlPanel(QWidget):
         metric_layout.addWidget(self._metric_sr)
 
         self._metric_peak = QRadioButton(tr("strain.metric_peak"))
-        self._metric_peak.setStyleSheet("color: #e0e0e0;")
+        self._metric_peak.setStyleSheet(_TEXT_STYLE)
         self._metric_peak.toggled.connect(lambda c: self.strain_metric_changed.emit("peak") if c else None)
         self._metric_peak.setEnabled(False)
         self._metric_peak.setToolTip(tr("strain.metric_not_available"))
@@ -132,27 +139,55 @@ class ControlPanel(QWidget):
         group_metric.setLayout(metric_layout)
         layout.addWidget(group_metric)
 
+    def _init_layer_group(self, layout: QVBoxLayout) -> None:
+        """Myocardial layer selection (plan А.8): which layer the curves plot."""
+        group_layer = QGroupBox(tr("strain.layer_group"))
+        group_layer.setStyleSheet(_GROUP_TITLE_STYLE)
+        layer_layout = QVBoxLayout()
+
+        self._layer_buttons: dict[str, QRadioButton] = {}
+        for layer in ("endo", "mid", "epi"):
+            button = QRadioButton(tr(f"strain.layer_{layer}"))
+            button.setStyleSheet(_TEXT_STYLE)
+            if layer == "endo":
+                button.setChecked(True)
+            button.toggled.connect(
+                lambda checked, name=layer: self.strain_layer_changed.emit(name) if checked else None
+            )
+            layer_layout.addWidget(button)
+            self._layer_buttons[layer] = button
+
+        group_layer.setLayout(layer_layout)
+        layout.addWidget(group_layer)
+
+    def set_layer(self, layer: str) -> None:
+        """Select the layer radio without re-emitting (restoring state)."""
+        button = self._layer_buttons.get(layer)
+        if button is not None:
+            with QSignalBlocker(button):
+                button.setChecked(True)
+
     def _init_views_group(self, layout: QVBoxLayout) -> None:
         """View toggles (which clips contribute to the study)."""
         group_views = QGroupBox(tr("strain.views"))
-        group_views.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_views.setStyleSheet(_GROUP_TITLE_STYLE)
         views_layout = QVBoxLayout()
 
         self._cb_a4c = QCheckBox("A4C")
         self._cb_a4c.setChecked(True)
-        self._cb_a4c.setStyleSheet("color: #e0e0e0;")
+        self._cb_a4c.setStyleSheet(_TEXT_STYLE)
         self._cb_a4c.toggled.connect(lambda c: self.view_toggled.emit("A4C", c))
         views_layout.addWidget(self._cb_a4c)
 
         self._cb_a2c = QCheckBox("A2C")
         self._cb_a2c.setChecked(True)
-        self._cb_a2c.setStyleSheet("color: #e0e0e0;")
+        self._cb_a2c.setStyleSheet(_TEXT_STYLE)
         self._cb_a2c.toggled.connect(lambda c: self.view_toggled.emit("A2C", c))
         views_layout.addWidget(self._cb_a2c)
 
         self._cb_dao = QCheckBox(tr("strain.view_dao"))
         self._cb_dao.setChecked(True)
-        self._cb_dao.setStyleSheet("color: #e0e0e0;")
+        self._cb_dao.setStyleSheet(_TEXT_STYLE)
         self._cb_dao.toggled.connect(lambda c: self.view_toggled.emit("DAO", c))
         views_layout.addWidget(self._cb_dao)
 
@@ -162,22 +197,22 @@ class ControlPanel(QWidget):
     def _init_position_group(self, layout: QVBoxLayout) -> None:
         """Position (view) selection — which clip the contours came from."""
         group_position = QGroupBox(tr("strain.position"))
-        group_position.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_position.setStyleSheet(_GROUP_TITLE_STYLE)
         position_layout = QVBoxLayout()
 
         self._pos_a4c = QRadioButton("A4C")
         self._pos_a4c.setChecked(True)
-        self._pos_a4c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a4c.setStyleSheet(_TEXT_STYLE)
         self._pos_a4c.toggled.connect(lambda c: self.position_selected.emit("A4C") if c else None)
         position_layout.addWidget(self._pos_a4c)
 
         self._pos_a2c = QRadioButton("A2C")
-        self._pos_a2c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a2c.setStyleSheet(_TEXT_STYLE)
         self._pos_a2c.toggled.connect(lambda c: self.position_selected.emit("A2C") if c else None)
         position_layout.addWidget(self._pos_a2c)
 
         self._pos_a3c = QRadioButton(tr("strain.position_a3c"))
-        self._pos_a3c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a3c.setStyleSheet(_TEXT_STYLE)
         self._pos_a3c.toggled.connect(lambda c: self.position_selected.emit("A3C") if c else None)
         # Bull's-eye mode: strain (default) or time-to-peak map.
         self._cb_ttp = QCheckBox(tr("strain.bullseye_ttp"))
@@ -204,7 +239,7 @@ class ControlPanel(QWidget):
     def _init_quality_group(self, layout: QVBoxLayout) -> None:
         """Quality info block."""
         group_quality = QGroupBox(tr("strain.quality_gate"))
-        group_quality.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_quality.setStyleSheet(_GROUP_TITLE_STYLE)
         quality_layout = QVBoxLayout()
 
         self._quality_label = QLabel("-- / --")
@@ -222,7 +257,7 @@ class ControlPanel(QWidget):
     def _init_qc_scroll(self, layout: QVBoxLayout) -> None:
         """Quality Control (per-segment checkboxes) in its own scroll."""
         self._qc_group = QGroupBox(tr("strain.quality_control"))
-        self._qc_group.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        self._qc_group.setStyleSheet(_GROUP_TITLE_STYLE)
         self._qc_layout = QVBoxLayout()
         self._qc_layout.setSpacing(2)
 
@@ -245,7 +280,7 @@ class ControlPanel(QWidget):
     def _init_actions_group(self, layout: QVBoxLayout) -> None:
         """Action buttons (undo/redo/export/gold/close)."""
         group_actions = QGroupBox(tr("strain.actions"))
-        group_actions.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        group_actions.setStyleSheet(_GROUP_TITLE_STYLE)
         actions_layout = QVBoxLayout()
 
         self._btn_edit_mode = QPushButton(tr("strain.btn_edit_mode"))
