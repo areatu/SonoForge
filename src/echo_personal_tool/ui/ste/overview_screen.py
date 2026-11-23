@@ -76,8 +76,20 @@ class _DummyKItem:
 
 
 def _frame_to_qimage(frame: np.ndarray) -> QImage:
-    """Convert a grayscale ultrasound frame to a QImage (Format_Grayscale8)."""
-    f = np.asarray(frame, dtype=np.uint8, order="C")
+    """Convert an ultrasound frame to a QImage (Format_Grayscale8).
+
+    A vendor clip can decode as RGB(A) — ``(H, W, 3|4)`` — and the overview
+    snapshot stores the ED frame exactly as the cine carried it. Only
+    luminance is needed for the thumbnail, so colour frames are averaged to
+    grayscale here instead of refusing to render: a thumbnail must never be
+    the crash that blocks the strain window from opening (user-reported STE
+    LV bug: the window stayed closed on RGB clips). Any other malformed
+    shape still raises loudly — an unusable frame is not silently blanked.
+    """
+    f = np.asarray(frame)
+    if f.ndim == 3 and f.shape[-1] in (3, 4):
+        f = f.mean(axis=2)
+    f = np.asarray(f, dtype=np.uint8, order="C")
     if f.ndim != 2:
         raise ValueError(f"expected 2-D grayscale frame, got shape {f.shape}")
     h, w = f.shape
