@@ -34,6 +34,7 @@ GROUP_PRECEREBRAL = "precerebral"
 GROUP_ABDOMEN = "abdomen"
 GROUP_KIDNEY = "kidney"
 GROUP_THYROID = "thyroid"
+GROUP_FETAL = "fetal"
 GROUP_PLANIMETRY = "planimetry"
 GROUP_CALCULATIONS = "calculations"
 GROUP_OTHER = "other"
@@ -52,6 +53,7 @@ GROUP_ORDER: tuple[str, ...] = (
     GROUP_ABDOMEN,
     GROUP_KIDNEY,
     GROUP_THYROID,
+    GROUP_FETAL,
     GROUP_PLANIMETRY,
     GROUP_CALCULATIONS,
     GROUP_OTHER,

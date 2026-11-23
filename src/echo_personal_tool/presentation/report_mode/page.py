@@ -90,6 +90,7 @@ class ReportModePage(QWidget):
         self._preview.open_frames_requested.connect(self.open_frames_requested)
         self._preview.value_visibility_changed.connect(self.value_visibility_changed)
         self._preview.value_rename_requested.connect(self.value_rename_requested)
+        self._preview.growth_chart_requested.connect(self._open_growth_chart)
         self._sections.restore_value_requested.connect(lambda key: self.value_visibility_changed.emit(key, False))
         self._phrases = ReportPhrasesPanel(
             phrase_store,
@@ -195,6 +196,15 @@ class ReportModePage(QWidget):
     @property
     def document(self) -> ReportDocument | None:
         return self._preview.document
+
+    def _open_growth_chart(self) -> None:
+        """The percentile charts of the sheet's Z-score rows (plan А.12)."""
+        document = self._preview.document
+        if document is None:
+            return
+        from echo_personal_tool.ui.growth_chart_widget import show_growth_chart_dialog
+
+        show_growth_chart_dialog(document, self)
 
     def marked_not_evaluated(self) -> frozenset[str]:
         """Explicit «не оценивалось» marks of the session (they print, PR-5)."""

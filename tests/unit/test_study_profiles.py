@@ -22,7 +22,9 @@ from echo_personal_tool.domain.study_profiles import (
     SECTION_VESSELS,
     STUDY_PROFILE_ABDOMEN,
     STUDY_PROFILE_ECHO,
+    STUDY_PROFILE_FETAL,
     STUDY_PROFILE_KIDNEY,
+    STUDY_PROFILE_PEDIATRIC_ECHO,
     STUDY_PROFILE_THYROID,
     STUDY_PROFILE_VASCULAR,
     is_explicit,
@@ -39,9 +41,12 @@ def _sections(profile_id: str) -> list[str]:
     return [section.key for section in view.sections]
 
 
-def test_the_five_profiles_are_the_ones_the_owner_listed() -> None:
+def test_the_seven_profiles_are_the_ones_the_owner_listed() -> None:
+    """The cardiac family grew by the paediatric and fetal studies (plan А.12)."""
     assert PROFILE_ORDER == (
         STUDY_PROFILE_ECHO,
+        STUDY_PROFILE_PEDIATRIC_ECHO,
+        STUDY_PROFILE_FETAL,
         STUDY_PROFILE_VASCULAR,
         STUDY_PROFILE_ABDOMEN,
         STUDY_PROFILE_KIDNEY,
@@ -86,9 +91,16 @@ def test_the_non_cardiac_profiles_keep_calipers_and_planimetry() -> None:
         assert "lv" not in sections
 
 
-def test_only_the_cardiac_profile_claims_a_cardiac_study() -> None:
+def test_only_the_cardiac_profiles_claim_a_cardiac_study() -> None:
+    """The cardiac family: adult, paediatric (А.12) and fetal (А.12) echo."""
     assert study_profile(STUDY_PROFILE_ECHO).cardiac is True
-    assert all(not PROFILES[profile_id].cardiac for profile_id in PROFILE_ORDER[1:])
+    assert PROFILES[STUDY_PROFILE_PEDIATRIC_ECHO].cardiac is True
+    assert PROFILES[STUDY_PROFILE_FETAL].cardiac is True
+    assert all(
+        not PROFILES[profile_id].cardiac
+        for profile_id in PROFILE_ORDER
+        if profile_id not in (STUDY_PROFILE_ECHO, STUDY_PROFILE_PEDIATRIC_ECHO, STUDY_PROFILE_FETAL)
+    )
 
 
 def test_the_report_format_follows_the_profile() -> None:
@@ -439,3 +451,52 @@ def test_a_context_without_a_single_block_has_no_default() -> None:
     view = panel_view(default_layout(), "m", study_profile_id=STUDY_PROFILE_KIDNEY)
     assert view.sections == ()
     assert view.default_section == ""
+
+
+class TestPaediatricAndFetalProfiles:
+    """Plan А.12 (issue 650): the paediatric and fetal study profiles."""
+
+    def test_both_profiles_exist_and_are_cardiac(self) -> None:
+        from echo_personal_tool.domain.study_profiles import (
+            PROFILE_ORDER,
+            PROFILES,
+            STUDY_PROFILE_FETAL,
+            STUDY_PROFILE_PEDIATRIC_ECHO,
+        )
+
+        for profile_id in (STUDY_PROFILE_PEDIATRIC_ECHO, STUDY_PROFILE_FETAL):
+            assert profile_id in PROFILES and profile_id in PROFILE_ORDER
+            assert PROFILES[profile_id].cardiac is True
+
+    def test_the_paediatric_study_measures_the_heart(self) -> None:
+        from echo_personal_tool.domain.study_profiles import (
+            STUDY_PROFILE_PEDIATRIC_ECHO,
+            section_keys,
+        )
+
+        keys = section_keys(STUDY_PROFILE_PEDIATRIC_ECHO)
+        assert "lv" in keys and "aorta" in keys and "fetal" not in keys
+
+    def test_the_fetal_study_is_restricted_to_its_own_section(self) -> None:
+        from echo_personal_tool.domain.study_profiles import (
+            STUDY_PROFILE_FETAL,
+            section_keys,
+        )
+
+        keys = section_keys(STUDY_PROFILE_FETAL)
+        assert keys == ("general", "fetal")
+
+    def test_the_fetal_tools_belong_to_the_fetal_profile_only(self) -> None:
+        from echo_personal_tool.domain.measurement_catalog import tools_in_section
+        from echo_personal_tool.domain.study_profiles import (
+            STUDY_PROFILE_ECHO,
+            STUDY_PROFILE_FETAL,
+            study_profile,
+        )
+
+        fetal_ids = {spec.id for spec in tools_in_section("fetal")}
+        assert {"fetal.ao_root", "fetal.pa", "fetal.lv_dia", "fetal.rv_dia"} <= fetal_ids
+        for spec in tools_in_section("fetal"):
+            assert study_profile(STUDY_PROFILE_FETAL).allows_tool(spec.id, section_key="fetal")
+        # The adult study never shows the fetal section at all.
+        assert not study_profile(STUDY_PROFILE_ECHO).allows("fetal")

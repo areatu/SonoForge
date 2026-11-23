@@ -2,11 +2,9 @@
 
 The report window and the PDF export both render :class:`ReportDocument`, so
 grouping, units and the pathology flag are decided once, here, and not in two
-places that could drift apart.
-
-Norms come from the structured ASE reference data
-(:class:`ReferenceDataStore`) — the same numbers the reference window shows —
-with :mod:`ase_reference_norms` as a fallback for the plain linear calipers.
+places that could drift apart.  Norms come from the structured ASE reference
+data (:class:`ReferenceDataStore`) — the same numbers the reference window
+shows — with :mod:`ase_reference_norms` as a fallback for plain calipers.
 """
 
 from __future__ import annotations
@@ -1939,17 +1937,14 @@ def build_report_document(
     consumer — the preview, the PDF, the CSV and the JSON — sees the same
     document.  An empty id is the echocardiography format of the older builds.
 
-    ``study_profile_id`` selects the examination the report is about (item 11
-    of the 2026-11-06 list).  One study can hold the measurements of several
-    examinations, and the sheet must print the one on screen: the measures of
-    the other studies are dropped here, before the groups are built, so no
-    derived row (a Teichholz EF, a Simpson volume) of another examination
-    reaches the protocol either.  An empty id keeps the whole study, which is
-    what the callers that know nothing about profiles expect.
+    ``study_profile_id`` selects the examination (item 11 of the same list):
+    the measures of the other studies are dropped before the groups are
+    built, so no derived row of another examination reaches the protocol; an
+    empty id keeps the whole study.  A paediatric or fetal examination
+    additionally gets Z-score rows (plan А.12).
 
-    ``hidden_keys`` drops rows the physician hid in the sheet (item 9 of the
-    2026-11-06 list) after the group is built and keyed, so hiding and
-    restoring are the same operation in both directions.
+    ``hidden_keys`` drops rows the physician hid (item 9) after the group is
+    built and keyed, so hiding and restoring are the same operation.
     """
     from echo_personal_tool.domain.services.report_profiles import profile, profile_title
     from echo_personal_tool.domain.services.report_scope import restrict_snapshot_to_profile
@@ -1972,6 +1967,12 @@ def build_report_document(
         chosen = profile(profile_id)
         document = replace(
             document, groups=chosen.groups(groups), title=profile_title(chosen.id, tr), profile_id=chosen.id
+        )
+    if snapshot is not None and study_profile_id:
+        from echo_personal_tool.domain.services.report_zscore import zscore_report_values
+
+        document = with_extra_values(
+            document, zscore_report_values(snapshot, document.patient, study_profile_id=study_profile_id)
         )
     return _with_export_status(without_values(document, hidden_keys), snapshot, draft)
 

@@ -358,6 +358,16 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.thyroid_isthmus", caliper_label="TH-IST"),
         ),
     ),
+    # Fetal biometry (plan А.12) — the fetal study profile's own section.
+    (
+        "menu.fetal_group",
+        (
+            _btn("menu.fetal_ao_root", caliper_label="FET-AO"),
+            _btn("menu.fetal_pa", caliper_label="FET-PA"),
+            _btn("menu.fetal_lv_dia", caliper_label="FET-LV"),
+            _btn("menu.fetal_rv_dia", caliper_label="FET-RV"),
+        ),
+    ),
 )
 
 # Keys of every built-in section, including ones a build may hide (see _filter_profile).

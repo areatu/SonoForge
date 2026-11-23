@@ -1,0 +1,166 @@
+# Педиатрические и фетальные нормативы (план А.12, issue #650).
+#
+# ЭТА ТАБЛИЦА — НАЧАЛЬНЫЕ ЗНАЧЕНИЯ (SEED): приблизительные средние/SD по
+# диапазонам, каждая запись помечена verified: false. Это стартовая точка
+# для врача, а НЕ цитата из первоисточника. Значения редактируются прямо
+# здесь: диапазоны (bands) — линейная интерполяция между опорными точками.
+#
+# Формат:
+#   kind: bsa_bands    — педиатрия, опоры по площади поверхности тела (BSA, м²);
+#   kind: ga_bands     — фетальная ЭхоКГ, опоры по сроку гестации (недели).
+#   bsa / weeks — опора; mean — ожидаемое среднее; sd — стандартное отклонение.
+# Вне диапазона опор Z-score не считается (экстраполяция запрещена).
+schema_version: 1
+models:
+  lv.lvedd:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 22.0, sd: 3.5}
+      - {bsa: 0.50, mean: 26.5, sd: 3.8}
+      - {bsa: 0.75, mean: 30.5, sd: 4.0}
+      - {bsa: 1.00, mean: 34.0, sd: 4.2}
+      - {bsa: 1.30, mean: 37.5, sd: 4.5}
+      - {bsa: 1.70, mean: 41.5, sd: 4.8}
+      - {bsa: 2.10, mean: 45.0, sd: 5.0}
+  lv.lvesd:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 14.0, sd: 3.0}
+      - {bsa: 0.50, mean: 16.5, sd: 3.2}
+      - {bsa: 0.75, mean: 19.5, sd: 3.4}
+      - {bsa: 1.00, mean: 22.0, sd: 3.6}
+      - {bsa: 1.30, mean: 24.5, sd: 3.8}
+      - {bsa: 1.70, mean: 27.0, sd: 4.2}
+      - {bsa: 2.10, mean: 29.5, sd: 4.5}
+  lv.ivsd:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 4.8, sd: 0.8}
+      - {bsa: 0.50, mean: 5.3, sd: 0.9}
+      - {bsa: 0.75, mean: 5.8, sd: 0.9}
+      - {bsa: 1.00, mean: 6.3, sd: 1.0}
+      - {bsa: 1.30, mean: 6.8, sd: 1.0}
+      - {bsa: 1.70, mean: 7.3, sd: 1.1}
+      - {bsa: 2.10, mean: 7.8, sd: 1.1}
+  lv.lvpwd:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 4.8, sd: 0.8}
+      - {bsa: 0.50, mean: 5.3, sd: 0.9}
+      - {bsa: 0.75, mean: 5.8, sd: 0.9}
+      - {bsa: 1.00, mean: 6.3, sd: 1.0}
+      - {bsa: 1.30, mean: 6.8, sd: 1.0}
+      - {bsa: 1.70, mean: 7.3, sd: 1.1}
+      - {bsa: 2.10, mean: 7.8, sd: 1.1}
+  ao.annulus:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 9.0, sd: 1.5}
+      - {bsa: 0.50, mean: 11.0, sd: 1.6}
+      - {bsa: 0.75, mean: 13.0, sd: 1.7}
+      - {bsa: 1.00, mean: 14.5, sd: 1.8}
+      - {bsa: 1.30, mean: 16.0, sd: 2.0}
+      - {bsa: 1.70, mean: 17.5, sd: 2.2}
+      - {bsa: 2.10, mean: 19.0, sd: 2.3}
+  ao.sinus:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 11.0, sd: 1.6}
+      - {bsa: 0.50, mean: 13.5, sd: 1.8}
+      - {bsa: 0.75, mean: 15.5, sd: 1.9}
+      - {bsa: 1.00, mean: 17.5, sd: 2.0}
+      - {bsa: 1.30, mean: 19.5, sd: 2.2}
+      - {bsa: 1.70, mean: 21.5, sd: 2.5}
+      - {bsa: 2.10, mean: 23.5, sd: 2.6}
+  lv.edvi:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 95.0, sd: 15.0}
+      - {bsa: 0.50, mean: 88.0, sd: 14.0}
+      - {bsa: 0.75, mean: 82.0, sd: 13.0}
+      - {bsa: 1.00, mean: 78.0, sd: 13.0}
+      - {bsa: 1.30, mean: 74.0, sd: 12.0}
+      - {bsa: 1.70, mean: 70.0, sd: 12.0}
+      - {bsa: 2.10, mean: 68.0, sd: 11.0}
+  lv.mass_i:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 48.0, sd: 12.0}
+      - {bsa: 0.50, mean: 52.0, sd: 12.0}
+      - {bsa: 0.75, mean: 56.0, sd: 13.0}
+      - {bsa: 1.00, mean: 58.0, sd: 13.0}
+      - {bsa: 1.30, mean: 60.0, sd: 13.0}
+      - {bsa: 1.70, mean: 62.0, sd: 14.0}
+      - {bsa: 2.10, mean: 65.0, sd: 14.0}
+  la.lavi:
+    kind: bsa_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {bsa: 0.30, mean: 30.0, sd: 8.0}
+      - {bsa: 0.50, mean: 29.0, sd: 8.0}
+      - {bsa: 0.75, mean: 28.0, sd: 7.0}
+      - {bsa: 1.00, mean: 27.0, sd: 7.0}
+      - {bsa: 1.30, mean: 26.0, sd: 7.0}
+      - {bsa: 1.70, mean: 25.0, sd: 6.0}
+      - {bsa: 2.10, mean: 24.0, sd: 6.0}
+  fetal.ao_root:
+    kind: ga_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {weeks: 18, mean: 2.3, sd: 0.4}
+      - {weeks: 24, mean: 3.4, sd: 0.5}
+      - {weeks: 28, mean: 4.3, sd: 0.6}
+      - {weeks: 32, mean: 5.0, sd: 0.6}
+      - {weeks: 36, mean: 5.6, sd: 0.7}
+      - {weeks: 40, mean: 6.2, sd: 0.8}
+  fetal.pa:
+    kind: ga_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {weeks: 18, mean: 2.6, sd: 0.4}
+      - {weeks: 24, mean: 3.7, sd: 0.5}
+      - {weeks: 28, mean: 4.6, sd: 0.6}
+      - {weeks: 32, mean: 5.3, sd: 0.7}
+      - {weeks: 36, mean: 5.9, sd: 0.7}
+      - {weeks: 40, mean: 6.5, sd: 0.8}
+  fetal.lv_dia:
+    kind: ga_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {weeks: 18, mean: 3.0, sd: 0.6}
+      - {weeks: 24, mean: 4.6, sd: 0.8}
+      - {weeks: 28, mean: 5.8, sd: 0.9}
+      - {weeks: 32, mean: 6.8, sd: 1.0}
+      - {weeks: 36, mean: 7.7, sd: 1.1}
+      - {weeks: 40, mean: 8.5, sd: 1.2}
+  fetal.rv_dia:
+    kind: ga_bands
+    verified: false
+    source: "seed: предварительные значения — сверить с первоисточником (редактируется)"
+    bands:
+      - {weeks: 18, mean: 3.3, sd: 0.6}
+      - {weeks: 24, mean: 4.9, sd: 0.8}
+      - {weeks: 28, mean: 6.1, sd: 0.9}
+      - {weeks: 32, mean: 7.1, sd: 1.0}
+      - {weeks: 36, mean: 8.0, sd: 1.1}
+      - {weeks: 40, mean: 8.8, sd: 1.2}

@@ -793,6 +793,15 @@ _MEASUREMENT_LIST: tuple[MeasurementSpec, ...] = (
        ("R CCA IMT", "Right common carotid intima-media thickness"), _LEN, 1, synonyms=("КИМ", "IMT")),
     _m("cca.imt_left", ("КИМ ОСА левая", "Толщина комплекса интима-медиа ОСА слева"),
        ("L CCA IMT", "Left common carotid intima-media thickness"), _LEN, 1, synonyms=("КИМ", "IMT")),
+    # ── Fetal biometry (plan А.12, issue #650) — mm by gestational age ──
+    _m("fetal.ao_root", ("Ао корень плода", "Диаметр корня аорты плода"),
+       ("Fetal Ao root", "Fetal aortic root diameter"), _LEN, 1, synonyms=("аорта плода",)),
+    _m("fetal.pa", ("ЛА плода", "Диаметр лёгочной артерии плода"),
+       ("Fetal PA", "Fetal pulmonary artery diameter"), _LEN, 1, synonyms=("ЛПА",)),
+    _m("fetal.lv_dia", ("ЛЖ плода (диам.)", "Диаметр левого желудочка плода"),
+       ("Fetal LV dia", "Fetal left ventricle diameter"), _LEN, 1),
+    _m("fetal.rv_dia", ("ПЖ плода (диам.)", "Диаметр правого желудочка плода"),
+       ("Fetal RV dia", "Fetal right ventricle diameter"), _LEN, 1),
     # ── General ──
     _m("hr", ("ЧСС", "Частота сердечных сокращений"), ("HR", "Heart rate"), Quantity.RATE, 0, ase=_T6, ase_row='hr', verified=True),
     _m("patient.bsa", ("ППТ", "Площадь поверхности тела"), ("BSA", "Body surface area"), Quantity.BSA, 2),
@@ -916,6 +925,7 @@ _SECTION_LIST: tuple[SectionSpec, ...] = (
     _s("abdomen", "menu.abdomen_group", "Органы брюшной полости", "Abdominal organs"),
     _s("kidney", "menu.kidney_group", "Почки и мочевой пузырь", "Kidneys and bladder"),
     _s("thyroid", "menu.thyroid_group", "Щитовидная железа", "Thyroid gland"),
+    _s("fetal", "menu.fetal_group", "Фетальная ЭхоКГ", "Fetal echo"),
 )
 
 SECTIONS: Mapping[str, SectionSpec] = MappingProxyType({s.id: s for s in _SECTION_LIST})
@@ -1304,6 +1314,11 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
     _t("thyroid.l_width", _K.DISTANCE, "thyroid", "menu.thyroid_l_width", _A(None, caliper_label="TH-L-W"), _2D, requires=_SP),
     _t("thyroid.l_height", _K.DISTANCE, "thyroid", "menu.thyroid_l_height", _A(None, caliper_label="TH-L-H"), _2D, requires=_SP),
     _t("thyroid.isthmus", _K.DISTANCE, "thyroid", "menu.thyroid_isthmus", _A(None, caliper_label="TH-IST"), _2D, requires=_SP),
+    # ── Fetal biometry (plan А.12, issue #650) — gestational-age Z-scores ──
+    _t("fetal.ao_root", _K.DISTANCE, "fetal", "menu.fetal_ao_root", _A(None, caliper_label="FET-AO"), _2D, requires=_SP),
+    _t("fetal.pa", _K.DISTANCE, "fetal", "menu.fetal_pa", _A(None, caliper_label="FET-PA"), _2D, requires=_SP),
+    _t("fetal.lv_dia", _K.DISTANCE, "fetal", "menu.fetal_lv_dia", _A(None, caliper_label="FET-LV"), _2D, requires=_SP),
+    _t("fetal.rv_dia", _K.DISTANCE, "fetal", "menu.fetal_rv_dia", _A(None, caliper_label="FET-RV"), _2D, requires=_SP),
     # ── Carotid intima-media thickness (item 4) ──
     _t("cca.imt_right", _K.DISTANCE, "precerebral", "menu.imt_right", _A(None, caliper_label="IMT-R"), _2D, requires=_SP),
     _t("cca.imt_left", _K.DISTANCE, "precerebral", "menu.imt_left", _A(None, caliper_label="IMT-L"), _2D, requires=_SP),
@@ -1440,6 +1455,10 @@ CALIPER_TO_MEASUREMENT: Mapping[str, str] = MappingProxyType(
         "TH-L-W": "thyroid.l_width",
         "TH-L-H": "thyroid.l_height",
         "TH-IST": "thyroid.isthmus",
+        "FET-AO": "fetal.ao_root",
+        "FET-PA": "fetal.pa",
+        "FET-LV": "fetal.lv_dia",
+        "FET-RV": "fetal.rv_dia",
         "IMT-R": "cca.imt_right",
         "IMT-L": "cca.imt_left",
     }
