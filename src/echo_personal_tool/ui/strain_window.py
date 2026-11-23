@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QByteArray, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QHideEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -610,7 +610,7 @@ class StrainWindow(QMainWindow):
             self._arc_window.close()
             self._arc_window = None
 
-    def hideEvent(self, event) -> None:  # noqa: N802 - Qt naming
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802 - Qt naming
         # The combined window hiding (a view change, a new clip) closes the
         # arc window too — its numbers belong to the analysis just hidden.
         self._close_arc_window()

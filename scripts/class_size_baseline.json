@@ -34,7 +34,7 @@
     "presentation/main_window.py": 6659,
     "presentation/orthanc_study_dialog.py": 3020,
     "presentation/tool_panel_v2/panel.py": 2080,
-    "presentation/viewer_widget.py": 8001
+    "presentation/viewer_widget.py": 8003
   },
   "fields": {
     "application/app_controller.py::AppController": 80,

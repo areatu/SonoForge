@@ -284,7 +284,9 @@ class TestCavityFallback:
     """
 
     @staticmethod
-    def _cavity_points(cx: float, cy: float, rx: float = 60.0, ry: float = 50.0, n: int = 32) -> list[tuple[float, float]]:
+    def _cavity_points(
+        cx: float, cy: float, rx: float = 60.0, ry: float = 50.0, n: int = 32
+    ) -> list[tuple[float, float]]:
         angles = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
         return [(float(cx + rx * np.cos(a)), float(cy + ry * np.sin(a))) for a in angles]
 
@@ -308,7 +310,9 @@ class TestCavityFallback:
 
     def test_dedicated_trace_wins_over_the_cavity(self) -> None:
         wall = _wall_points()
-        rv_fw = Contour(phase="ed", view="A4C", chamber=RV_FREE_WALL_CHAMBER, points=[tuple(p) for p in wall], frame_index=2)
+        rv_fw = Contour(
+            phase="ed", view="A4C", chamber=RV_FREE_WALL_CHAMBER, points=[tuple(p) for p in wall], frame_index=2
+        )
         rv = Contour(phase="ed", view="A4C", chamber="RV", points=self._cavity_points(300.0, 200.0), frame_index=3)
         lv = Contour(phase="ed", view="A4C", chamber="LV", points=self._cavity_points(80.0, 200.0), frame_index=3)
         choice = select_rv_free_wall_contour((rv, lv, rv_fw), sop_instance_uid=None, view="A4C")
@@ -328,7 +332,9 @@ class TestCavityFallback:
     def test_degenerate_geometry_is_refused(self) -> None:
         """A cavity whose wall cannot be told from the septum produces nothing."""
         cavity = self._cavity_points(300.0, 200.0)
-        same_spot_lv = Contour(phase="ed", view="A4C", chamber="LV", points=self._cavity_points(300.0, 200.0), frame_index=3)
+        same_spot_lv = Contour(
+            phase="ed", view="A4C", chamber="LV", points=self._cavity_points(300.0, 200.0), frame_index=3
+        )
         rv = Contour(phase="ed", view="A4C", chamber="RV", points=cavity, frame_index=3)
         assert select_rv_free_wall_contour((rv, same_spot_lv), sop_instance_uid=None, view="A4C") is None
 

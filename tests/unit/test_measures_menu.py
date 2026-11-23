@@ -193,11 +193,7 @@ def test_the_la_strain_trace_has_its_own_menu_button() -> None:
 
     preferences = default_user_preferences()
     preferences.show_strain = True
-    specs = {
-        spec.label_key: spec
-        for _group, group_specs in build_measure_menu(preferences)
-        for spec in group_specs
-    }
+    specs = {spec.label_key: spec for _group, group_specs in build_measure_menu(preferences) for spec in group_specs}
     assert specs["menu.la_strain_trace"].action is MeasurementAction.LA_STRAIN
     assert tr("menu.la_strain_trace").startswith("Контур ЛП")
 

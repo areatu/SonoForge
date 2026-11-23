@@ -1090,7 +1090,9 @@ class TestArcStrainWindow:
             ed_index=0,
             es_index=5,
             view="A4C",
-            la_strain=LaStrainMetrics(reservoir_pct=28.0, conduit_pct=18.0, booster_pct=15.0, reservoir_index=0, a_onset_index=8)
+            la_strain=LaStrainMetrics(
+                reservoir_pct=28.0, conduit_pct=18.0, booster_pct=15.0, reservoir_index=0, a_onset_index=8
+            )
             if la
             else None,
             la_strain_curve=np.linspace(0.0, 28.0, 12) if la else None,
