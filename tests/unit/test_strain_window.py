@@ -816,3 +816,56 @@ class TestStrainWindow:
         event = QCloseEvent()
         w.closeEvent(event)
         assert received == [True]
+
+    def test_show_result_opens_the_window_on_rgb_cine_frames(self):
+        """A vendor clip decoded as RGB must not keep the strain window closed.
+
+        User-reported STE LV bug: with RGB cine frames the overview thumbnail
+        renderer raised on the 3-channel ED frame, the exception broke
+        ``show_result`` after the status line and the kernel overlay had been
+        painted — the window never showed. The result now opens the window.
+        """
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        rng = np.random.default_rng(3)
+        frames = rng.integers(0, 255, size=(12, 64, 64, 3), dtype=np.uint8)
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 12),
+            radial=np.linspace(0.0, 20.0, 12),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+        )
+        w = self._make_window()
+        with patch.object(w, "_update_panel_a4c"):  # not under test here
+            w.show_result(
+                result,
+                frames=frames,
+                study_uid="study",
+                sop_instance_uid="sop",
+                pixel_spacing_mm=(0.5, 0.5),
+            )
+        assert w.isVisible(), "the strain window must open on an RGB clip"
+        # The overview thumbnail rendered from the averaged (grayscale) frame.
+        card = w._overview._cards["A4C"]
+        assert card._thumb_pixmap is not None and not card._thumb_pixmap.isNull()
+
+    def test_show_result_window_on_gray_cine_frames_still_opens(self):
+        """The grayscale path keeps behaving (the regression guard's control)."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        rng = np.random.default_rng(4)
+        frames = rng.integers(0, 255, size=(12, 64, 64), dtype=np.uint8)
+        result = StrainResult(
+            longitudinal=np.linspace(0.0, -18.0, 12),
+            radial=np.linspace(0.0, 20.0, 12),
+            gls=-18.0,
+            ed_index=0,
+            es_index=5,
+            view="A4C",
+        )
+        w = self._make_window()
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(result, frames=frames, study_uid="s", sop_instance_uid="s", pixel_spacing_mm=(0.5, 0.5))
+        assert w.isVisible()

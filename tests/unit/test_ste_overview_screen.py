@@ -81,6 +81,12 @@ def _make_analysis(
     )
 
 
+def rng_int_frame(shape):
+    import numpy as np
+
+    return np.random.default_rng(7).integers(0, 255, size=shape, dtype=np.uint8)
+
+
 def _make_snapshot(view: str, *, frame_size=(120, 100), n_frames: int = 30) -> ViewSnapshot:
     """Build a :class:`ViewSnapshot` with a synthetic ED frame and a contour."""
     from echo_personal_tool.ui.ste.overview_screen import ViewSnapshot
@@ -251,6 +257,30 @@ class TestOverviewScreen:
         assert _STATUS_MARK["valid"] in w._view_chips["A4C"].text()
         assert _STATUS_MARK["review"] in w._view_chips["A2C"].text()
         assert _STATUS_MARK["invalid"] in w._view_chips["A3C"].text()
+
+    def test_frame_to_qimage_accepts_colour_frames(self):
+        """A vendor clip can decode as RGB(A): the thumbnail averages it, no crash.
+
+        The user-reported STE LV bug: ``show_result`` died on a 3-channel ED
+        frame and the strain window never opened, although the status line
+        and the kernel overlay had already been painted.
+        """
+        from echo_personal_tool.ui.ste.overview_screen import _frame_to_qimage
+
+        gray = rng_int_frame((64, 48))
+        img = _frame_to_qimage(gray)
+        assert not img.isNull() and img.width() == 48 and img.height() == 64
+
+        rgb = np.stack([gray, gray, gray], axis=-1)
+        img_rgb = _frame_to_qimage(rgb)
+        assert not img_rgb.isNull() and img_rgb.width() == 48 and img_rgb.height() == 64
+
+        rgba = np.stack([gray, gray, gray, np.full_like(gray, 255)], axis=-1)
+        assert not _frame_to_qimage(rgba).isNull()
+
+        # Non-colour malformed shapes still raise loudly.
+        with pytest.raises(ValueError):
+            _frame_to_qimage(gray.ravel())
 
     def test_offscreen_render_to_pixmap(self):
         """End-to-end render: three views with snapshots → QPixmap of non-zero size."""

@@ -28,6 +28,7 @@
 
 ## Unreleased
 
+- `fix(ui)`: окно strain не открывалось на RGB-клипах: миниатюра обзора приводится к grayscale вместо ошибки, обрывавшей `show_result` до показа окна ([полностью](changelog.d/025-fix-ui-ste-window-rgb.md))
 - `feat(rv_strain)`: #645 (план А.7) — strain ПЖ: трекинг свободной стенки (новый контур `RV_FW`, freehand-пункт меню), RV GLS — пик систолического стрейна ED→ES, строка в сводке окна strain и отчёте (группа ПЖ); синтетический gold-тест на известное 20% укорочение ([полностью](changelog.d/024-feat-rv-strain-645.md))
 - `feat(la_strain)`: #644 (план А.6) — strain ЛП: трекинг дуги крыши ЛП по циклу с фазовой привязкой, кривая стрейна, метрики reservoir/conduit/booster (LASr/LAScd/LASct), строки в сводке окна strain и секция отчёта; синтетический gold-тест на согласие с известным движением ([полностью](changelog.d/023-feat-la-strain-644.md))
 - `feat(diastology_workflow)`: #648 (план А.10) — диастология «под ключ»: панель авто-заполняется из Doppler/TDI-данных (E/A, e′, E/e′, TR, PV, IVRT с числом измерений), критерии ASE 2016 с вердиктами, авто-градация с честным indeterminate и секция отчёта с выводами ([полностью](changelog.d/022-feat-diastology-workflow-648.md))
