@@ -128,7 +128,7 @@ class TestCurvesViewUsesModelNumbers:
         # untouched (no re-derivation from kernel positions).
         original = view._update_panel
 
-        def _spy(panel, gls, curves, result_, frame_time_ms, ecg, ecg_sample_rate):
+        def _spy(panel, gls, curves, result_, frame_time_ms, ecg, ecg_sample_rate, **_kwargs):
             captured.update(curves)
 
         view._update_panel = _spy  # type: ignore[assignment]
