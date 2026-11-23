@@ -33,12 +33,15 @@ class TestCheckModels:
         models_dir = tmp_path / "models"
         models_dir.mkdir()
         (models_dir / "model_manifest.json").write_text("{}")
+        for name in rs_mod._VIEW_RECOGNITION_FILES:
+            (models_dir / name).write_bytes(b"weights")
         with patch.object(rs_mod, "_MODELS_DIR", models_dir):
             assert rs_mod.check_models() is True
 
     def test_models_missing(self, tmp_path):
         models_dir = tmp_path / "models"
         models_dir.mkdir()
+        (models_dir / "model_manifest.json").write_text("{}")
         with (
             patch.object(rs_mod, "_MODELS_DIR", models_dir),
             patch.object(rs_mod, "models_dirs_for_read", return_value=(models_dir,)),
@@ -50,6 +53,8 @@ class TestCheckModels:
         legacy_dir = tmp_path / "old" / "models"
         legacy_dir.mkdir(parents=True)
         (legacy_dir / "model_manifest.json").write_text("{}")
+        for name in rs_mod._VIEW_RECOGNITION_FILES:
+            (legacy_dir / name).write_bytes(b"weights")
         with (
             patch.object(rs_mod, "_MODELS_DIR", models_dir),
             patch.object(rs_mod, "models_dirs_for_read", return_value=(models_dir, legacy_dir)),
@@ -64,6 +69,8 @@ class TestGetSetupStatus:
         models_dir = tmp_path / "models"
         models_dir.mkdir()
         (models_dir / "model_manifest.json").write_text("{}")
+        for name in rs_mod._VIEW_RECOGNITION_FILES:
+            (models_dir / name).write_bytes(b"weights")
         with (
             patch.object(rs_mod, "_VENV_DIR", venv_dir),
             patch.object(rs_mod, "_MODELS_DIR", models_dir),
@@ -300,12 +307,17 @@ class TestDownloadModels:
 
         def fake_download(url, dest, progress_callback=None):
             dest.write_bytes(payload)
+            if url == rs_mod._VIEW_RECOGNITION_RELEASE_URL:
+                for name in rs_mod._VIEW_RECOGNITION_FILES:
+                    (models_dir / name).write_bytes(b"weights")
 
         download = MagicMock(side_effect=fake_download)
         with (
             patch.object(rs_mod, "_MODELS_DIR", models_dir),
             patch.object(rs_mod, "_DATA_DIR", tmp_path),
+            patch.object(rs_mod, "models_dirs_for_read", return_value=(models_dir,)),
             patch.object(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest()),
+            patch.object(rs_mod, "VIEW_RECOGNITION_RELEASE_SHA256", hashlib.sha256(payload).hexdigest()),
             patch.object(rs_mod, "_download_file", download),
             patch("tarfile.open") as mock_tar,
         ):
@@ -314,7 +326,7 @@ class TestDownloadModels:
             (models_dir / "model_manifest.json").write_text("{}")
             result = rs_mod.download_models()
             assert result is True
-            download.assert_called_once()
+            assert [call.args[0] for call in download.call_args_list] == [rs_mod._VIEW_RECOGNITION_RELEASE_URL]
 
 
 class TestValidateDownloadUrl:
@@ -322,6 +334,9 @@ class TestValidateDownloadUrl:
 
     def test_release_url_is_accepted(self):
         assert rs_mod._validate_download_url(rs_mod._MODELS_RELEASE_URL) == rs_mod._MODELS_RELEASE_URL
+        assert (
+            rs_mod._validate_download_url(rs_mod._VIEW_RECOGNITION_RELEASE_URL) == rs_mod._VIEW_RECOGNITION_RELEASE_URL
+        )
 
     def test_plain_http_is_rejected(self):
         with pytest.raises(ValueError):

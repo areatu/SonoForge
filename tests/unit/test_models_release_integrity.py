@@ -32,14 +32,21 @@ class TestPinnedDigest:
     def test_published_checksum_manifest_matches_launcher_pin(self) -> None:
         sums = (ROOT / "models" / "SHA256SUMS").read_text(encoding="utf-8")
         assert f"{rs_mod.MODELS_RELEASE_SHA256}  models-v1.tar.gz" in sums
+        assert f"{rs_mod.VIEW_RECOGNITION_RELEASE_SHA256}  view-recognition-v1.tar.gz" in sums
 
     def test_is_full_sha256(self) -> None:
         assert HEX64.match(rs_mod.MODELS_RELEASE_SHA256), "pinned digest is not 64 lowercase hex chars"
+        assert HEX64.match(rs_mod.VIEW_RECOGNITION_RELEASE_SHA256), (
+            "view recognition digest is not 64 lowercase hex chars"
+        )
 
     def test_matches_pinned_value(self) -> None:
-        # The literal lives in the module; if the release asset is re-uploaded,
-        # this constant must be updated deliberately.
+        # The literals live in the module; if a release asset is re-uploaded,
+        # the corresponding constant must be updated deliberately.
         assert rs_mod.MODELS_RELEASE_SHA256 == "cebaf1f2c80a1853a5e355246eefa50ffbb0b6bd1ff35b2964533703ed50825d"
+        assert (
+            rs_mod.VIEW_RECOGNITION_RELEASE_SHA256 == "c0fc22fe350ddfaa798b719dff2c0ed57d35399a9872a8edddbed95b974caaaa"
+        )
 
     def test_launcher_cli_prints_the_pinned_value(self) -> None:
         result = subprocess.run(
@@ -74,7 +81,9 @@ class TestVerifyModelsArchive:
         payload = b"release asset bytes"
         archive.write_bytes(payload)
         monkeypatch.setattr(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
+        monkeypatch.setattr(rs_mod, "VIEW_RECOGNITION_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
         assert rs_mod.verify_models_archive(archive) is True
+        assert rs_mod.verify_view_recognition_archive(archive) is True
 
     def test_rejects_substituted_content(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import hashlib
@@ -122,6 +131,7 @@ class TestDownloadModelsChecksBeforeExtract:
         models_dir = tmp_path / "models"
         monkeypatch.setattr(rs_mod, "_DATA_DIR", tmp_path)
         monkeypatch.setattr(rs_mod, "_MODELS_DIR", models_dir)
+        monkeypatch.setattr(rs_mod, "models_dirs_for_read", lambda: (models_dir,))
         monkeypatch.setattr(
             rs_mod,
             "MODELS_RELEASE_SHA256",
@@ -153,15 +163,40 @@ class TestDownloadModelsChecksBeforeExtract:
         models_dir = tmp_path / "models"
         monkeypatch.setattr(rs_mod, "_DATA_DIR", tmp_path)
         monkeypatch.setattr(rs_mod, "_MODELS_DIR", models_dir)
+        monkeypatch.setattr(rs_mod, "models_dirs_for_read", lambda: (models_dir,))
+
+        urls: list[str] = []
 
         def fake_download(url: str, dest: Path, progress_callback=None) -> None:
+            urls.append(url)
             payload = _make_release_tarball(Path(dest))
-            monkeypatch.setattr(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
+            if url == rs_mod._VIEW_RECOGNITION_RELEASE_URL:
+                monkeypatch.setattr(rs_mod, "VIEW_RECOGNITION_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
+                for name in rs_mod._VIEW_RECOGNITION_FILES:
+                    (models_dir / name).write_bytes(b"weights")
+            else:
+                monkeypatch.setattr(rs_mod, "MODELS_RELEASE_SHA256", hashlib.sha256(payload).hexdigest())
 
         monkeypatch.setattr(rs_mod, "_download_file", fake_download)
 
         assert rs_mod.download_models() is True
         assert (models_dir / "model_manifest.json").is_file()
+        assert set(urls) == {rs_mod._MODELS_RELEASE_URL, rs_mod._VIEW_RECOGNITION_RELEASE_URL}
+        manifest = json.loads((models_dir / "model_manifest.json").read_text(encoding="utf-8"))
+        assert manifest["view_recognition"]["active_model"] == "view_recognition_efficientnet_b0"
+        assert manifest["view_recognition"]["class_names"] == ["A4C", "A2C", "A3C", "PLAX", "PSAX"]
+        assert "view_recognition_efficientnet_b0" in manifest["models"]
+
+        legacy = {
+            "view_recognition": {
+                "active_model": "view_recognition_efficientnet_b0",
+                "class_names": ["A4C", "A2C", "A3C", "PLAX", "SAX", "PSAX", "TEE"],
+            }
+        }
+        (models_dir / "model_manifest.json").write_text(json.dumps(legacy), encoding="utf-8")
+        rs_mod._ensure_view_recognition_manifest(models_dir)
+        updated = json.loads((models_dir / "model_manifest.json").read_text(encoding="utf-8"))
+        assert updated["view_recognition"]["class_names"] == ["A4C", "A2C", "A3C", "PLAX", "PSAX"]
 
 
 class TestManifestNeverShipsUncheckedModels:
