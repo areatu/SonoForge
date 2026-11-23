@@ -23,8 +23,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from echo_personal_tool.domain.services.zscore import BsaBand, BsaBandModel, GaBand, GaBandModel, ZScoreResult
 
 log = logging.getLogger(__name__)
@@ -113,7 +111,14 @@ def parse_norms(data: dict[str, Any]) -> PediatricNorms:
 
 
 def load_norms(path: Path | None = None) -> PediatricNorms:
-    """Load and parse the norms table (``DEFAULT_NORMS_PATH`` by default)."""
+    """Load and parse the norms table (``DEFAULT_NORMS_PATH`` by default).
+
+    PyYAML is imported lazily: this module sits in the domain layer that the
+    guarded pure-core lane imports without the application's extras (the
+    adult reference store is imported the same lazy way from the report).
+    """
+    import yaml
+
     chosen = path or DEFAULT_NORMS_PATH
     with open(chosen, encoding="utf-8") as stream:
         data = yaml.safe_load(stream)
