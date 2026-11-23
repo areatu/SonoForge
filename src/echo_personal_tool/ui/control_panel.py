@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSignalBlocker, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -39,11 +39,42 @@ class ControlPanel(QWidget):
         super().__init__(parent)
         self.setMinimumWidth(text_width(self, tr("strain.view_mode"), padding=48, minimum=180))
 
-        layout = QVBoxLayout(self)
+        # The panel needs more vertical room than a laptop screen gives the
+        # window (QC checkboxes + nine buttons); without a scroll the bottom
+        # groups were pushed past the window edge and the action buttons
+        # overlapped each other (user feedback: «Контроль качества» /
+        # «Действия» не помещаются). Everything scrolls now; nothing is cut.
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        body = QWidget()
+        layout = QVBoxLayout(body)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # View mode (contour vs curves)
+        self._init_view_mode_group(layout)
+        self._init_metric_group(layout)
+        self._init_views_group(layout)
+        self._init_position_group(layout)
+        self._init_quality_group(layout)
+        self._init_qc_scroll(layout)
+        self._init_actions_group(layout)
+
+        layout.addStretch()
+
+        # The scroll carries the whole body: the panel keeps its natural size
+        # hint and the area grows/shrinks with the window instead of cutting
+        # the bottom groups off.
+        body_scroll = QScrollArea()
+        body_scroll.setWidget(body)
+        body_scroll.setWidgetResizable(True)
+        body_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer_layout.addWidget(body_scroll)
+
+    def _init_view_mode_group(self, layout: QVBoxLayout) -> None:
+        """View mode (contour vs curves)."""
         group_view_mode = QGroupBox(tr("strain.view_mode"))
         group_view_mode.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         view_mode_layout = QVBoxLayout()
@@ -67,7 +98,8 @@ class ControlPanel(QWidget):
         group_view_mode.setLayout(view_mode_layout)
         layout.addWidget(group_view_mode)
 
-        # Strain metric (Clinical-style: Deformation / SR / Peak)
+    def _init_metric_group(self, layout: QVBoxLayout) -> None:
+        """Strain metric (Clinical-style: Deformation / SR / Peak)."""
         group_metric = QGroupBox(tr("strain.metric"))
         group_metric.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         metric_layout = QVBoxLayout()
@@ -83,17 +115,25 @@ class ControlPanel(QWidget):
         self._metric_sr = QRadioButton(tr("strain.metric_sr"))
         self._metric_sr.setStyleSheet("color: #e0e0e0;")
         self._metric_sr.toggled.connect(lambda c: self.strain_metric_changed.emit("strain_rate") if c else None)
+        # SR/peak are drawn as the same strain curve with a different title
+        # («GLS Rate: --»), which reads as a real measurement — disabled with
+        # an honest tooltip until the domain computes them.
+        self._metric_sr.setEnabled(False)
+        self._metric_sr.setToolTip(tr("strain.metric_not_available"))
         metric_layout.addWidget(self._metric_sr)
 
         self._metric_peak = QRadioButton(tr("strain.metric_peak"))
         self._metric_peak.setStyleSheet("color: #e0e0e0;")
         self._metric_peak.toggled.connect(lambda c: self.strain_metric_changed.emit("peak") if c else None)
+        self._metric_peak.setEnabled(False)
+        self._metric_peak.setToolTip(tr("strain.metric_not_available"))
         metric_layout.addWidget(self._metric_peak)
 
         group_metric.setLayout(metric_layout)
         layout.addWidget(group_metric)
 
-        # View toggles
+    def _init_views_group(self, layout: QVBoxLayout) -> None:
+        """View toggles (which clips contribute to the study)."""
         group_views = QGroupBox(tr("strain.views"))
         group_views.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         views_layout = QVBoxLayout()
@@ -119,7 +159,8 @@ class ControlPanel(QWidget):
         group_views.setLayout(views_layout)
         layout.addWidget(group_views)
 
-        # Position (view) selection — which clip the contours came from
+    def _init_position_group(self, layout: QVBoxLayout) -> None:
+        """Position (view) selection — which clip the contours came from."""
         group_position = QGroupBox(tr("strain.position"))
         group_position.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         position_layout = QVBoxLayout()
@@ -160,7 +201,8 @@ class ControlPanel(QWidget):
         group_position.setLayout(position_layout)
         layout.addWidget(group_position)
 
-        # Quality info
+    def _init_quality_group(self, layout: QVBoxLayout) -> None:
+        """Quality info block."""
         group_quality = QGroupBox(tr("strain.quality_gate"))
         group_quality.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         quality_layout = QVBoxLayout()
@@ -177,7 +219,8 @@ class ControlPanel(QWidget):
         group_quality.setLayout(quality_layout)
         layout.addWidget(group_quality)
 
-        # Quality Control (per-segment checkboxes)
+    def _init_qc_scroll(self, layout: QVBoxLayout) -> None:
+        """Quality Control (per-segment checkboxes) in its own scroll."""
         self._qc_group = QGroupBox(tr("strain.quality_control"))
         self._qc_group.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         self._qc_layout = QVBoxLayout()
@@ -199,7 +242,8 @@ class ControlPanel(QWidget):
         qc_scroll.setFrameShape(QFrame.Shape.NoFrame)
         layout.addWidget(qc_scroll)
 
-        # Actions
+    def _init_actions_group(self, layout: QVBoxLayout) -> None:
+        """Action buttons (undo/redo/export/gold/close)."""
         group_actions = QGroupBox(tr("strain.actions"))
         group_actions.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         actions_layout = QVBoxLayout()
@@ -245,8 +289,6 @@ class ControlPanel(QWidget):
 
         group_actions.setLayout(actions_layout)
         layout.addWidget(group_actions)
-
-        layout.addStretch()
 
     def update_quality(self, accepted: int, total: int, rejected: int) -> None:
         if total > 0:

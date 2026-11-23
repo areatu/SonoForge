@@ -869,3 +869,70 @@ class TestStrainWindow:
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(result, frames=frames, study_uid="s", sop_instance_uid="s", pixel_spacing_mm=(0.5, 0.5))
         assert w.isVisible()
+
+
+class TestStrainWindowLayoutFeedback:
+    """User feedback 2026-11-21: окантовка окна, перенос мета-строки, скролл панели."""
+
+    def _make_window(self):
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        return StrainWindow()
+
+    def test_the_window_has_a_visible_border(self):
+        """The strain window floats over the dark viewer; it must not blend into it."""
+        w = self._make_window()
+        central = w.centralWidget()
+        assert central.objectName() == "strainCentral"
+        assert "border" in central.styleSheet()
+
+    def test_the_window_fits_a_laptop_screen(self):
+        """minimum height 800 exceeded a 770 px work area — the bottom groups were cut."""
+        w = self._make_window()
+        assert w.minimumSize().height() <= 720
+
+    def test_the_meta_line_wraps_instead_of_clipping(self):
+        """The long QC line was cut mid-word at the right edge («замыкание 3.5 м»)."""
+        w = self._make_window()
+        assert w._meta_label.wordWrap() is True
+
+    def test_the_control_panel_scrolls_so_no_group_is_cut(self):
+        """At a laptop height every group — incl. «Действия» — stays reachable."""
+        from PySide6.QtWidgets import QScrollArea
+
+        w = self._make_window()
+        w.resize(1300, 700)
+        w.show()
+        body_scrolls = [s for s in w._control.findChildren(QScrollArea) if s.parentWidget() is w._control]
+        assert len(body_scrolls) == 1
+        body_scroll = body_scrolls[0]
+        assert body_scroll.widget().isAncestorOf(w._control._btn_close)
+        assert body_scroll.widget().isAncestorOf(w._control._qc_group)
+        # The whole body paints inside the viewport (no clipped bottom group).
+        assert body_scroll.widget().grab().height() > 0
+
+
+class TestBullseyeSmallWidgetGeometry:
+    """The bull's-eye must stay a map on small cards (user feedback 4a/N7)."""
+
+    def test_small_widget_keeps_a_readable_radius_and_shows_labels(self):
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        radius, labels = BullseyeWidget._radius_and_labels(250.0, 250.0, 56.0, 14.0)
+        # The old full-side reserve collapsed the disc to ~27 px radius.
+        assert radius > 80.0
+        assert labels
+
+    def test_tiny_widget_hides_the_wall_labels(self):
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        _radius, labels = BullseyeWidget._radius_and_labels(150.0, 150.0, 56.0, 14.0)
+        # Overlapping Cyrillic wall names read worse than no names at all.
+        assert not labels
+
+    def test_the_widget_claims_the_grid_cell(self):
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        widget = BullseyeWidget()
+        assert widget.sizePolicy().horizontalPolicy() == widget.sizePolicy().horizontalPolicy().Expanding
+        assert widget.sizePolicy().verticalPolicy() == widget.sizePolicy().verticalPolicy().Expanding

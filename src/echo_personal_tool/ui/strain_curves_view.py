@@ -89,6 +89,17 @@ VIEW_SEGMENTS: dict[str, list[int]] = {
     "DAO": list(segment_ids_in_view("A3C")),  # legacy UI name for A3C
 }
 
+# Curve colour per segment *inside its view*: the global SEGMENT_COLORS map
+# repeats hues across the six segments of one view (A4C = ids 1, 2, 3, 7, 13,
+# 14 → hue slots 0, 1, 2, 0, 0, 2), so half of the A4C curves shared a colour
+# and were indistinguishable (user feedback: the graph is "всё сине-жёлтое").
+# Numbering by position inside the view keeps every curve distinct and the
+# hue order stable between views.
+VIEW_CURVE_COLORS: dict[str, dict[int, tuple[int, int, int]]] = {
+    view: {seg: SEGMENT_HUES[i % len(SEGMENT_HUES)] for i, seg in enumerate(segments)}
+    for view, segments in VIEW_SEGMENTS.items()
+}
+
 # White global curve colour
 _GLOBAL_COLOR = (255, 255, 255)
 
@@ -206,6 +217,7 @@ class SegmentCurvePanel(QWidget):
         ed_index: int = 0,
         es_index: int = 0,
         frame_time_ms: float = 33.3,
+        color_map: dict[int, tuple[int, int, int]] | None = None,
     ) -> None:
         """Plot per-segment strain curves + bold global curve (vendor style)."""
         self._clear_plot_items()
@@ -221,12 +233,13 @@ class SegmentCurvePanel(QWidget):
             return
 
         x = np.arange(max_len) * frame_time_ms
+        colors = color_map or SEGMENT_COLORS
 
         # Thin, translucent segment curves (drawn first, under the global one)
         for seg_id, strain_curve in segment_strains.items():
-            if seg_id not in SEGMENT_COLORS:
+            if seg_id not in colors:
                 continue
-            color = SEGMENT_COLORS[seg_id]
+            color = colors[seg_id]
             # Normalize every curve to the same x-grid
             xx = np.arange(len(strain_curve)) * frame_time_ms
             curve = self._plot.plot(xx, strain_curve, pen=pg.mkPen(color, width=1))
@@ -258,7 +271,7 @@ class SegmentCurvePanel(QWidget):
         self._legend.setBrush(pg.mkBrush(20, 26, 32, 210))
         self._legend.setPen(pg.mkPen(_GRID_COLOR))
         for seg_id in sorted(self._curves):
-            sample = pg.PlotDataItem(pen=pg.mkPen(SEGMENT_COLORS[seg_id], width=3))
+            sample = pg.PlotDataItem(pen=pg.mkPen(colors[seg_id], width=3))
             self._legend.addItem(sample, segment_label(seg_id))
         mean_sample = pg.PlotDataItem(pen=pg.mkPen(_GLOBAL_COLOR, width=3))
         self._legend.addItem(mean_sample, tr("strain.legend_global"))
@@ -278,7 +291,21 @@ class SegmentCurvePanel(QWidget):
         # Time axis aligned with the ECG strip; the y range is set explicitly
         # (and auto-range disabled afterwards) so the curve fills most of the
         # plot height and stays centred, instead of hugging an edge.
-        self._plot.setXRange(0, max_len * frame_time_ms, padding=0.02)
+        # The x range covers the finite strain samples, not the whole clip:
+        # results carry the full-length curves with NaN outside the analysis
+        # window, and scaling to the clip length squeezed the real curves
+        # into a narrow band (user feedback: 900–1900 ms of a 0–5200 ms axis).
+        finite_t = (
+            np.concatenate([xx[np.isfinite(strain_curve)] for strain_curve in segment_strains.values()])
+            if any(np.isfinite(c).any() for c in segment_strains.values())
+            else x
+        )
+        t_lo = float(finite_t.min()) if finite_t.size else 0.0
+        t_hi = float(finite_t.max()) if finite_t.size else max_len * frame_time_ms
+        if t_hi - t_lo < 1e-6:
+            t_hi = t_lo + max_len * frame_time_ms
+        span_pad = 0.02 * (t_hi - t_lo)
+        self._plot.setXRange(t_lo - span_pad, t_hi + span_pad, padding=0)
         self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         self._plot.setYRange(
             *self._auto_y_bounds(np.concatenate([c for _, c in raw_curves if len(c)]), mean_curve),
@@ -582,6 +609,14 @@ class StrainCurvesView(QWidget):
             values = [result.segment_strain[s] for s in seg_ids if s in (result.segment_strain or {})]
             return float(np.mean(values)) if values else None
 
+        # The header must show the same number the meta bar and the report
+        # carry — the QC-gated GLS. The raw mean of the segment peaks (which
+        # skips the gate) used to sit next to it and disagreed whenever QC
+        # rejected the result (user feedback: 0.4% in the header vs 0.0% in
+        # the meta bar).
+        gls_ok = result.gls is not None and np.isfinite(result.gls)
+        gls = result.gls if gls_ok else _gls_for(VIEW_SEGMENTS.get(self._active_view, VIEW_SEGMENTS["A4C"]))
+
         # Vendor look: the analysed view gets the whole height; the other
         # panels hide instead of leaving half-empty placeholder stacks.
         for panel in self._visible_when_data.values():
@@ -591,12 +626,13 @@ class StrainCurvesView(QWidget):
         active_curves = {k: v for k, v in segment_curves.items() if k in seg_ids}
         self._update_panel(
             analysed,
-            _gls_for(seg_ids),
+            gls,
             active_curves,
             result,
             frame_time_ms,
             ecg,
             ecg_sample_rate,
+            color_map=VIEW_CURVE_COLORS.get(self._active_view, VIEW_CURVE_COLORS["A4C"]),
         )
         for panel in self._visible_when_data.values():
             if panel is not analysed:
@@ -679,10 +715,12 @@ class StrainCurvesView(QWidget):
         frame_time_ms: float,
         ecg: np.ndarray | None,
         ecg_sample_rate: float | None,
+        *,
+        color_map: dict[int, tuple[int, int, int]] | None = None,
     ) -> None:
         panel.set_gls(gls)
         if curves:
-            panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms)
+            panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms, color_map=color_map)
             if ecg is not None:
                 panel.set_ecg_visible(True)
                 panel.set_ecg_trace(ecg, frame_time_ms, result.es_index, ecg_sample_rate=ecg_sample_rate)

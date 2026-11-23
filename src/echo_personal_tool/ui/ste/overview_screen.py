@@ -201,7 +201,13 @@ class _ViewCard(QFrame):
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setStyleSheet("background: black;")
         self._thumb.setMinimumHeight(200)
-        self._thumb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Vertical "Ignored": a QLabel pixmap becomes the widget's sizeHint,
+        # and the hint fed back into the next scale() call — each re-render
+        # grew the card a little until it pushed the row off the screen
+        # (user feedback: the A4C card "медленно растягивается вправо/вниз").
+        # The layout alone decides the height now; the manual scaling in
+        # resizeEvent still keeps the sector aspect-correct inside it.
+        self._thumb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         layout.addWidget(self._thumb, stretch=4)
         self._thumb_pixmap: QPixmap | None = None
 
@@ -278,6 +284,9 @@ class _ViewCard(QFrame):
             if item is not None:
                 self._ecg_plot.removeItem(item)
         self._ecg_item = self._ecg_ed_line = self._ecg_es_line = None
+        # An unused strip leaves an empty outlined box on a "no data" card;
+        # hide it until a trace arrives (user feedback image-8/9).
+        self._ecg_plot.hide()
         self._value.setText("--")
         self._status.setText("")
         self._status.setToolTip("")
@@ -358,6 +367,7 @@ class _ViewCard(QFrame):
         # Mini ECG strip (hidden entirely when no ECG — plan §6.5: never
         # draw a synthetic ECG to pretend the data is there).
         if snap.ecg_trace is not None and len(snap.ecg_trace) >= 2:
+            self._ecg_plot.show()
             ft = max(float(snap.ecg_frame_time_ms), 0.001)
             n = len(snap.ecg_trace)
             t = np.arange(n) * ft

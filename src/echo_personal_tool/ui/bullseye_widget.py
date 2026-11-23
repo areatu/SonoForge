@@ -6,7 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPainterPath, QPaintEvent, QPolygonF
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.ui.strain_helpers import (
@@ -65,6 +65,12 @@ class BullseyeWidget(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(250)
         self.setMinimumWidth(250)
+        # Claim the space the grid gives this cell: without an expanding
+        # policy the widget sat at its 250×250 minimum while the row below
+        # the cine panels grew, shrinking the map to a ~50 px disc once the
+        # wall labels were subtracted from the radius (user feedback: the
+        # bull's-eye «сильно уменьшается» when only A4C is visible).
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self._segment_items: dict[int, pg.PlotDataItem] = {}
         self._label_items: dict[int, pg.TextItem] = {}
@@ -99,7 +105,11 @@ class BullseyeWidget(QWidget):
 
         # Wall labels are drawn around the rim, so the radius has to leave room
         # for the widest of them (side labels sit 30° off the horizontal, hence
-        # the cos(30°) projection) and for a text line above/below.
+        # the cos(30°) projection) and for a text line above/below. On a small
+        # widget the Russian wall names are wider than the map itself, so the
+        # full reserve collapsed the disc to a dot; there the reserve is
+        # trimmed (labels clamp horizontally anyway) and below the visibility
+        # threshold the labels are dropped instead of piling onto each other.
         label_font = QFont(painter.font())
         label_font.setPointSize(9)
         label_font.setBold(True)
@@ -109,15 +119,7 @@ class BullseyeWidget(QWidget):
             float(metrics.horizontalAdvance(tr(key)))
             for key in ("strain.lbl_anterior", "strain.lbl_lateral", "strain.lbl_septal", "strain.lbl_inferior")
         )
-        cos_side = float(np.cos(np.radians(30.0)))
-        r_max = max(
-            20.0,
-            min(
-                (map_w / 2.0 - side_w - 6.0) / cos_side,
-                h / 2.0 - line_h - 4.0,
-            ),
-        )
-        r_max *= 0.99  # keep the outermost ring stroke inside the widget
+        r_max, show_wall_labels = self._radius_and_labels(map_w, h, side_w, line_h)
 
         cx, cy = map_w / 2, h / 2
 
@@ -251,13 +253,13 @@ class BullseyeWidget(QWidget):
                 painter.drawText(QPointF(lx - half, ly + 4), text)
 
         # Draw outer labels (wall names) at the centre angle of the wall they
-        # name — the same angle the segment fill uses.
+        # name — the same angle the segment fill uses. On a widget too small
+        # for them they are hidden: overlapping Cyrillic names read worse
+        # than no names at all (user feedback image-8/9).
         font.setPointSize(9)
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QPen(QColor(180, 180, 180), 1))
-
-        # Clockwise from the anterior wall, matching SEGMENT_GEOMETRY.
         outer_labels = {
             0: tr("strain.lbl_anterior"),
             1: tr("strain.lbl_lateral"),
@@ -267,6 +269,8 @@ class BullseyeWidget(QWidget):
             5: tr("strain.lbl_septal"),
         }
         for i, label in outer_labels.items():
+            if not show_wall_labels:
+                break
             angle = np.radians(-90 + i * 60)
             cos_a, sin_a = np.cos(angle), np.sin(angle)
             lx = cx + (r_basal + 8) * cos_a
@@ -412,6 +416,25 @@ class BullseyeWidget(QWidget):
 
     def _colorbar_ramp(self, ttp_mode: bool) -> tuple[tuple[float, tuple[int, int, int]], ...]:
         return self.TTP_RAMP if ttp_mode else PALETTES[self._palette_index][1]
+
+    @staticmethod
+    def _radius_and_labels(map_w: float, h: float, side_w: float, line_h: float) -> tuple[float, bool]:
+        """Outer radius of the map and whether the wall names still fit.
+
+        Pure so the small-widget behaviour (the map must stay a map, the
+        labels must not pile onto each other) is testable without a painter.
+        """
+        cos_side = float(np.cos(np.radians(30.0)))
+        reserve = side_w if map_w >= 400.0 else side_w * 0.4
+        r_max = max(
+            24.0,
+            min(
+                (map_w / 2.0 - reserve - 6.0) / cos_side,
+                h / 2.0 - line_h - 4.0,
+            ),
+        )
+        r_max *= 0.99  # keep the outermost ring stroke inside the widget
+        return r_max, r_max >= 60.0
 
     def _paint_colorbar(self, painter: QPainter, w: int, h: int, r_max: float, ttp_mode: bool) -> None:
         """Vertical colour scale of the map: the plan requires it next to the map.

@@ -59,6 +59,10 @@ from echo_personal_tool.ui.summary_table import SummaryTable  # noqa: F401 — r
 
 logger = logging.getLogger(__name__)
 
+#: Light accent of the window chrome (meta bar text + the outer border that
+#: keeps the floating window visible against the dark main viewer).
+_META_ACCENT = "#cfd8dc"
+
 
 def _finite_float(value: object) -> float | None:
     if not isinstance(value, (int, float, str)):
@@ -78,7 +82,7 @@ class StrainWindow(QMainWindow):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("strain.window_title"))
-        self.setMinimumSize(1200, 800)
+        self.setMinimumSize(1200, 700)
         self.resize(1400, 900)
         try:
             from echo_personal_tool.application.profile_settings import settings_store_for
@@ -89,11 +93,15 @@ class StrainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001
             log_boundary_failure(logger, "strain.window", exc, code="unexpected", level=logging.DEBUG)
 
-        # Central widget
+        # Central widget. The window floats over the dark main viewer and used
+        # to blend into it; the light border on the central widget gives the
+        # floating window a visible outline (user feedback: «светлая окантовка»).
         central = QWidget()
+        central.setObjectName("strainCentral")
+        central.setStyleSheet(f"QWidget#strainCentral {{ border: 1px solid {_META_ACCENT}; }}")
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(4)
 
         # Splitter: control panel | content
@@ -126,8 +134,11 @@ class StrainWindow(QMainWindow):
         content_outer.setSpacing(3)
 
         self._meta_label = QLabel("")
+        # The QC line can grow past one row of text (drift + physiology +
+        # confidence); wrap it instead of silently clipping the tail.
+        self._meta_label.setWordWrap(True)
         self._meta_label.setStyleSheet(
-            "QLabel { color: #cfd8dc; font-size: 11px; font-weight: bold; "
+            f"QLabel {{ color: {_META_ACCENT}; font-size: 11px; font-weight: bold; "
             "background: #16212b; padding: 3px 8px; border-radius: 3px; }"
         )
         content_outer.addWidget(self._meta_label)
@@ -157,6 +168,11 @@ class StrainWindow(QMainWindow):
         contour_layout.addWidget(self._panel_a2c, 0, 1)
         contour_layout.addWidget(self._panel_dao, 1, 0)
         contour_layout.addWidget(self._panel_bullseye, 1, 1)
+        # Both rows stretch equally: the bull's-eye row used to sit at the
+        # widget's 250 px minimum while the whole growth went to the cine
+        # row, shrinking the map (user feedback 4a).
+        contour_layout.setRowStretch(0, 1)
+        contour_layout.setRowStretch(1, 1)
 
         self._stacked.addWidget(contour_widget)  # index 0
 

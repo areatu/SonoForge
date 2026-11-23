@@ -1043,6 +1043,13 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
        ru=("ОЛП · 4-кам. ИИ", "Объём ЛП, 4-камерная позиция — ИИ"), en=("LAV A4C AI", "LA volume, apical 4-chamber — AI"),
        requires=_SP, flags=_LA_AUTO, synonyms=("ОЛП 4C ИИ", "LAV 4C AI")),
     _t("la.lav_a2c", _K.VOLUME, "la", "menu.lav_bi", _A("lav_bi"), _2D, requires=_SP),
+    # А.6: the LA strain trace — the roof arc is a line of its own; the tool
+    # yields the reservoir/conduit/booster triple of the tracked arc.
+    _t("la.strain", _K.PEAK, "la", "menu.la_strain_trace", _A("la_strain", view="A4C"), _2D,
+       results=("la.lasr", "la.lascd", "la.lasct"), requires=_SP,
+       ru=("Стрейн ЛП", "Стрейн ЛП: резервуар/проводник/бустер"),
+       en=("LA strain", "LA strain: reservoir/conduit/booster"),
+       synonyms=("LA strain", "LA contour (strain)", "стрейн ЛП", "Контур ЛП (стрейн)")),
     # ── Right atrium ──
     _t("ra.d", _K.DISTANCE, "ra", "menu.ra_diameter", _A("ra_diameter"), _2D, requires=_SP),
     _t("ra.vol", _K.VOLUME, "ra", "menu.rav_volume", _A("rav_volume"), _2D, requires=_SP),

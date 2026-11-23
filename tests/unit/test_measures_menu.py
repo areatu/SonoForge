@@ -171,3 +171,27 @@ def test_the_organ_volume_button_belongs_to_the_organ_studies_only() -> None:
         assert "menu.organ_volume" in _menu_keys(profile_id), profile_id
     for profile_id in (STUDY_PROFILE_ECHO, STUDY_PROFILE_VASCULAR):
         assert "menu.organ_volume" not in _menu_keys(profile_id), profile_id
+
+
+def test_the_la_strain_trace_has_its_own_menu_button() -> None:
+    """User feedback: the LA STE trace had no activation button (the RV had one).
+
+    «Контур ЛП (стрейн)» sits in the LA section next to the atrial sizes and
+    maps to its own action, exactly like the RV free-wall button does.
+    """
+    from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO
+    from echo_personal_tool.infrastructure.i18n import tr
+    from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+    assert "menu.la_strain_trace" in _menu_keys(STUDY_PROFILE_ECHO)
+
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+    from echo_personal_tool.presentation.measures_menu import build_measure_menu
+
+    specs = {
+        spec.label_key: spec
+        for _group, group_specs in build_measure_menu(default_user_preferences())
+        for spec in group_specs
+    }
+    assert specs["menu.la_strain_trace"].action is MeasurementAction.LA_STRAIN
+    assert tr("menu.la_strain_trace").startswith("Контур ЛП")
