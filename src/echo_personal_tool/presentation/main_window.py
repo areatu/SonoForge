@@ -125,6 +125,7 @@ from echo_personal_tool.presentation.focus_mode import (
     should_enter_focus,
 )
 from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLayer
+from echo_personal_tool.presentation.imt_editor import show_imt_editor
 from echo_personal_tool.presentation.key_images import show_key_images
 from echo_personal_tool.presentation.layout.presets import (
     PRESETS,
@@ -1650,6 +1651,7 @@ class MainWindow(QMainWindow):
         menu.addMenu(layout_menu)
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
+        menu.addAction(tr("imt.open")).triggered.connect(lambda: show_imt_editor(self))
         menu.addAction(tr("key_images.open")).triggered.connect(lambda: show_key_images(self))
         menu.addAction(tr("app_menu.compare_previous")).triggered.connect(lambda: open_previous_study_comparison(self))
         menu.addAction(tr("doppler_repeats.open")).triggered.connect(lambda: show_doppler_repeats(self))
