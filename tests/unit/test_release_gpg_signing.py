@@ -16,6 +16,10 @@ SUBKEY = "1A5627BF368987B7F1DCC9409EE80D1A063BE8C8"
 
 @pytest.fixture
 def signing_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
+    # The script takes GPG_BIN/GPGCONF_BIN instead of a PATH injection: the
+    # native PATH separator on Windows is ";" and Git Bash cannot resolve a
+    # prepended backslash temp directory, which silently changed which binary
+    # the script picked per platform. GPG_BIN pins the fake everywhere.
     fake = tmp_path / "gpg"
     fake.write_text(
         "#!/usr/bin/env bash\n"
@@ -23,7 +27,7 @@ def signing_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
         'printf "%s\\n" "$*" >> "$CALLS"\n'
         'if [[ "$*" == *--import* ]]; then cat >/dev/null; '
         'elif [[ "$*" == *--list-secret-keys* ]]; then printf "sec#:::::::::\\nfpr:::::::::%s:\\n" "$PRIMARY"; '
-        'elif [[ "$*" == *--detach-sign* ]]; then touch "${@: -1}.asc"; '
+        'elif [[ "$*" == *--detach-sign* ]]; then for last; do :; done; touch "$last.asc"; '
         'elif [[ "$*" == *--verify* ]]; then printf "[GNUPG:] VALIDSIG %s 2026-01-01\\n" "$VALIDSIG"; fi\n',
         encoding="utf-8",
     )
@@ -35,8 +39,9 @@ def signing_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
     manifest.write_text("test\n", encoding="utf-8")
     env = {
         **os.environ,
-        "PATH": f"{tmp_path}:{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
+        "GPG_BIN": fake.as_posix(),
+        "GPGCONF_BIN": gpgconf.as_posix(),
         "CALLS": str(tmp_path / "calls"),
         "PRIMARY": PRIMARY,
         "VALIDSIG": SUBKEY,
