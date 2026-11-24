@@ -88,9 +88,7 @@ def test_failed_listing_produces_unavailable_row() -> None:
 
 
 def test_study_date_is_extracted_from_saved_at() -> None:
-    listing = SavedRecordsListing(
-        records=(_record("rec-1", saved_at="2026-11-20T10:00:00", count=2),)
-    )
+    listing = SavedRecordsListing(records=(_record("rec-1", saved_at="2026-11-20T10:00:00", count=2),))
     rows = stored_record_summaries(listing, set())
     assert rows[0].study_date == "2026-11-20"
 
