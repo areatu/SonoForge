@@ -31,7 +31,7 @@ import logging
 from collections import OrderedDict
 
 import numpy as np
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFontMetrics,
@@ -235,6 +235,19 @@ class CtMrStackViewer(QWidget):
         self._poll.timeout.connect(self._on_poll)
 
         self._refresh_caption()
+
+    # ── size policy ──────────────────────────────────────────────
+
+    def minimumSizeHint(self) -> QSize:
+        """Return a zero minimum so the QStackedWidget does not raise the
+        window's minimum width while this viewer is hidden.
+
+        The internal canvas has ``setMinimumSize(160, 120)``; when the viewer
+        is mounted in a QStackedWidget that minimum propagates to the stack
+        and then to the window, preventing narrow window widths.  The Expanding
+        size policy still fills available space when the viewer is shown.
+        """
+        return QSize(0, 0)
 
     # ── construction ──────────────────────────────────────────────
 
