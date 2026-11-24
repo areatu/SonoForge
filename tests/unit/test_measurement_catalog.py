@@ -93,10 +93,13 @@ def test_only_caliper_has_a_default_key() -> None:
 
 def test_every_menu_button_has_a_catalog_alias() -> None:
     buttons = _menu_buttons()
-    assert len(buttons) == len(CATALOG) == 169  # 164 + fetal biometry + semi-auto CCA IMT (#558)
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+
+    assert len(CATALOG) == 169  # 164 + fetal biometry + semi-auto CCA IMT (#558)
+    assert len(buttons) == len(CATALOG) - len(HIDDEN_TOOL_IDS)
     missing = [button.tool_id for _, button in buttons if button.tool_id not in LEGACY_ALIASES]
     assert missing == []
-    assert {LEGACY_ALIASES[button.tool_id] for _, button in buttons} == set(CATALOG)
+    assert {LEGACY_ALIASES[button.tool_id] for _, button in buttons} == set(CATALOG) - HIDDEN_TOOL_IDS
 
 
 def test_payload_section_and_label_key_mirror_the_menu() -> None:
@@ -116,10 +119,12 @@ def test_payload_section_and_label_key_mirror_the_menu() -> None:
 
 
 def test_default_order_within_sections_matches_menu() -> None:
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+
     for group, buttons in _menu():
         section = cat.SECTION_BY_LEGACY_KEY[group]
         expected = [LEGACY_ALIASES[button.tool_id] for button in buttons]
-        assert [tool.id for tool in cat.tools_in_section(section)] == expected, group
+        assert [tool.id for tool in cat.tools_in_section(section) if tool.id not in HIDDEN_TOOL_IDS] == expected, group
 
 
 def test_section_order_matches_menu() -> None:

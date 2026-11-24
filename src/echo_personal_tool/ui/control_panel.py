@@ -135,6 +135,7 @@ class ControlPanel(QWidget):
         self._metric_sr.setEnabled(False)
         self._metric_sr.setToolTip(tr("strain.metric_not_available"))
         metric_layout.addWidget(self._metric_sr)
+        self._metric_sr.hide()
 
         self._metric_peak = QRadioButton(tr("strain.metric_peak"))
         self._metric_peak.setStyleSheet(_TEXT_STYLE)
@@ -142,6 +143,7 @@ class ControlPanel(QWidget):
         self._metric_peak.setEnabled(False)
         self._metric_peak.setToolTip(tr("strain.metric_not_available"))
         metric_layout.addWidget(self._metric_peak)
+        self._metric_peak.hide()
 
         group_metric.setLayout(metric_layout)
         layout.addWidget(group_metric)
@@ -149,6 +151,7 @@ class ControlPanel(QWidget):
     def _init_layer_group(self, layout: QVBoxLayout) -> None:
         """Myocardial layer selection (plan А.8): which layer the curves plot."""
         group_layer = QGroupBox(tr("strain.layer_group"))
+        group_layer.setObjectName("releaseHiddenStrainLayers")
         group_layer.setStyleSheet(_GROUP_TITLE_STYLE)
         layer_layout = QVBoxLayout()
 
@@ -166,6 +169,7 @@ class ControlPanel(QWidget):
 
         group_layer.setLayout(layer_layout)
         layout.addWidget(group_layer)
+        group_layer.hide()
 
     def set_layer(self, layer: str) -> None:
         """Select the layer radio without re-emitting (restoring state)."""
@@ -288,6 +292,7 @@ class ControlPanel(QWidget):
         """Stress-echo WMSI scoring (plan А.11): stage + per-segment ASE 1–5."""
         self._stress_stage = "rest"
         group_stress = QGroupBox(tr("stress_echo.group"))
+        group_stress.setObjectName("releaseHiddenStressEcho")
         group_stress.setStyleSheet(_GROUP_TITLE_STYLE)
         stress_layout = QVBoxLayout()
 
@@ -325,6 +330,7 @@ class ControlPanel(QWidget):
 
         group_stress.setLayout(stress_layout)
         layout.addWidget(group_stress)
+        group_stress.hide()
 
     def _on_stage_combo(self, stage: object) -> None:
         if not isinstance(stage, str):

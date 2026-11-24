@@ -784,9 +784,9 @@ def test_last_hidden_row_can_be_restored_from_an_empty_section(coordinator, repe
 
 
 class TestMyocardialWorkHeaderPressure:
-    """А.9 (#647): the header cuff BP turns the stored study into MW rows."""
+    """Stored strain and BP do not expose myocardial work in the release report."""
 
-    def test_bp_fields_produce_mw_rows_from_the_controller_study(self, coordinator, controller, window) -> None:
+    def test_bp_fields_do_not_expose_mw_rows_from_the_controller_study(self, coordinator, controller, window) -> None:
         import numpy as np
 
         from echo_personal_tool.domain.models.speckle import StrainResult
@@ -826,8 +826,9 @@ class TestMyocardialWorkHeaderPressure:
         document = coordinator.current_document()
 
         labels = [value.label for group in document.groups for value in group.values]
-        assert any("GWI" in label for label in labels)
-        assert any("GWE" in label for label in labels)
+        assert not any("GWI" in label or "GWE" in label for label in labels)
+        assert any("GLS" in label for label in labels)
+        assert study.analyses["A4C"].gls == -19.0
 
     def test_junk_bp_text_adds_no_mw_rows_and_no_crash(self, coordinator, controller, window) -> None:
         import numpy as np

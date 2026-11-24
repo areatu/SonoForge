@@ -316,6 +316,10 @@ def tool_visible_for_profile(tool: ToolSpec, profile: Any | None, *, applies: bo
     «Сосуды» context — the physician asked for that block, so the profile does
     not filter it away.  No chosen profile keeps every tool.
     """
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+
+    if tool.id in HIDDEN_TOOL_IDS:
+        return False
     if profile is None:
         return True
     if not profile.cardiac and FLAG_CARDIAC in tool.flags:
@@ -652,6 +656,8 @@ def all_context_tools(
                 continue
             tool = CATALOG.get(item.id)
             if tool is None or not _flags_ok(tool.flags, preferences, ai_available=ai_available):
+                continue
+            if not tool_visible_for_profile(tool, None):
                 continue
             seen.add(item.id)
             tools.append(tool)

@@ -648,16 +648,10 @@ class TestMyocardialWorkRows:
             )
         )
 
-    def test_mw_rows_present_in_the_left_ventricle_group(self) -> None:
+    def test_mw_rows_omitted_from_release_report(self) -> None:
         groups = build_report_groups(self._mw_snapshot(), sex="M")
         lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
-        labels = {value.label for value in lv.values}
-        assert any("GWI" in label for label in labels)
-        assert any("GCW" in label for label in labels)
-        assert any("GWW" in label for label in labels)
-        assert any("GWE" in label for label in labels)
-        gwi = next(value for value in lv.values if "GWI" in value.label)
-        assert gwi.value.startswith("2100")
+        assert not any(value.parameter_id in {"lv.gwi", "lv.gcw", "lv.gww", "lv.gwe"} for value in lv.values)
 
     def test_no_blood_pressure_adds_no_mw_rows(self) -> None:
         snapshot = _snapshot(
@@ -675,7 +669,7 @@ class TestMyocardialWorkRows:
     def test_method_note_states_the_inputs(self) -> None:
         groups = build_report_groups(self._mw_snapshot(), sex="M")
         lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
-        assert any("120/80" in note for note in lv.notes)
+        assert not any("120/80" in note for note in lv.notes)
 
 
 class TestDiastologySection:
@@ -714,8 +708,47 @@ class TestDiastologySection:
         groups = build_report_groups(self._assessment_snapshot(), sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert "Нарушение ДФ" in " ".join(lv.values())
+        assert any("Экспериментально" in label for label in lv)
 
     def test_no_doppler_adds_no_rows(self) -> None:
         groups = build_report_groups(_snapshot(), sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert not any(label.startswith("E/e′ >") for label in lv)
+
+
+def test_release_report_exports_do_not_leak_stored_research_results(tmp_path) -> None:
+    from echo_personal_tool.application.interop_export import InteropExportService
+    from echo_personal_tool.application.report_export import render_report_csv, render_report_json
+    from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
+    from echo_personal_tool.domain.services.report_builder import build_report_document
+
+    strain = StrainReport(
+        gls_by_view=(("A4C", -19.0),),
+        qc_by_view=(("A4C", "valid"),),
+        views_valid=("A4C",),
+        gls_average=-19.0,
+        mw_by_view=(("A4C", 2100.0, 2400.0, 300.0, 88.9),),
+        gwi_mmhg_pct=2100.0,
+        blood_pressure_mmhg=(120.0, 80.0),
+        la_strain_by_view=(("A4C", 25.0, 15.0, 12.0),),
+        la_reservoir_pct=25.0,
+        rv_strain_by_view=(("A4C", -20.0),),
+        rv_gls_pct=-20.0,
+        layer_gls_by_view=(("A4C", -19.0, -14.0, -10.0),),
+        layer_mid_pct=-14.0,
+        layer_epi_pct=-10.0,
+        layer_gradient_pp=9.0,
+    )
+    stress = StressEchoAssessment(rest=StressEchoScoring(scores={1: 1}), stress=StressEchoScoring(scores={2: 3}))
+    document = build_report_document(_snapshot(strain=strain, stress_echo=stress), include_inputs=True)
+    for name, render in (("report.json", render_report_json), ("report.csv", render_report_csv)):
+        path = render(document, tmp_path / name)
+        content = path.read_text(encoding="utf-8")
+        assert "GLS" in content
+        assert not any(label in content for label in ("WMSI", "GWI", "LASr", "RV GLS", "эндо−эпи", "120/80"))
+    interop = InteropExportService(session=None)
+    for payload in (interop.build_hl7(document, study_uid="1.2.3"), interop.build_fhir(document, study_uid="1.2.3")):
+        content = payload.decode("utf-8")
+        assert "lv.gls" in content.lower()
+        assert not any(label in content for label in ("WMSI", "GWI", "LASr", "RV GLS", "эндо−эпи", "120/80"))
+    assert strain.mw_by_view and stress.stress.scores  # in-memory source was not rewritten

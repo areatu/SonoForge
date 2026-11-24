@@ -2854,6 +2854,8 @@
   "calc.title.aortic_valve_area": "Aortic valve area (continuity equation)",
   "calc.assumptions.stroke_volume": "Circular LVOT; diameter and the PW VTI sample at the same level (3–10 mm below the valve); the diameter error is squared. Cardiac output needs the heart rate during the VTI recording.",
   "calc.assumptions.aortic_valve_area": "Circular LVOT; LVOT VTI and Vmax by PW, AV by CW along the highest-velocity jet; same rhythm and comparable beats. The Vmax form ignores the flow profile. DVI does not depend on the LVOT diameter.",
+  "calc.experimental_research": "Experimental · research only",
+  "calc.experimental_research_warning": "Not validated for clinical decisions; review all results.",
   "calc.assumptions_title": "Assumptions:",
   "calc.references_title": "References:",
   "calc.reference_title": "Gradations (reference):",

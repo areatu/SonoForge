@@ -5003,3 +5003,20 @@ def test_landmark_rejection_emits_only_static_code_without_committing(finish_met
     assert completed == []
     assert viewer.contours() == []
     assert "PHI_QH4A_PRIVATE" not in "".join(rejected)
+
+
+def test_dpdt_guide_follows_pointer_with_crosshair_on_or_off(qtbot) -> None:
+    viewer = _make_viewer(qtbot)
+    viewer.show_frame(np.zeros((100, 120), dtype=np.uint8))
+    viewer.doppler.apply_calibration_state(_doppler_state(), persist=False)
+    viewer.doppler.overlay.set_tool_mode("interval")
+    viewer.doppler.overlay.set_interval_label("MR dP/dt")
+    guide = viewer.doppler.overlay.interval_guide
+
+    viewer.contract.update_measurement_crosshair(40.0, 65.0)
+    assert guide.velocity_cm_s() == -100.0
+    viewer.contract.update_measurement_crosshair(40.0, 35.0)
+    assert guide.velocity_cm_s() == 100.0
+    viewer.contract.show_crosshair = False
+    viewer.contract.update_measurement_crosshair(40.0, 65.0)
+    assert guide.velocity_cm_s() == -100.0

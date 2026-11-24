@@ -28,12 +28,21 @@ def _qapp() -> QApplication:
     return app
 
 
-def _paediatric_document():
+def _paediatric_document(*, research=False):
     snapshot = MeasurementSnapshot(
         spacing_calibrated=True,
         linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=34.0, millimeter_length=34.0),),
     )
-    return build_report_document(snapshot, PatientInfo(bsa_m2=1.0), study_profile_id=PEDIATRIC_PROFILE)
+    patient = PatientInfo(bsa_m2=1.0)
+    document = build_report_document(snapshot, patient, study_profile_id=PEDIATRIC_PROFILE)
+    if research:
+        from echo_personal_tool.domain.services.report_builder import with_extra_values
+        from echo_personal_tool.domain.services.report_zscore import zscore_report_values
+
+        document = with_extra_values(
+            document, zscore_report_values(snapshot, patient, study_profile_id=PEDIATRIC_PROFILE)
+        )
+    return document
 
 
 class TestPatientHeaderGestationalAge:
@@ -68,7 +77,7 @@ class TestGrowthChartEntries:
         from echo_personal_tool.domain.services.pediatric_norms import cached_norms
         from echo_personal_tool.ui.growth_chart_widget import _chart_entries
 
-        entries = _chart_entries(_paediatric_document(), cached_norms())
+        entries = _chart_entries(_paediatric_document(research=True), cached_norms())
         assert [entry.parameter_id for entry in entries] == ["lv.lvedd"]
         assert entries[0].z == pytest.approx(0.0)
         assert entries[0].axis == pytest.approx(1.0)
@@ -106,7 +115,7 @@ class TestGrowthChartEntries:
                 pass  # no modal loop in tests
 
         monkeypatch.setattr("echo_personal_tool.ui.growth_chart_widget.QDialog", _Dialog)
-        assert show_growth_chart_dialog(_paediatric_document()) is True
+        assert show_growth_chart_dialog(_paediatric_document(research=True)) is True
         assert opened
 
 
@@ -117,7 +126,9 @@ class TestSheetButton:
         preview = ReportPreview()
         assert preview._growth_button.isVisibleTo(preview) is False
         document = _paediatric_document()
-        assert _document_has_growth_rows(document) is True
+        assert _document_has_growth_rows(document) is False
+        legacy_document = _paediatric_document(research=True)
+        assert _document_has_growth_rows(legacy_document) is True
         assert _document_has_growth_rows(ReportDocument()) is False
-        preview.set_document(document)
-        assert preview._growth_button.isVisibleTo(preview) is True
+        preview.set_document(legacy_document)
+        assert preview._growth_button.isVisibleTo(preview) is False

@@ -117,7 +117,7 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     ]
     assert len(view.quick) <= QUICK_COUNT
     assert len(view.favorites) <= FAVORITES_COUNT
-    assert view.total_count == len(CATALOG)
+    assert view.total_count == len(CATALOG) - 2
     # 71 + the two M-mode IVC tools: the IVC diameters are not 2D-context tools.
     assert view.hidden_count == 73
 
@@ -161,7 +161,7 @@ def test_hidden_tools_can_be_shown_without_changing_the_count() -> None:
     assert sum(len(section.items) for section in hidden.sections) < sum(
         len(section.items) for section in shown.sections
     )
-    assert sum(len(section.items) for section in shown.sections) == len(CATALOG)
+    assert sum(len(section.items) for section in shown.sections) == len(CATALOG) - 2
 
 
 def test_defaults_for_modes_and_favourite_badges() -> None:
@@ -261,3 +261,21 @@ def test_vessels_context_is_independent_of_spectral_mode(mode) -> None:
     spectral = panel_view(default_layout(), "doppler", doppler_mode=mode)
     spectral_ids = {tool.id for section in spectral.sections for tool in section.items}
     assert {"tool.caliper", "tool.area", "vessel.stenosis_d", "vessel.stenosis_area"}.isdisjoint(spectral_ids)
+
+
+def test_release_hidden_tools_do_not_leak_through_layout_search_or_favourites() -> None:
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+    from echo_personal_tool.domain.tool_panel_view import filter_tool_ids_for_profile
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+
+    preferences = default_user_preferences()
+    preferences.show_strain = True
+    view = panel_view(default_layout(), "2d", show_hidden=True, preferences=preferences)
+    displayed = {tool.id for section in view.sections for tool in section.items}
+    assert not displayed.intersection(HIDDEN_TOOL_IDS)
+    assert not set(_ids(view.quick + view.favorites)).intersection(HIDDEN_TOOL_IDS)
+    assert not set(_ids(all_context_tools(default_layout(), preferences=preferences))).intersection(HIDDEN_TOOL_IDS)
+    assert filter_tool_ids_for_profile(HIDDEN_TOOL_IDS, None) == ()
+    for query in ("la strain", "rv gls", "стрейн"):
+        found = search_tools(query, default_layout(), "2d", preferences=preferences)
+        assert not {match.tool.id for match in found}.intersection(HIDDEN_TOOL_IDS)

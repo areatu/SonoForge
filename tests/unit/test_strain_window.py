@@ -1146,6 +1146,8 @@ class TestArcStrainWindow:
         w = StrainWindow()
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(self._result())
+        assert w._arc_window is None  # not exposed by the release UI
+        w._update_arc_window(self._result())  # research component remains testable
         assert w._arc_window is not None and w._arc_window.isVisible()
         arc = w._arc_window
         assert arc._values["rv_gls"].text() == "-22.0%"
@@ -1158,12 +1160,13 @@ class TestArcStrainWindow:
         w = StrainWindow()
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(self._result())
+        w._update_arc_window(self._result())
         arc = w._arc_window
-        arc.close()  # the user closed it — next result must reopen cleanly
+        arc.close()
         assert w._arc_window is None
-        with patch.object(w, "_update_panel_a4c"):
-            w.show_result(self._result())
+        w._update_arc_window(self._result())
         assert w._arc_window is not None and w._arc_window.isVisible()
+        w.close()
 
 
 class TestBurnedEcgVisibility:
@@ -1241,3 +1244,64 @@ class TestBurnedEcgVisibility:
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(result)
         assert "ED/ES 0/5 (image), 82%" in w._meta_label.text()
+
+
+def test_strain_json_export_omits_layer_values_without_changing_study(tmp_path, monkeypatch):
+    import json
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QFileDialog
+
+    from echo_personal_tool.domain.models.speckle import StrainResult
+    from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
+    from echo_personal_tool.ui.strain_window import StrainWindow
+
+    result = StrainResult(
+        longitudinal=np.zeros(3),
+        radial=np.zeros(3),
+        gls=-18.0,
+        view="A4C",
+        kernels=[_make_segment_kernel(1, 2, 1, "endo"), _make_segment_kernel(3, 4, 1, "epi")],
+        tracked_ed_positions=np.array([[1.0, 2.0], [3.0, 4.0]]),
+    )
+    analysis = replace(
+        StrainAnalysis.from_result(result), layer_gls={"endo": -18.0, "epi": -10.0}, transmural_gradient_pp=8.0
+    )
+    window = StrainWindow()
+    window._result = result
+    window._analysis = analysis
+    window._study = StrainStudy(analyses={"A4C": analysis})
+    path = tmp_path / "analysis.json"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))
+    window._save_json()
+    exported = json.loads(path.read_text(encoding="utf-8"))
+    for record in (exported["analysis"], exported["study"]["analyses"]["A4C"]):
+        assert "layer_gls" not in record["values"]
+        assert "transmural_gradient_pp" not in record["values"]
+        assert "layers" not in record["definitions"]
+    assert exported["kernel_positions_ed"] == [[1.0, 2.0]]
+    assert analysis.layer_gls["epi"] == -10.0
+    assert result.tracked_ed_positions.tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    window.close()
+
+
+def test_restored_layered_result_only_displays_endo_kernels():
+    from echo_personal_tool.domain.models.speckle import StrainResult
+    from echo_personal_tool.ui.strain_window import StrainWindow
+
+    positions = np.array([[[1.0, 2.0], [3.0, 4.0]]] * 3)
+    result = StrainResult(
+        longitudinal=np.zeros(3),
+        radial=np.zeros(3),
+        gls=-18.0,
+        view="A4C",
+        kernels=[_make_segment_kernel(1, 2, 1, "endo"), _make_segment_kernel(3, 4, 1, "epi")],
+        tracked_positions_all=positions,
+    )
+    window = StrainWindow()
+    with patch.object(window._panel_a4c, "set_tracked_overlay") as display:
+        window.show_result(result)
+    np.testing.assert_array_equal(display.call_args.args[0], positions[:, :1, :])
+    assert display.call_args.kwargs["layers"] == ["endo"]
+    assert positions.shape == (3, 2, 2)
+    window.close()

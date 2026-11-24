@@ -198,7 +198,7 @@ class TestReportSection:
 
     def test_row_in_the_right_ventricle_group(self) -> None:
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
-        from echo_personal_tool.domain.services.report_builder import GROUP_RIGHT_VENTRICLE, build_report_groups
+        from echo_personal_tool.domain.services.report_builder import build_report_groups
 
         report = StrainReport(
             gls_by_view=(("A4C", -18.0),),
@@ -209,10 +209,7 @@ class TestReportSection:
             rv_gls_pct=-20.0,
         )
         groups = build_report_groups(MeasurementSnapshot(strain=report, spacing_calibrated=True), sex="M")
-        rv = next(group for group in groups if group.key == GROUP_RIGHT_VENTRICLE)
-        labels = {value.label for value in rv.values}
-        # The Latin abbreviations lead the label in every language (Q-03).
-        assert any("RV GLS" in label for label in labels)
+        assert not any(value.parameter_id == "rv.gls" for group in groups for value in group.values)
 
     def test_no_rv_measurement_adds_no_rows(self) -> None:
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
