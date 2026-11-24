@@ -1,6 +1,6 @@
 # Code Signing and Release Verification
 
-**Snapshot:** 2026-10-21
+**Snapshot:** 2026-11-24
 **Scope:** every artifact published on
 [GitHub Releases](https://github.com/areatu/SonoForge/releases) — Windows setup/portable
 executables, the Linux `.deb`, the macOS Apple Silicon `.dmg`, the source tarball, the
@@ -20,7 +20,7 @@ assessment.
 | The file was not altered in transit or after upload | `SHA256SUMS` (main release) and `SHA256SUMS-presenter.txt` (Presenter assets) | ✅ In place |
 | The file was built by a workflow in `areatu/SonoForge`, from a known commit, on a known ref | GitHub **artifact attestations** — SLSA build provenance, signed with a short-lived Sigstore/Fulcio certificate via `actions/attest@v4` | ✅ In place — see [§3.2](#32-build-provenance-attestation-recommended) |
 | What components the file contains, and that this list belongs to *that* file | **CycloneDX 1.6 SBOM** per platform, published as a release asset and bound to the artifact by a second Sigstore attestation | ✅ In place — see [§3.4](#34-software-bill-of-materials-sbom) |
-| The checksum manifest was published by the project's own key, not just by whoever can edit the release | GPG detached signature `SHA256SUMS.asc` | ⚠️ **Implemented, dormant** — published only once the `GPG_PRIVATE_KEY` secret exists, see [Enabling GPG signing](#enabling-gpg-signing) |
+| The checksum manifest was published by the project's own key, not just by whoever can edit the release | GPG detached signature `SHA256SUMS.asc` | ✅ **Key provisioned** — signing subkey `1A5627BF368987B7F1DCC9409EE80D1A063BE8C8` in CI, dry run verified 2026-11-24 (run 45419508391); `SHA256SUMS.asc` ships with the next published release, see [Enabling GPG signing](#enabling-gpg-signing) |
 | The published name identifies the version | Version in every asset name; `latest.json` is the fixed-name manifest that resolves the newest versioned names | ✅ In place — see [Asset naming](#asset-naming-and-version-binding) |
 | The publisher identity is validated by a public CA and shown by the OS ("Verified publisher") | Authenticode (Windows), Developer ID + notarization (macOS), distribution signing (Linux) | ❌ **Not in place** — unsigned builds |
 
@@ -259,14 +259,18 @@ manifest. That gap is what attestations close.
 When a GPG key is configured, the manifest additionally carries a detached signature:
 
 ```bash
-gpg --recv-keys <FINGERPRINT>          # once; fingerprint published in this file and on the project site
+gpg --recv-keys E231CA97068B6FD9DBA2696B56A26E00755AA57A   # once; fingerprint pinned in this file and in KEYS
 gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-**GPG key fingerprint:** _not yet configured_ — see
-[Enabling GPG signing](#enabling-gpg-signing). Until a key exists, `SHA256SUMS.asc` is not
-published and the attestation in §3.2 is the authenticity check to rely on.
+**GPG key fingerprint (primary):** `E231CA97068B6FD9DBA2696B56A26E00755AA57A` — RSA 3072,
+expires 2028-11-22, kept offline. Releases are signed by the dedicated signing subkey
+`1A5627BF368987B7F1DCC9409EE80D1A063BE8C8` (expires 2027-11-24), exported to CI alone;
+the CI signing dry run (`verify_gpg=true`, run 45419508391) verified a test signature from
+that subkey on 2026-11-24. See `KEYS` in the repository root and
+[Enabling GPG signing](#enabling-gpg-signing). Until the first signed release ships, the
+attestation in §3.2 remains the authenticity check to rely on.
 
 ### 3.2 Build provenance attestation (recommended)
 
@@ -441,7 +445,7 @@ Ordered by cost, and deliberately free-first:
 | 2 | Version in **every** asset name, fixed names kept as byte-identical aliases | Free | ✅ **Done.** Attestations are name-agnostic; version-carrying names are what make verification version-specific. |
 | 3 | Attested CycloneDX SBOM per platform, published as a release asset | Free | ✅ **Done.** Increasingly requested in clinical procurement; says *what is inside*, not just *how it was built*. |
 | 4 | Checksum manifest for Presenter assets (`SHA256SUMS-presenter.txt`) | Free | ✅ **Done.** Presenter binaries were previously in no manifest at all. |
-| 5 | GPG-sign `SHA256SUMS`, publish the fingerprint | Free (one key to protect) | 🟡 **CI ready, key missing.** Signs automatically once `GPG_PRIVATE_KEY` exists — see [Enabling GPG signing](#enabling-gpg-signing). |
+| 5 | GPG-sign `SHA256SUMS`, publish the fingerprint | Free (one key to protect) | 🟢 **Key provisioned, CI verified.** Signing subkey `1A5627BF…` dry-run verified 2026-11-24 (run 45419508391); `SHA256SUMS.asc` ships with the next published release — see [Enabling GPG signing](#enabling-gpg-signing). |
 | 6 | Submit each release to the Microsoft Security Intelligence portal | Free | ⬜ Manual per release. Reduces SmartScreen/AV false-positive duration, especially for PyInstaller `onefile`. |
 | 7 | Apply to **SignPath Foundation** | Free | ⬜ Blocked on reputation — see [Honest constraint](#honest-constraint-on-the-signpath-step). Removes *Unknown publisher* on Windows. |
 | 8 | Publish to **winget** and/or **Flathub** | Free | ⬜ Signed install path through channels users already trust. Requirements in [Distribution channels](#distribution-channels-winget-flathub-microsoft-store). |
@@ -454,6 +458,13 @@ Explicitly **not** recommended: an EV certificate (the SmartScreen benefit was r
 limited to the US and Canada).
 
 ### Enabling GPG signing
+
+**Status (2026-11-24):** steps 1–3 are done — the key exists (primary `E231CA97068B6FD9DBA2696B56A26E00755AA57A`
+offline, signing subkey `1A5627BF368987B7F1DCC9409EE80D1A063BE8C8` exported to CI alone)
+and the `verify_gpg` dry run passed (run 45419508391: the subkey signed and verified a
+test manifest through the same script the release job uses). Step 4 is done in this
+document and in `KEYS`. Remaining: upload the public key to a keyserver (step 5) and
+decide on `GPG_SIGNING_REQUIRED=true` (step 6).
 
 The `release.yml` job `release` already contains the signing step. It is gated on a
 repository secret and publishes a workflow **notice** (not a failure) when the secret is

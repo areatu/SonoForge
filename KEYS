@@ -1,0 +1,30 @@
+SonoForge release signing keys
+==============================
+
+The release workflow (.github/workflows/release.yml) publishes a detached GPG signature
+`SHA256SUMS.asc` next to the checksum manifest of every release, signed by the subkey
+below. What each guarantee covers is documented in docs/security/code-signing.md.
+
+Primary key — kept offline, never used to sign releases:
+
+    E231CA97068B6FD9DBA2696B56A26E00755AA57A    RSA 3072 [SC], expires 2028-11-22
+
+Signing subkey — the only secret key material in CI (exported alone; the primary key
+never leaves offline storage):
+
+    1A5627BF368987B7F1DCC9409EE80D1A063BE8C8    RSA 3072 [S],  expires 2027-11-24
+
+Verify a download:
+
+    gpg --recv-keys E231CA97068B6FD9DBA2696B56A26E00755AA57A    # once, from keyserver.ubuntu.com
+    gpg --verify SHA256SUMS.asc SHA256SUMS
+    sha256sum -c SHA256SUMS --ignore-missing
+
+The signature must verify against the fingerprints above (gpg prints the signing key's
+fingerprint; `--status-fd 1` shows it as VALIDSIG). If a signature verifies under any
+other key, or the manifest does not match the downloaded file, do not trust the download
+and report it. Pin this file or the fingerprints out of band before relying on them:
+a fingerprint published only next to the signature it validates proves nothing.
+
+The ASCII-armored public key block is retrievable from the keyserver with the
+`gpg --recv-keys` command above.
