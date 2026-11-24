@@ -80,3 +80,7 @@ class MeasurementAction(str, Enum):
     VESSEL_STENOSIS_DIAMETER = "vessel_stenosis_diameter"
     VESSEL_STENOSIS_AREA = "vessel_stenosis_area"
     HEART_RATE = "heart_rate"
+    #: Semi-automatic carotid IMT (#558): opens the research overlay editor,
+    #: which proposes two editable far-wall boundaries and writes an IMT-R/L
+    #: draft only after explicit operator confirmation.
+    IMT_SEMIAUTO = "imt_semiauto"

@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 61,
-  "total_errors": 789,
+  "total_errors": 788,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -42,9 +42,9 @@
       "arg-type": 3
     },
     "src/echo_personal_tool/presentation/main_window.py": {
-      "arg-type": 18,
-      "assignment": 4,
-      "attr-defined": 25,
+      "arg-type": 19,
+      "assignment": 3,
+      "attr-defined": 24,
       "call-overload": 3,
       "index": 1,
       "misc": 1,

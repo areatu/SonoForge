@@ -174,7 +174,7 @@ class TestGrouping:
             ("DT", GROUP_MITRAL_VALVE),
             ("IVRT", GROUP_MITRAL_VALVE),
             # Organ blocks of the non-cardiac profiles come before the valve rules.
-            ("ЩЖ П толщина", GROUP_THYROID),
+            ("ЩЖ П длина", GROUP_THYROID),
             ("R lobe width", GROUP_THYROID),
             ("Перешеек", GROUP_THYROID),
             ("КИМ ОСА правая", GROUP_PRECEREBRAL),

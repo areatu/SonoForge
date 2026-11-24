@@ -210,6 +210,8 @@ files = [
     "src/echo_personal_tool/presentation/coordinators/__init__.py",
     "src/echo_personal_tool/presentation/coordinators/protocol_coordinator.py",
     "src/echo_personal_tool/presentation/coordinators/user_session_coordinator.py",
+    "src/echo_personal_tool/presentation/ctmr_stack_viewer.py",
+    "src/echo_personal_tool/presentation/ctmr_surface_controller.py",
     "src/echo_personal_tool/presentation/dark_theme.py",
     "src/echo_personal_tool/presentation/dicom_export.py",
     "src/echo_personal_tool/presentation/dicom_export_dialog.py",
@@ -228,8 +230,8 @@ files = [
     "src/echo_personal_tool/presentation/icon_loader.py",
     "src/echo_personal_tool/presentation/imt_editor.py",
     "src/echo_personal_tool/presentation/key_images.py",
-    "src/echo_personal_tool/presentation/label_picker.py",
     "src/echo_personal_tool/presentation/la_strain_trace_action.py",
+    "src/echo_personal_tool/presentation/label_picker.py",
     "src/echo_personal_tool/presentation/layout/__init__.py",
     "src/echo_personal_tool/presentation/layout/layout_settings.py",
     "src/echo_personal_tool/presentation/layout/presets.py",
@@ -306,6 +308,7 @@ files = [
     "src/echo_personal_tool/presentation/viewer_clip_context.py",
     "src/echo_personal_tool/presentation/viewer_column.py",
     "src/echo_personal_tool/presentation/viewer_contract.py",
+    "src/echo_personal_tool/presentation/viewer_measurement_helpers.py",
 ]
 strict = true
 disallow_any_generics = false

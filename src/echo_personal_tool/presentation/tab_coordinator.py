@@ -635,6 +635,11 @@ class TabCoordinator:
         focus_hook = getattr(window, "_sync_focus_from_tab", None)
         if callable(focus_hook):
             focus_hook()
+        # Re-route the image surface: a CT/MR tab shows the multi-page stack
+        # viewer, any other tab the ultrasound viewer (#557).
+        ctmr_hook = getattr(window, "_sync_ctmr_surface", None)
+        if callable(ctmr_hook):
+            ctmr_hook()
 
     # ── load result ─────────────────────────────────────────────────
 

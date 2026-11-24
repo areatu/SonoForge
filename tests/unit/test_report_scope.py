@@ -147,7 +147,7 @@ def test_a_thyroid_report_prints_the_thyroid_only() -> None:
         study_profile_id=STUDY_PROFILE_THYROID,
     )
     rows = {value.label: value.value for group in document.groups for value in group.values}
-    assert "ЩЖ П толщина" in rows
+    assert "ЩЖ П длина" in rows
     assert "КДР ЛЖ" not in rows
     assert all("Тейхольц" not in label for label in rows)
 
