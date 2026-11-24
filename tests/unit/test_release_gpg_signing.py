@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,28 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools/release/sign_checksums.sh"
 PRIMARY = "E231CA97068B6FD9DBA2696B56A26E00755AA57A"
 SUBKEY = "1A5627BF368987B7F1DCC9409EE80D1A063BE8C8"
+
+
+def _bash() -> str:
+    """A bash that actually runs POSIX scripts.
+
+    On Windows, a bare \"bash\" resolves to System32's WSL launcher first: on a
+    runner without a WSL distribution it prints its UTF-16 advice to stdout,
+    exits 1 and the script never runs. Git Bash is what CI actually has.
+    """
+    if sys.platform != "win32":
+        return "bash"
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    for candidate in (
+        program_files / "Git" / "bin" / "bash.exe",
+        program_files / "Git" / "usr" / "bin" / "bash.exe",
+    ):
+        if candidate.exists():
+            return str(candidate)
+    found = shutil.which("bash")
+    if found and "system32" not in found.lower():
+        return found
+    pytest.skip("no POSIX bash on this Windows runner")
 
 
 @pytest.fixture
@@ -58,7 +82,7 @@ def signing_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
 
 
 def _sign(env: dict[str, str], manifest: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["bash", SCRIPT.as_posix(), manifest], env=env, capture_output=True, text=True, check=False)
+    return subprocess.run([_bash(), SCRIPT.as_posix(), manifest], env=env, capture_output=True, text=True, check=False)
 
 
 def _context(env: dict[str, str], result: subprocess.CompletedProcess[str]) -> str:
