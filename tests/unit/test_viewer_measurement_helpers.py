@@ -71,7 +71,7 @@ def test_derived_volume_lines_bladder_complete_triplet() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert lines[0].startswith("bladder.volume")
+    assert "Bladder volume" in lines[0]
     assert "mL" in lines[0]
 
 
@@ -83,7 +83,7 @@ def test_derived_volume_lines_bladder_uses_legacy_height_key() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert lines[0].startswith("bladder.volume")
+    assert "Bladder volume" in lines[0]
 
 
 def test_derived_volume_lines_bladder_incomplete_yields_nothing() -> None:
@@ -115,9 +115,9 @@ def test_derived_volume_lines_thyroid_both_lobes() -> None:
     lines = derived_volume_lines(deduped)
     assert len(lines) == 3
     labels = [line.split(":")[0] for line in lines]
-    assert "thyroid.r_volume" in labels
-    assert "thyroid.l_volume" in labels
-    assert "thyroid.volume" in labels
+    assert "R lobe volume" in labels
+    assert "L lobe volume" in labels
+    assert "Thyroid volume" in labels
 
 
 def test_derived_volume_lines_thyroid_single_lobe_no_total() -> None:
@@ -128,7 +128,7 @@ def test_derived_volume_lines_thyroid_single_lobe_no_total() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert lines[0].startswith("thyroid.r_volume")
+    assert "R lobe volume" in lines[0]
 
 
 def test_derived_volume_lines_organ_volume_triplet() -> None:
@@ -139,7 +139,7 @@ def test_derived_volume_lines_organ_volume_triplet() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert lines[0].startswith("organ.volume")
+    assert "Volume 3D" in lines[0]
     assert "mL" in lines[0]
 
 
