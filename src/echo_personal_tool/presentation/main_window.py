@@ -34,7 +34,6 @@ from shiboken6 import isValid as qobject_is_alive
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.composition import AppServices, resolve_window_dependencies
-from echo_personal_tool.application.ctmr_study import build_ctmr_index
 from echo_personal_tool.application.diagnostics import (
     log_boundary_failure,
     safe_error_category,
@@ -68,7 +67,6 @@ from echo_personal_tool.application.user_preferences import (
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
-from echo_personal_tool.domain.models.ctmr_stack import CtMrIndex
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.user import Permission
 from echo_personal_tool.domain.models.viewer_state import ViewerState
@@ -115,7 +113,7 @@ from echo_personal_tool.presentation.coordinators.user_session_coordinator impor
     switch_window_user,
     sync_window_user_session_ui,
 )
-from echo_personal_tool.presentation.ctmr_stack_viewer import CtMrStackViewer
+from echo_personal_tool.presentation.ctmr_surface_controller import CtMrSurfaceController
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.display_formats import format_confidence_pct, format_fps, format_whole_pct
 from echo_personal_tool.presentation.doppler_repeats import show_doppler_repeats
@@ -169,6 +167,7 @@ from echo_personal_tool.presentation.speckle_settings_dialog import (
     speckle_ed_es_hint,
 )
 from echo_personal_tool.presentation.start_page import RecentStudySummary, StartPage
+from echo_personal_tool.presentation.start_page_helpers import stored_record_summaries
 from echo_personal_tool.presentation.study_comparison import open_previous_study_comparison
 from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.system_bar import SystemBar
@@ -303,16 +302,15 @@ class MainWindow(QMainWindow):
         # but does not persist the path to its portable preferences.
         self._last_folder_for_picker = ""
         self._has_loaded_study = False
-        #: True while the image surface shows the classic CT/MR stack viewer
-        #: (#557) instead of the ultrasound ViewerWidget.
-        self._ctmr_active = False
-        self._ctmr_index: CtMrIndex | None = None
+        #: CT/MR stack surface controller (#557): owns the stack viewer widget
+        #: and the routing that decides when it shows instead of the ultrasound
+        #: ViewerWidget.
+        self._ctmr = CtMrSurfaceController(self)  # type: ignore[arg-type]
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
         # painted: visual reset of the previous clip (strain window, manual
         # ED/ES) runs atomically with the swap, not on click.
         self._pending_swap_uid: str | None = None
-        self._playback_active = False
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
         self._instance_overlay_cache: dict[str, str] = {}
@@ -335,17 +333,13 @@ class MainWindow(QMainWindow):
         self._ste_wall_thickness_mm: float = 8.0
         self._strain_result_for_window: object | None = None
         self._strain_frames_for_window: np.ndarray | None = None
-        # the version-2 document (preset + tool buttons, spec §8.1)
-        # is the in-memory layout state; the five version-1 flags are gone.
-        # Multiview is a session mode and is never stored.
+        # The version-2 layout document is the in-memory state; Multiview is a
+        # session mode and is never stored (spec §8.1).
         self._layout_document = self._load_layout_document()
         self._multiview_mode = False
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        # the tool row, the tool rail and the column that carries them
-        # (spec §4.1) are built on demand, and the column is the one centre widget
-        # every preset assembles.  ``_tool_doppler_mode`` is what the panel's
-        # context chip reports; the buttons dim themselves against it (D-08).
+        # The tool row, rail and column are built on demand (spec §4.1).
         self._viewer_column: ViewerColumn | None = None
         self._tool_row: ToolButtonRow | None = None
         self._tool_rail: ToolButtonRail | None = None
@@ -538,9 +532,7 @@ class MainWindow(QMainWindow):
         self._viewer_stack.setObjectName("viewerStack")
         self._viewer_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._viewer_stack.addWidget(self._viewer)
-        self._ctmr_viewer = CtMrStackViewer(self._content_widget)
-        self._ctmr_viewer.hide()
-        self._viewer_stack.addWidget(self._ctmr_viewer)
+        self._ctmr.create_viewer()
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
         self._study_loading_overlay = StudyLoadingOverlay(self._viewer_stack)
@@ -1956,15 +1948,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         if self._viewer_stack.indexOf(self._viewer) < 0:
             self._viewer.show()
-        if self._ctmr_active:
-            # The stack viewer owns the whole workspace: the clip gallery and
-            # the ultrasound tool panel have no meaning on a CT/MR stack (#557).
-            self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
-            self._viewer.hide()
-            self._gallery.hide()
-            self._tool_panel.hide()
-            if self._tool_rail is not None:
-                self._tool_rail.hide()
+        if self._ctmr.apply_layout_visibility():
             return
         if multiview and self._has_loaded_study:
             if self._pane_left is not None:
@@ -3795,61 +3779,6 @@ class MainWindow(QMainWindow):
         """Drop the cached summaries after a save, delete or toggle change."""
         self._saved_records_listing = None
 
-    def _stored_record_summaries(self, seen_keys: set[str]) -> list[RecentStudySummary]:
-        """Rows for the stored records, including honest unreadable/failed states."""
-        from echo_personal_tool.application.localization import tr_plural
-
-        listing = self._request_saved_records()
-        if listing is None:
-            return []
-        rows: list[RecentStudySummary] = []
-        for record in getattr(listing, "records", ()):
-            if not record.readable:
-                continue  # aggregated below; the manager shows them one by one
-            if record.key in seen_keys:
-                continue
-            seen_keys.add(record.key)
-            date = record.saved_at[:10] if record.saved_at else ""
-            title = " · ".join(part for part in (date, tr("start_page.recent_studies_saved")) if part)
-            details = (
-                f"{tr_plural('start_page.recent_studies_measurements', record.measurement_count)} · "
-                f"{tr('start_page.recent_studies_saved')}"
-            )
-            rows.append(
-                RecentStudySummary(
-                    key=record.key,
-                    title=title,
-                    details=details,
-                    origin="stored",
-                    folder="",
-                    study_uid="",
-                    available=False,
-                    study_date=date,
-                    measurement_count=int(record.measurement_count or 0),
-                )
-            )
-        if getattr(listing, "failed", False):
-            rows.append(
-                RecentStudySummary(
-                    key="stored-unavailable",
-                    title=tr("start_page.recent_studies_failed"),
-                    details=tr("start_page.recent_studies_failed_tip"),
-                    origin="stored",
-                    available=False,
-                )
-            )
-        elif listing.unreadable:
-            rows.append(
-                RecentStudySummary(
-                    key="stored-unreadable",
-                    title=tr_plural("start_page.recent_studies_unreadable", listing.unreadable),
-                    details=tr("start_page.recent_studies_unreadable_tip"),
-                    origin="stored",
-                    available=False,
-                )
-            )
-        return rows
-
     def _refresh_start_page_recents(self) -> None:
         """Fill «Недавние исследования» from folder/server history and Z2-M (Э5 §7.3)."""
         start_page = getattr(self, "_start_page", None)
@@ -3927,7 +3856,7 @@ class MainWindow(QMainWindow):
                         count = counts_by_key.get(key, 0) if key is not None else 0
                         merged.append(_replace_summary(summary, measurement_count=count) if count > 0 else summary)
                     summaries = merged
-            summaries.extend(self._stored_record_summaries(seen_keys))
+            summaries.extend(stored_record_summaries(listing, seen_keys))
         start_page.set_recent_studies(summaries[:8])
 
     def _ask_frame_range(self, instance: InstanceMetadata) -> tuple[int, int] | None | bool:
@@ -4123,7 +4052,7 @@ class MainWindow(QMainWindow):
         self._has_loaded_study = n_inst > 0
         # Route a classic CT/MR multi-file study to the single multi-page stack
         # viewer instead of the clip gallery (#557).
-        self._apply_ctmr_surface(study_list)
+        self._ctmr.apply(study_list)
         self._set_start_page_visible(not self._has_loaded_study)
         self._refresh_tool_buttons()
         self._instance_overlay_cache.clear()
@@ -4134,7 +4063,7 @@ class MainWindow(QMainWindow):
         self._last_overlay_state = None
         self._viewer.set_results_overlay("")
         populate_started_at = perf_counter()
-        if not self._ctmr_active:
+        if not self._ctmr.is_active:
             self._gallery.populate(study_list)
         populate_elapsed_ms = (perf_counter() - populate_started_at) * 1000.0
         logger.info(
@@ -4142,7 +4071,7 @@ class MainWindow(QMainWindow):
             len(study_list),
             populate_elapsed_ms,
         )
-        if not self._ctmr_active:
+        if not self._ctmr.is_active:
             self._gallery.request_visible_previews()
         if self._multiview_mode:
             panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
@@ -4151,7 +4080,7 @@ class MainWindow(QMainWindow):
                 # existing panes before main-viewer state starts syncing again.
                 self._rebuild_layout()
         restored = self._after_tab_loaded(loaded_tab_id, study_list)
-        if self._ctmr_active:
+        if self._ctmr.is_active:
             # The stack viewer owns the surface; there are no clips to autoload
             # and no reason to enter the ultrasound focus layout.
             return
@@ -4180,48 +4109,16 @@ class MainWindow(QMainWindow):
         """Select the welcome page only while the main viewer surface owns a slot."""
         if self._viewer_stack.indexOf(self._start_page) < 0 or self._viewer_stack.indexOf(self._viewer) < 0:
             return
-        if self._ctmr_active:
+        if self._ctmr.is_active:
             # A CT/MR stack is a real content surface, never the welcome page.
-            self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
+            self._ctmr.show_stack_viewer()
             return
         target = self._start_page if visible else self._viewer
         self._viewer_stack.setCurrentWidget(target)
 
-    def _apply_ctmr_surface(self, studies: list) -> None:
-        """Route a loaded study set to the CT/MR stack viewer when it is one.
-
-        A classic CT/MR multi-file study is presented as one multi-page stack
-        (#557): the stack viewer takes the image surface and the thumbnail
-        gallery / tool panel are hidden, so the slices do not sit in the gallery
-        as if they were ultrasound clips.  Anything without a usable CT/MR
-        stack keeps the ordinary ultrasound surface.
-        """
-        index = build_ctmr_index(studies) if studies else None
-        if index is not None:
-            if not self._ctmr_active or self._ctmr_index is not index:
-                self._ctmr_index = index
-                self._ctmr_active = True
-                self._ctmr_viewer.set_index(index)
-                self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
-            self._viewer.hide()
-            self._gallery.hide()
-            self._tool_panel.hide()
-            if self._tool_rail is not None:
-                self._tool_rail.hide()
-            return
-        if self._ctmr_active:
-            self._ctmr_active = False
-            self._ctmr_index = None
-            self._ctmr_viewer.clear()
-            self._viewer_stack.setCurrentWidget(self._viewer)
-            self._viewer.show()
-            self._rebuild_layout()
-
     def _sync_ctmr_surface(self) -> None:
         """Re-evaluate the CT/MR surface for the currently active tab."""
-        tab = self._tabs.active
-        studies = list(tab.studies) if tab is not None else []
-        self._apply_ctmr_surface(studies)
+        self._ctmr.sync()
 
     def show_empty_start_page(self) -> None:
         """Show the empty-workspace page (also used by future empty tabs)."""

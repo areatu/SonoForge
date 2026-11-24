@@ -211,6 +211,7 @@ files = [
     "src/echo_personal_tool/presentation/coordinators/protocol_coordinator.py",
     "src/echo_personal_tool/presentation/coordinators/user_session_coordinator.py",
     "src/echo_personal_tool/presentation/ctmr_stack_viewer.py",
+    "src/echo_personal_tool/presentation/ctmr_surface_controller.py",
     "src/echo_personal_tool/presentation/dark_theme.py",
     "src/echo_personal_tool/presentation/dicom_export.py",
     "src/echo_personal_tool/presentation/dicom_export_dialog.py",
