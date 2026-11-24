@@ -11,11 +11,16 @@ The window keeps the widgets; this controller owns the CT/MR surface state and
 the apply/show/hide routing.  Widget access goes through a protocol so the
 controller does not import ``MainWindow`` (no circular dependency) and tests
 can drive the flow with a lightweight double.
+
+Release gate: the whole surface stays disabled unless the environment sets
+``SONOFORGE_ENABLE_CTMR=1`` (dev/CI opt-in) — the unfinished #557 stack viewer
+must not appear in the shipped application.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Protocol
 
 from PySide6.QtWidgets import QStackedWidget, QWidget
@@ -26,6 +31,11 @@ from echo_personal_tool.domain.models.ctmr_stack import CtMrIndex
 from echo_personal_tool.presentation.ctmr_stack_viewer import CtMrStackViewer
 
 logger = logging.getLogger(__name__)
+
+
+def _surface_enabled() -> bool:
+    """The release gate for the #557 surface (read per call, tests monkeypatch it)."""
+    return os.environ.get("SONOFORGE_ENABLE_CTMR") == "1"
 
 
 class CtMrSurfaceWindow(Protocol):
@@ -67,8 +77,17 @@ class CtMrSurfaceController:
         self._active = False
         self._index: CtMrIndex | None = None
 
-    def create_viewer(self) -> CtMrStackViewer:
-        """Create the stack viewer widget and mount it in the viewer stack."""
+    def create_viewer(self) -> CtMrStackViewer | None:
+        """Create the stack viewer widget and mount it in the viewer stack.
+
+        Returns ``None`` and mounts nothing when the release gate
+        (``SONOFORGE_ENABLE_CTMR``) disables the surface: the unfinished
+        #557 viewer stays out of the shipped application until enabled
+        explicitly, and everything downstream treats it as inactive.
+        """
+        if not _surface_enabled():
+            self._viewer = None
+            return None
         viewer = CtMrStackViewer(self._window._content_widget)
         # The stack viewer's internal canvas has a minimum size; zero it on the
         # parent so the QStackedWidget does not raise the window's minimum width
@@ -92,8 +111,11 @@ class CtMrSurfaceController:
         (spec 557): the stack viewer takes the image surface and the thumbnail
         gallery / tool panel are hidden, so the slices do not sit in the gallery
         as if they were ultrasound clips.  Anything without a usable CT/MR
-        stack keeps the ordinary ultrasound surface.
+        stack keeps the ordinary ultrasound surface.  With the release gate
+        off, nothing routes at all and the surface stays inactive.
         """
+        if not _surface_enabled():
+            return
         index = build_ctmr_index(studies) if studies else None
         if index is not None:
             if not self._active or self._index is not index:

@@ -103,6 +103,8 @@ def test_empty_search_returns_nothing() -> None:
 
 
 def test_two_d_context_has_quick_tiles_and_favourites() -> None:
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+
     view = panel_view(default_layout(), "2d", language="ru")
     # 16 anatomical sections + the fetal biometry one (plan А.12).
     assert len(view.sections) == 17
@@ -117,8 +119,10 @@ def test_two_d_context_has_quick_tiles_and_favourites() -> None:
     ]
     assert len(view.quick) <= QUICK_COUNT
     assert len(view.favorites) <= FAVORITES_COUNT
-    assert view.total_count == len(CATALOG) - 2
+    assert view.total_count == len(CATALOG) - len(HIDDEN_TOOL_IDS)
     # 71 + the two M-mode IVC tools: the IVC diameters are not 2D-context tools.
+    # The release-hidden research tools are excluded from total_count instead of
+    # being counted here.
     assert view.hidden_count == 73
 
 
@@ -155,13 +159,15 @@ def test_m_context_offers_only_mmode_tools() -> None:
 
 
 def test_hidden_tools_can_be_shown_without_changing_the_count() -> None:
+    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+
     hidden = panel_view(default_layout(), "m", language="ru")
     shown = panel_view(default_layout(), "m", language="ru", show_hidden=True)
     assert hidden.hidden_count == shown.hidden_count
     assert sum(len(section.items) for section in hidden.sections) < sum(
         len(section.items) for section in shown.sections
     )
-    assert sum(len(section.items) for section in shown.sections) == len(CATALOG) - 2
+    assert sum(len(section.items) for section in shown.sections) == len(CATALOG) - len(HIDDEN_TOOL_IDS)
 
 
 def test_defaults_for_modes_and_favourite_badges() -> None:

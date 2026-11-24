@@ -301,9 +301,13 @@ DEFAULT_PROFILE_ID = STUDY_PROFILE_ECHO
 
 
 def normalize_profile_id(profile_id: str | None) -> str:
-    """A known study profile; an unknown id reads as the default one."""
+    """A known study profile; an unknown or release-hidden id reads as the default one."""
+    from echo_personal_tool.domain.release_visibility import HIDDEN_PROFILE_IDS
+
     value = (profile_id or "").strip()
-    return value if value in PROFILES else DEFAULT_PROFILE_ID
+    if value not in PROFILES or value in HIDDEN_PROFILE_IDS:
+        return DEFAULT_PROFILE_ID
+    return value
 
 
 def study_profile(profile_id: str | None) -> StudyProfile:

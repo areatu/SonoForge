@@ -125,7 +125,6 @@ from echo_personal_tool.presentation.focus_mode import (
     should_enter_focus,
 )
 from echo_personal_tool.presentation.focus_widgets import FocusHeader, FocusLayer
-from echo_personal_tool.presentation.imt_editor import show_imt_editor
 from echo_personal_tool.presentation.key_images import show_key_images
 from echo_personal_tool.presentation.layout.presets import (
     PRESETS,
@@ -1651,7 +1650,6 @@ class MainWindow(QMainWindow):
         menu.addMenu(layout_menu)
         menu.addSeparator()
         menu.addAction(tr("app_menu.references")).triggered.connect(self._show_references)
-        menu.addAction(tr("imt.open")).triggered.connect(lambda: show_imt_editor(self))
         menu.addAction(tr("key_images.open")).triggered.connect(lambda: show_key_images(self))
         menu.addAction(tr("app_menu.compare_previous")).triggered.connect(lambda: open_previous_study_comparison(self))
         menu.addAction(tr("doppler_repeats.open")).triggered.connect(lambda: show_doppler_repeats(self))
@@ -5316,7 +5314,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 return
         # Saved layouts and shortcuts must not bypass release visibility.
-        if action in {MeasurementAction.LA_STRAIN, MeasurementAction.RV_FREE_WALL}:
+        if action in {MeasurementAction.LA_STRAIN, MeasurementAction.RV_FREE_WALL, MeasurementAction.IMT_SEMIAUTO}:
             return
         if not check_window_permission(self, Permission.EDIT_MEASUREMENTS):
             return
@@ -5371,9 +5369,6 @@ class MainWindow(QMainWindow):
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
-            return
-        if action == MeasurementAction.IMT_SEMIAUTO:
-            self._on_imt_semiauto_requested()
             return
         if action == MeasurementAction.DIAMETER_COMPARE:
             self._on_diameter_compare_requested()
@@ -5431,17 +5426,6 @@ class MainWindow(QMainWindow):
         handler = handlers.get(action)
         if handler is not None:
             handler()  # type: ignore[operator]  # mypy does not check this file (outside tool.mypy.files)
-
-    def _on_imt_semiauto_requested(self) -> None:
-        """Open the semi-automatic carotid IMT overlay editor (spec 558).
-
-        The editor is a research workflow, not a plain caliper: it proposes two
-        editable far-wall boundaries inside an operator-selected ROI and only
-        writes an IMT-R/L draft after explicit confirmation.  It shares the
-        manual IMT-R/L measurement keys, so no separate measurement is invented.
-        """
-        self._tool_panel.measure.clear_action_highlight()
-        show_imt_editor(self)
 
     def _on_spline_area_requested(self) -> None:
         self._tool_panel.measure.clear_action_highlight()

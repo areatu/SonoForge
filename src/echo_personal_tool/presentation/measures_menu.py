@@ -293,7 +293,6 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.imt_right", caliper_label="IMT-R"),
             _btn("menu.imt_left", caliper_label="IMT-L"),
-            _btn("menu.imt_semiauto", MeasurementAction.IMT_SEMIAUTO),
             _btn("menu.vessel_bct", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="BCT"),
             _btn("menu.vessel_cca_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-R"),
             _btn("menu.vessel_cca_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-L"),

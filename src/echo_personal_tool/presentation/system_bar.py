@@ -380,6 +380,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         the button caption is for.
         """
         from echo_personal_tool.application.localization import tr
+        from echo_personal_tool.domain.release_visibility import HIDDEN_PROFILE_IDS
         from echo_personal_tool.domain.study_profiles import PROFILE_ORDER, PROFILES
 
         self._btn_study_profile = QToolButton(self)
@@ -390,6 +391,10 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._study_profile_menu.setObjectName("studyProfileMenu")
         self._study_profile_actions: dict[str, object] = {}
         for profile_id in PROFILE_ORDER:
+            if profile_id in HIDDEN_PROFILE_IDS:
+                # Unfinished studies (#650 follow-ups) stay off the release
+                # surface; normalize_profile_id routes saved picks to default.
+                continue
             action = self._study_profile_menu.addAction(tr(PROFILES[profile_id].title_key))
             action.setCheckable(True)
             action.triggered.connect(lambda _checked=False, chosen=profile_id: self.study_profile_changed.emit(chosen))
