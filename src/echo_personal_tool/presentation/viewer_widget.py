@@ -3606,14 +3606,13 @@ class ViewerWidget(QWidget):
 
     def _update_measurement_crosshair(self, x: float, y: float) -> None:
         self._last_view_cursor_xy = (float(x), float(y))
-        if not self._show_crosshair:
-            self._clear_crosshair()
-            return
         panel = self._crosshair_panel_bounds()
-        if panel is None or not self._measurement_crosshair_active():
+        if panel is None or not self._measurement_crosshair_active() or not panel.contains(x, y):
             self._clear_crosshair()
             return
-        if not panel.contains(x, y):
+        # The guide follows the raw pointer even when crosshairs are disabled.
+        self.doppler.overlay.interval_guide.follow_cursor(y)
+        if not self._show_crosshair:
             self._clear_crosshair()
             return
         # dP/dt: the interval is a duration between two known velocities, so the

@@ -77,6 +77,12 @@ def _make_controller(qtbot) -> tuple[CtMrSurfaceController, _SurfaceDouble]:
     return controller, window
 
 
+@pytest.fixture(autouse=True)
+def _enable_ctmr_surface(monkeypatch) -> None:
+    """Exercise the enabled path by default; the gate tests opt out explicitly."""
+    monkeypatch.setenv("SONOFORGE_ENABLE_CTMR", "1")
+
+
 def test_is_active_false_initially(qtbot) -> None:
     controller, _ = _make_controller(qtbot)
     assert controller.is_active is False
@@ -136,3 +142,53 @@ def test_sync_with_ultrasound_tab_is_inactive(qtbot) -> None:
     window._tabs._active_id = "t1"
     controller.sync()
     assert controller.is_active is False
+
+
+def test_release_gate_disables_the_surface_by_default(qtbot, monkeypatch) -> None:
+    """Without the opt-in nothing mounts and nothing routes (#557 release gate)."""
+    monkeypatch.delenv("SONOFORGE_ENABLE_CTMR", raising=False)
+    controller, window = _make_controller(qtbot)
+    assert controller._viewer is None
+    assert window._viewer_stack.count() == 1
+    controller.apply([_us_study()])
+    controller.sync()
+    assert controller.is_active is False
+    assert controller.apply_layout_visibility() is False
+    assert controller.create_viewer() is None
+
+
+def test_release_gate_blocks_a_truthy_index(qtbot, monkeypatch) -> None:
+    """The gate precedes routing: even a ready index never activates the surface."""
+    from echo_personal_tool.presentation import ctmr_surface_controller as module
+
+    monkeypatch.delenv("SONOFORGE_ENABLE_CTMR", raising=False)
+    controller, window = _make_controller(qtbot)
+    monkeypatch.setattr(module, "build_ctmr_index", lambda studies: object())
+    controller.apply([_us_study()])
+    assert controller.is_active is False
+    assert window._viewer_stack.currentWidget() is window._viewer
+
+
+def test_opt_in_routes_a_ready_index(qtbot, monkeypatch) -> None:
+    """With the opt-in a truthy index activates the surface and takes over."""
+    from echo_personal_tool.presentation import ctmr_surface_controller as module
+
+    controller, window = _make_controller(qtbot)
+
+    class _FakeViewer(QWidget):
+        def set_index(self, index: object) -> None:
+            self.index = index
+
+        def clear(self) -> None:
+            pass
+
+    fake = _FakeViewer()
+    window._viewer_stack.addWidget(fake)
+    controller._viewer = fake
+    monkeypatch.setattr(module, "build_ctmr_index", lambda studies: object())
+    controller.apply([_us_study()])
+    assert controller.is_active is True
+    assert window._viewer_stack.currentWidget() is fake
+    assert window._viewer.isHidden()
+    assert window._gallery.isHidden()
+    assert window._tool_panel.isHidden()

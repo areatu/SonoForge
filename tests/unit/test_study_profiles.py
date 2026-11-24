@@ -470,20 +470,22 @@ class TestPaediatricAndFetalProfiles:
 
     def test_the_paediatric_study_measures_the_heart(self) -> None:
         from echo_personal_tool.domain.study_profiles import (
+            PROFILES,
             STUDY_PROFILE_PEDIATRIC_ECHO,
-            section_keys,
         )
 
-        keys = section_keys(STUDY_PROFILE_PEDIATRIC_ECHO)
+        # Data-level access: release-hidden profiles normalize to the default
+        # (covered by the release-visibility tests below).
+        keys = PROFILES[STUDY_PROFILE_PEDIATRIC_ECHO].sections
         assert "lv" in keys and "aorta" in keys and "fetal" not in keys
 
     def test_the_fetal_study_is_restricted_to_its_own_section(self) -> None:
         from echo_personal_tool.domain.study_profiles import (
+            PROFILES,
             STUDY_PROFILE_FETAL,
-            section_keys,
         )
 
-        keys = section_keys(STUDY_PROFILE_FETAL)
+        keys = PROFILES[STUDY_PROFILE_FETAL].sections
         assert keys == ("general", "fetal")
 
     def test_the_fetal_tools_belong_to_the_fetal_profile_only(self) -> None:
@@ -497,6 +499,24 @@ class TestPaediatricAndFetalProfiles:
         fetal_ids = {spec.id for spec in tools_in_section("fetal")}
         assert {"fetal.ao_root", "fetal.pa", "fetal.lv_dia", "fetal.rv_dia"} <= fetal_ids
         for spec in tools_in_section("fetal"):
-            assert study_profile(STUDY_PROFILE_FETAL).allows_tool(spec.id, section_key="fetal")
+            assert PROFILES[STUDY_PROFILE_FETAL].allows_tool(spec.id, section_key="fetal")
         # The adult study never shows the fetal section at all.
         assert not study_profile(STUDY_PROFILE_ECHO).allows("fetal")
+
+
+def test_release_hidden_profiles_fall_back_to_the_default() -> None:
+    """The unfinished paediatric/fetal studies normalize to the default (#650 follow-ups)."""
+    from echo_personal_tool.domain.release_visibility import HIDDEN_PROFILE_IDS
+
+    for profile_id in HIDDEN_PROFILE_IDS:
+        assert profile_id in PROFILES  # the data stays intact for old snapshots
+        assert normalize_profile_id(profile_id) == DEFAULT_PROFILE_ID
+        assert study_profile(profile_id) is PROFILES[DEFAULT_PROFILE_ID]
+        assert is_explicit(profile_id) is False
+
+
+def test_hidden_profile_ids_match_the_study_profile_constants() -> None:
+    """The release-visibility literals track the domain constants exactly."""
+    from echo_personal_tool.domain.release_visibility import HIDDEN_PROFILE_IDS
+
+    assert HIDDEN_PROFILE_IDS == {STUDY_PROFILE_PEDIATRIC_ECHO, STUDY_PROFILE_FETAL}

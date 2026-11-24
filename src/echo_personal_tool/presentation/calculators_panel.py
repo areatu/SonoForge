@@ -288,7 +288,10 @@ class _CalculatorCard:
         layout.addWidget(self.box)
 
     def reload_text(self) -> None:
-        self.box.setTitle(tr(self.spec.title_key))
+        title = tr(self.spec.title_key)
+        if self.spec.id == "diastolic_grade":
+            title += " · " + tr("calc.experimental_research")
+        self.box.setTitle(title)
         small = font_pixel_size(self.box, 0.85, minimum=9)
         for output in self.spec.outputs:
             name, value, _unit = self.rows[output.id]

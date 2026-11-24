@@ -11,9 +11,9 @@ to be four private methods of it:
   divides a fixed pressure rise by the time the regurgitant CW jet needs to
   travel from 1 m/s to 3 m/s (MR) or to 2 m/s (TR).  The physician therefore
   does not choose the *height* of either click — only its time.  This
-  collaborator reports the velocity the next click is bound to, mirrors it onto
-  the side of the baseline the jet is actually drawn on, and paints the dashed
-  guide the crosshair rides.
+  collaborator reports the velocity the next click is bound to, follows the
+  pointer above or below the baseline, and paints the dashed guide the
+  crosshair rides. An image-based initial guess is used before pointer motion.
 
 Both read their state through plain callables supplied by the overlay, so no
 interval state moves: the overlay keeps owning the click state machine.
@@ -61,6 +61,7 @@ class DopplerIntervalGuide:
         #: Time of the first click of the pending interval, ``None`` if none.
         self._pending_supplier = pending_start
         self._velocity_item: Any | None = None
+        self._cursor_side: float | None = None
         self._preview_item: Any | None = None
 
     # -- fixed click velocity -------------------------------------------------
@@ -70,7 +71,16 @@ class DopplerIntervalGuide:
         target = self._target_supplier()
         if target is None:
             return None
-        return target * self._jet_side()
+        return target * (self._cursor_side if self._cursor_side is not None else self._jet_side())
+
+    def follow_cursor(self, y: float) -> None:
+        """Put the guide on the side of the baseline selected by the pointer."""
+        if self._target_supplier() is None or not np.isfinite(y):
+            return
+        baseline = self._mapping().y_from_velocity_cm_s(0.0)
+        if y != baseline:
+            self._cursor_side = 1.0 if y < baseline else -1.0
+        self.refresh()
 
     def plot_y(self) -> float | None:
         """Plot ``y`` of the velocity guide, ``None`` when there is none."""
@@ -87,6 +97,8 @@ class DopplerIntervalGuide:
             return
         if self._velocity_item is None:
             self._velocity_item = self._add_item(17, dash=True)
+        elif self._velocity_item.scene() is None:
+            self._plot.addItem(self._velocity_item)
         mapping = self._mapping()
         y = mapping.y_from_velocity_cm_s(velocity)
         x0 = mapping.plot_origin_x
@@ -96,6 +108,7 @@ class DopplerIntervalGuide:
     def clear_velocity(self) -> None:
         """Hide the velocity guide (keeps the item for the next show)."""
         self._remove_from_plot(self._velocity_item)
+        self._cursor_side = None
 
     # -- preview bar ----------------------------------------------------------
 
@@ -107,7 +120,7 @@ class DopplerIntervalGuide:
         """Plot ``y`` of the baseline — where the interval bar is drawn."""
         mapping = self._mapping()
         baseline = mapping.baseline_plot_y()
-        return float(baseline) if baseline is not None else mapping.plot_height * 0.5
+        return float(baseline) if baseline is not None else mapping.y_from_velocity_cm_s(0.0)
 
     def refresh_preview(self, *, end_x_px: float | None = None) -> None:
         """Draw the bar of the pending interval, with an end tick at *end_x_px*."""
@@ -192,8 +205,8 @@ class DopplerIntervalGuide:
 
         The image is read through the plot's image item — the buffer the
         physician sees — so an inverted (below-baseline) CW jet keeps its guide
-        on the visible jet.  Any unreadable state falls back to «above», the
-        usual orientation of a mitral/tricuspid regurgitation spectrum.
+        on the visible jet. Any unreadable state falls back to «above» until
+        the pointer selects a side.
         """
         mapping = self._mapping()
         baseline = self.baseline_y()

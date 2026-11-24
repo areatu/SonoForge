@@ -259,8 +259,6 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.strain_pos_a2c", MeasurementAction.STE_VIEW_A2C),
             _btn("menu.strain_pos_a3c", MeasurementAction.STE_VIEW_A3C),
             _btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
-            _btn("menu.la_strain_trace", MeasurementAction.LA_STRAIN, view="A4C"),
-            _btn("menu.rv_free_wall", MeasurementAction.RV_FREE_WALL, view="A4C"),
         ),
     ),
     (
@@ -295,7 +293,6 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.imt_right", caliper_label="IMT-R"),
             _btn("menu.imt_left", caliper_label="IMT-L"),
-            _btn("menu.imt_semiauto", MeasurementAction.IMT_SEMIAUTO),
             _btn("menu.vessel_bct", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="BCT"),
             _btn("menu.vessel_cca_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-R"),
             _btn("menu.vessel_cca_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-L"),

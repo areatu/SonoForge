@@ -3,3 +3,7 @@
 
 # Hash the same locked dependency bytes on Windows and Unix runners.
 uv.lock text eol=lf
+
+# Shell scripts must stay LF everywhere (Windows runners included).
+*.sh text eol=lf
+*.bash text eol=lf

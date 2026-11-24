@@ -521,9 +521,20 @@ class TestWorkflowLockPolicy:
 
     def test_the_release_workflow_supports_build_and_verify_without_publishing(self) -> None:
         workflow = _workflow("release.yml")
-        assert "verify_only" in str(workflow[True]["workflow_dispatch"]["inputs"])
+        inputs = workflow[True]["workflow_dispatch"]["inputs"]
+        assert "verify_only" in inputs and "verify_gpg" in inputs
         release_job = workflow["jobs"]["release"]
-        assert "verify_only" in str(release_job["if"])
+        assert "!inputs.verify_only" in str(release_job["if"])
+        assert "!inputs.verify_gpg" in str(release_job["if"])
+        check = workflow["jobs"]["verify-gpg"]
+        assert "workflow_dispatch" in str(check["if"]) and "inputs.verify_gpg" in str(check["if"])
+        test_step = next(step for step in check["steps"] if step.get("name") == "Sign and verify a test manifest")
+        release_step = next(
+            step for step in release_job["steps"] if step.get("name") == "Sign checksum manifest with GPG"
+        )
+        assert "bash tools/release/sign_checksums.sh" in test_step["run"]
+        assert "bash tools/release/sign_checksums.sh" in release_step["run"]
+        assert check["permissions"] == {"contents": "read"}
 
     def test_ci_requires_the_package_smoke(self) -> None:
         workflow = _workflow("ci.yml")

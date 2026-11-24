@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.localization import get_language, tr
 from echo_personal_tool.domain import tool_settings as settings
 from echo_personal_tool.domain.measurement_catalog import CATALOG, SECTIONS, ToolSpec
+from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
 from echo_personal_tool.domain.tool_layout_v3 import (
     CONTEXT_COMMON,
     CUSTOM_SECTION_PREFIX,
@@ -597,7 +598,7 @@ class ToolSettings2Widget(QWidget):
                 self._sections.addTopLevelItem(section_item)
                 for item in block.items:
                     tool = CATALOG.get(item.id)
-                    if tool is None:
+                    if tool is None or tool.id in HIDDEN_TOOL_IDS:
                         continue
                     child = QTreeWidgetItem([self._tool_title_text(tool)])
                     child.setData(0, _ROLE_KIND, "tool")
@@ -631,6 +632,8 @@ class ToolSettings2Widget(QWidget):
         }
         self._catalog.clear()
         for tool in sorted(CATALOG.values(), key=lambda value: value.label(get_language()).short):
+            if tool.id in HIDDEN_TOOL_IDS:
+                continue
             if query and not _matches(tool, query):
                 continue
             if mode == "not_on_panel" and tool.id in placed:

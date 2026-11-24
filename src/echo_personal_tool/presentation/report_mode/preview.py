@@ -434,7 +434,9 @@ class ReportPreview(QWidget):
             return False
         self._document = document
         self._update_notice_banner()
-        self._growth_button.setVisible(_document_has_growth_rows(document))
+        # The release does not expose unverified growth charts, even for
+        # documents that already contain Z-score rows.
+        self._growth_button.setVisible(False)
         self._anchors = dict(rendered.anchors)
         self._pdf_bytes = rendered.pdf
         self._show_status("")
@@ -791,9 +793,8 @@ class ReportPreview(QWidget):
         self._values_button.setAccessibleName(tr("report.values.title"))
         self._inputs_button.setText(tr("report.inputs_toggle"))
         self._inputs_button.setToolTip(tr("report.inputs_toggle_hint"))
-        # The growth-chart button stays hidden until the sheet carries Z rows
-        # (plan А.12); the accessibility inventory still counts it, so it
-        # names itself like the rest of the toolbar.
+        # The release keeps this button hidden even for legacy Z rows; the
+        # accessibility inventory still counts it, so it retains a name.
         self._growth_button.setText(tr("growth_chart.open_button"))
         self._growth_button.setAccessibleName(tr("growth_chart.open_button"))
         self._growth_button.setToolTip(tr("growth_chart.open_hint"))

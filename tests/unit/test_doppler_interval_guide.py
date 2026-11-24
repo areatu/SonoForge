@@ -207,3 +207,24 @@ def test_cancelling_removes_the_preview_bar(overlay) -> None:
     assert overlay.interval_guide.pending_start_ms() is None
     item = overlay.interval_guide.preview_item()
     assert item is None or item.scene() is None
+
+
+@pytest.mark.parametrize("label,second", [("MR dP/dt", 300), ("TR dP/dt", 200)])
+def test_cursor_controls_guide_side_for_both_clicks(overlay, label, second):
+    mapping = DopplerAxisMapping(time_span_ms=2000.0, plot_origin_y=20, plot_height=200)
+    overlay.set_axis_mapping(mapping)
+    overlay.set_tool_mode("interval")
+    overlay.set_interval_label(label)
+    guide = overlay.interval_guide
+    baseline = mapping.y_from_velocity_cm_s(0.0)
+
+    guide.follow_cursor(baseline + 10)
+    assert guide.velocity_cm_s() == -100
+    assert guide.plot_y() > baseline
+    overlay.handle_click(100, baseline + 10)
+    assert guide.velocity_cm_s() == -second
+    guide.follow_cursor(baseline - 10)
+    assert guide.velocity_cm_s() == second
+    assert guide.plot_y() < baseline
+    guide.follow_cursor(baseline + 10)
+    assert guide.velocity_cm_s() == -second
