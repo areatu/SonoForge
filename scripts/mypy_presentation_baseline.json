@@ -43,8 +43,8 @@
     },
     "src/echo_personal_tool/presentation/main_window.py": {
       "arg-type": 18,
-      "assignment": 4,
-      "attr-defined": 25,
+      "assignment": 3,
+      "attr-defined": 26,
       "call-overload": 3,
       "index": 1,
       "misc": 1,

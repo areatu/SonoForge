@@ -68,6 +68,7 @@ from echo_personal_tool.application.user_preferences import (
 from echo_personal_tool.domain.doppler_catalog import HEART_RATE_INTERVAL_LABEL
 from echo_personal_tool.domain.measurement_catalog import format_measurement as _fmt
 from echo_personal_tool.domain.models import Contour, InstanceMetadata, StudyMetadata
+from echo_personal_tool.domain.models.ctmr_stack import CtMrIndex
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.user import Permission
 from echo_personal_tool.domain.models.viewer_state import ViewerState
@@ -305,7 +306,7 @@ class MainWindow(QMainWindow):
         #: True while the image surface shows the classic CT/MR stack viewer
         #: (#557) instead of the ultrasound ViewerWidget.
         self._ctmr_active = False
-        self._ctmr_index = None
+        self._ctmr_index: CtMrIndex | None = None
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
         # painted: visual reset of the previous clip (strain window, manual
@@ -2666,7 +2667,7 @@ class MainWindow(QMainWindow):
         self._show_hint(tr("status.ds_markers_on") if enabled else tr("status.ds_markers_off"))
         # Invalidate the cache key so the same clip is re-detected (or cleared)
         # with the override; the worker's generation guard discards late runs.
-        self._phase_timeline_key = None
+        self._phase_timeline_key: tuple[object, ...] | None = None
         self._sync_phase_timeline(state, uid or None)
         self._sync_tool_button_active()
 

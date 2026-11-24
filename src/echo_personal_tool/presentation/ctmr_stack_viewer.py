@@ -32,7 +32,18 @@ from collections import OrderedDict
 
 import numpy as np
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QFontMetrics, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QFontMetrics,
+    QImage,
+    QKeyEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QShowEvent,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -150,7 +161,7 @@ class _SliceCanvas(QWidget):
         height = max(20, QFontMetrics(font).height() + 4)
         return QRect(x, y, width, height)
 
-    def paintEvent(self, _event) -> None:  # noqa: ANN001
+    def paintEvent(self, _event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), Qt.GlobalColor.black)
@@ -480,7 +491,7 @@ class CtMrStackViewer(QWidget):
         result = service.poll()
         if result is None:
             return
-        claimed = service.claim(result)
+        claimed = service.claim(result) if hasattr(service, "claim") else False
         if not claimed:
             return
         ticket = getattr(result, "ticket", None)
@@ -676,7 +687,7 @@ class CtMrStackViewer(QWidget):
 
     # ── keyboard / wheel ──────────────────────────────────────────
 
-    def wheelEvent(self, event) -> None:  # noqa: ANN001
+    def wheelEvent(self, event: QWheelEvent) -> None:
         if self._index is None or not self._index.stacks:
             super().wheelEvent(event)
             return
@@ -687,7 +698,7 @@ class CtMrStackViewer(QWidget):
         else:
             super().wheelEvent(event)
 
-    def keyPressEvent(self, event) -> None:  # noqa: ANN001
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         if self._index is None or not self._index.stacks:
             super().keyPressEvent(event)
             return
@@ -707,12 +718,12 @@ class CtMrStackViewer(QWidget):
         else:
             super().keyPressEvent(event)
 
-    def showEvent(self, event) -> None:  # noqa: ANN001
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if self._index is not None and self._index.stacks and self._canvas._pixmap is None:
             self._request_slice(self._slice_index)
 
-    def resizeEvent(self, event) -> None:  # noqa: ANN001
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         # Repaint the letterboxed image at the new canvas size.
         if self._index is not None and self._index.stacks:
