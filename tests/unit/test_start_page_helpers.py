@@ -9,8 +9,8 @@ tested without Qt.
 from __future__ import annotations
 
 from echo_personal_tool.application.saved_records import (
+    STATUS_CORRUPT,
     STATUS_READABLE,
-    STATUS_UNREADABLE,
     SavedRecordsListing,
     SavedRecordSummary,
 )
@@ -18,7 +18,7 @@ from echo_personal_tool.presentation.start_page_helpers import stored_record_sum
 
 
 def _record(key: str, *, readable: bool = True, saved_at: str = "", count: int = 1) -> SavedRecordSummary:
-    status = STATUS_READABLE if readable else STATUS_UNREADABLE
+    status = STATUS_READABLE if readable else STATUS_CORRUPT
     return SavedRecordSummary(
         key=key,
         status=status,

@@ -68,26 +68,9 @@ class _SurfaceDouble:
     def _rebuild_layout(self) -> None:
         self._rebuild_layout_calls += 1
 
-    @property
-    def _tabs_prop(self):
-        return self._tabs
 
-    # The protocol names ``_tabs`` as a property; expose it that way.
-    @property
-    def _tabs_(self):  # noqa: N802
-        return self._tabs
-
-
-# ``_tabs`` is a property on the protocol, so the double needs it as a property.
-# Reassign the attribute name to match the protocol exactly.
-class _WindowDouble(_SurfaceDouble):
-    @property
-    def _tabs(self):  # type: ignore[override]
-        return self._tabs_prop
-
-
-def _make_controller(qtbot) -> tuple[CtMrSurfaceController, _WindowDouble]:
-    window = _WindowDouble()
+def _make_controller(qtbot) -> tuple[CtMrSurfaceController, _SurfaceDouble]:
+    window = _SurfaceDouble()
     qtbot.addWidget(window._viewer_stack)
     controller = CtMrSurfaceController(window)
     controller.create_viewer()
