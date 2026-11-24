@@ -281,23 +281,28 @@ def format_velocity_cm_s(velocity_cm_s: float) -> str:
 
 
 def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "mm") -> str:
+    # The on-frame caliper label shows the clinical name, not the storage code
+    # (e.g. «TH-R-TH» reads as «ЩЖ П длина»), matching the results overlay —
+    # issue 558 follow-up: the same terms as the buttons and the report.
+    i18n_key = _LABEL_I18N_KEY.get(measurement.label)
+    display_label = tr(i18n_key) if i18n_key else measurement.label
     if measurement.doppler:
         parts = measurement.doppler_value_parts()
         if parts:
-            return f"{measurement.label} {' '.join(parts)}"
+            return f"{display_label} {' '.join(parts)}"
     if measurement.time_ms is not None:
         hr = 60000.0 / measurement.time_ms if measurement.time_ms > 0 else 0.0
         dt_text = format_measurement("doppler.time", measurement.time_ms, "ms")
         hr_text = format_measurement("hr", hr, "bpm")
-        return f"{measurement.label} {dt_text} ms  {tr('mmode.label_hr')} {hr_text}"
+        return f"{display_label} {dt_text} ms  {tr('mmode.label_hr')} {hr_text}"
     if measurement.millimeter_length is None:
         px_text = format_measurement("caliper.pixel", measurement.pixel_length, "px")
-        return f"{measurement.label} {px_text} px"
+        return f"{display_label} {px_text} px"
     if measurement.label in AREA_LABELS:
-        return f"{measurement.label} {format_measurement('caliper.area', measurement.millimeter_length, 'cm²')} cm²"
+        return f"{display_label} {format_measurement('caliper.area', measurement.millimeter_length, 'cm²')} cm²"
     measurement_id = measurement_for_caliper(measurement.label)
     return (
-        f"{measurement.label} "
+        f"{display_label} "
         f"{format_length_mm(measurement.millimeter_length, length_unit, submillimeter=measurement.submillimeter, measurement_id=measurement_id)}"
     )
 

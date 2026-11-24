@@ -170,6 +170,10 @@ from echo_personal_tool.presentation.viewer.point_label_menu import (
 from echo_personal_tool.presentation.viewer.transport import ViewerTransport
 from echo_personal_tool.presentation.viewer.zoom import ViewerZoom
 from echo_personal_tool.presentation.viewer_contract import ViewerContract
+from echo_personal_tool.presentation.viewer_measurement_helpers import (
+    derived_volume_lines,
+    with_measurement_identity,
+)
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 if TYPE_CHECKING:
@@ -4244,7 +4248,7 @@ class ViewerWidget(QWidget):
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
         )
-        contour = self._with_measurement_identity(contour)
+        contour = with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self._open_label_picker_for_contour(contour)
@@ -4317,7 +4321,7 @@ class ViewerWidget(QWidget):
         )
         self.contour_state.freehand_recording = False
         self.contour_state.freehand_points = []
-        contour = self._with_measurement_identity(contour)
+        contour = with_measurement_identity(contour)
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self._open_label_picker_for_contour(contour)
@@ -7384,20 +7388,6 @@ class ViewerWidget(QWidget):
             allow_free_text=allow_free_text,
         )
 
-    def _with_measurement_identity(self, contour: Contour) -> Contour:
-        """Give a freshly drawn contour its stable id (item 10 of the 2026-11-06 list).
-
-        A name has to be addressable: the picker that names the polygon right
-        after it closes and the report card that renames it later both travel
-        by ``measurement_id``, and a document without one could not tell two
-        polygons of one frame apart.
-        """
-        if contour.measurement_id:
-            return contour
-        from echo_personal_tool.domain.services.doppler_repeats import new_measurement_id
-
-        return replace(contour, measurement_id=new_measurement_id())
-
     def rename_contour_measurement(self, measurement_id: str, label: str) -> bool:
         """Rename a stored contour by its ``measurement_id`` (item 10).
 
@@ -7704,6 +7694,7 @@ class ViewerWidget(QWidget):
         lines: list[str] = []
         for m in deduped.values():
             lines.append(m.display_text(length_unit=self._length_display_unit))
+        lines.extend(derived_volume_lines(deduped))
         html = "<br>".join(lines)
         self._results_overlay_label.setText(html)
         self._results_overlay_label.adjustSize()
