@@ -678,6 +678,7 @@
   "menu.fetal_rv_dia": "Fetal RV dia",
   "menu.imt_right": "R CCA IMT",
   "menu.imt_left": "L CCA IMT",
+  "menu.imt_semiauto": "Semi-auto CCA IMT",
   "menu.vessel_bct": "BCT",
   "menu.vessel_cca_right": "R CCA",
   "menu.vessel_cca_left": "L CCA",

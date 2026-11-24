@@ -1325,6 +1325,14 @@ _TOOL_LIST: tuple[ToolSpec, ...] = (
     # ── Carotid intima-media thickness (item 4) ──
     _t("cca.imt_right", _K.DISTANCE, "precerebral", "menu.imt_right", _A(None, caliper_label="IMT-R"), _2D, requires=_SP),
     _t("cca.imt_left", _K.DISTANCE, "precerebral", "menu.imt_left", _A(None, caliper_label="IMT-L"), _2D, requires=_SP),
+    #: Semi-automatic far-wall IMT (#558): a launcher for the research overlay
+    #: editor.  It produces the same IMT-R/L measurements as the manual caliper
+    #: tools, but via two editable boundaries plus explicit confirmation.
+    _t("cca.imt_semiauto", _K.ACTION, "precerebral", "menu.imt_semiauto", _A("imt_semiauto"), _2D,
+        results=("cca.imt_right", "cca.imt_left"),
+        ru=("Полуавтоматический КИМ ОСА", "Полуавтоматическое измерение толщины интима-медиа ОСА"),
+        en=("Semi-auto CCA IMT", "Semi-automatic carotid intima-media thickness"),
+        requires=_SP),
     # ── Named-artery Doppler indicators (item 4) ──
     _t("vessel.bct", _K.PEAK, "precerebral", "menu.vessel_bct",
        _A("vessel_psv_edv", vessel=True, caliper_label="BCT"), _VES,

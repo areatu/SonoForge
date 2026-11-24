@@ -5477,6 +5477,9 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
             return
+        if action == MeasurementAction.IMT_SEMIAUTO:
+            self._on_imt_semiauto_requested()
+            return
         if action == MeasurementAction.DIAMETER_COMPARE:
             self._on_diameter_compare_requested()
             return
@@ -5533,6 +5536,17 @@ class MainWindow(QMainWindow):
         handler = handlers.get(action)
         if handler is not None:
             handler()  # type: ignore[operator]  # mypy does not check this file (outside tool.mypy.files)
+
+    def _on_imt_semiauto_requested(self) -> None:
+        """Open the semi-automatic carotid IMT overlay editor (#558).
+
+        The editor is a research workflow, not a plain caliper: it proposes two
+        editable far-wall boundaries inside an operator-selected ROI and only
+        writes an IMT-R/L draft after explicit confirmation.  It shares the
+        manual IMT-R/L measurement keys, so no separate measurement is invented.
+        """
+        self._tool_panel.measure.clear_action_highlight()
+        show_imt_editor(self)
 
     def _on_spline_area_requested(self) -> None:
         self._tool_panel.measure.clear_action_highlight()
