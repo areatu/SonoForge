@@ -13,7 +13,7 @@ controller does not import ``MainWindow`` (no circular dependency) and tests
 can drive the flow with a lightweight double.
 
 Release gate: the whole surface stays disabled unless the environment sets
-``SONOFORGE_ENABLE_CTMR=1`` (dev/CI opt-in) — the unfinished #557 stack viewer
+``SONOFORGE_ENABLE_CTMR=1`` (dev/CI opt-in) — the unfinished spec 557 stack viewer
 must not appear in the shipped application.
 """
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def _surface_enabled() -> bool:
-    """The release gate for the #557 surface (read per call, tests monkeypatch it)."""
+    """The release gate for the spec 557 surface (read per call, tests monkeypatch it)."""
     return os.environ.get("SONOFORGE_ENABLE_CTMR") == "1"
 
 
@@ -82,7 +82,7 @@ class CtMrSurfaceController:
 
         Returns ``None`` and mounts nothing when the release gate
         (``SONOFORGE_ENABLE_CTMR``) disables the surface: the unfinished
-        #557 viewer stays out of the shipped application until enabled
+        spec 557 viewer stays out of the shipped application until enabled
         explicitly, and everything downstream treats it as inactive.
         """
         if not _surface_enabled():
