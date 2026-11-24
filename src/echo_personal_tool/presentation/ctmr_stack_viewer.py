@@ -350,6 +350,71 @@ class CtMrStackViewer(QWidget):
 
     # ── content ────────────────────────────────────────────────────
 
+    @property
+    def index(self) -> CtMrIndex | None:
+        """The index currently shown (``None`` when cleared)."""
+        return self._index
+
+    @property
+    def slice_index(self) -> int:
+        """Index of the slice currently on screen (0-based)."""
+        return self._slice_index
+
+    @property
+    def stack_index(self) -> int:
+        """Index of the active stack (0-based)."""
+        return self._stack_index
+
+    @property
+    def slice_label(self) -> str:
+        """The caption text of the current slice (e.g. ``«2 / 3»``)."""
+        return self._slice_label.text()
+
+    @property
+    def warning_label(self) -> str:
+        """The warning caption (empty when the order is verified)."""
+        return self._warning_label.text()
+
+    @property
+    def warning_visible(self) -> bool:
+        """True when the order-verification warning is shown."""
+        return not self._warning_label.isHidden()
+
+    @property
+    def slice_requests(self) -> object:
+        """The slice service (injected or lazily created)."""
+        return self._slice_requests
+
+    @property
+    def canvas_pixmap(self) -> QPixmap | None:
+        """The pixmap painted on the slice canvas (``None`` when empty)."""
+        return self._canvas._pixmap
+
+    @property
+    def slider_maximum(self) -> int:
+        """Maximum value of the slice slider (0 when no stack is loaded)."""
+        return self._slider.maximum()
+
+    def poll(self) -> None:
+        """Process one pending slice result (public alias of ``_on_poll``)."""
+        self._on_poll()
+
+    def go_to_slice(self, index: int) -> None:
+        """Navigate to the given slice index (public alias of ``_go_to_slice``)."""
+        self._go_to_slice(index)
+
+    def set_slice(self, index: int) -> None:
+        """Set the slider to the given slice index (public alias of ``_slider.setValue``)."""
+        self._slider.setValue(index)
+
+    def select_stack(self, index: int) -> None:
+        """Select the stack at the given index in the stack selector."""
+        self._stack_combo.setCurrentIndex(index)
+
+    def stack_combo_count(self) -> int:
+        """Number of stacks in the selector."""
+        return self._stack_combo.count()
+
     def set_index(self, index: CtMrIndex | None) -> None:
         """Show a fresh index; ``None`` or an empty index clears the viewer."""
         if self._owns_service:

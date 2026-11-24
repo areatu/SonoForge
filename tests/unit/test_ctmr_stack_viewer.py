@@ -61,14 +61,14 @@ def _make_viewer(qtbot, make_file, **tags):
 
 def _drain(viewer):
     # The fake service resolves synchronously; one poll publishes the slice.
-    viewer._on_poll()
+    viewer.poll()
 
 
 def test_first_slice_is_published(qtbot, make_file):
     viewer, index = _make_viewer(qtbot, make_file)
     _drain(viewer)
-    assert viewer._canvas._pixmap is not None and not viewer._canvas._pixmap.isNull()
-    assert "1 / 3" in viewer._slice_label.text()
+    assert viewer.canvas_pixmap is not None and not viewer.canvas_pixmap.isNull()
+    assert "1 / 3" in viewer.slice_label
 
 
 def test_step_and_slider_navigate_the_stack(qtbot, make_file):
@@ -76,19 +76,19 @@ def test_step_and_slider_navigate_the_stack(qtbot, make_file):
     _drain(viewer)
     viewer.step_slice(1)
     _drain(viewer)
-    assert viewer._slice_index == 1 and "2 / 3" in viewer._slice_label.text()
-    viewer._slider.setValue(2)
+    assert viewer.slice_index == 1 and "2 / 3" in viewer.slice_label
+    viewer.set_slice(2)
     _drain(viewer)
-    assert viewer._slice_index == 2 and "3 / 3" in viewer._slice_label.text()
+    assert viewer.slice_index == 2 and "3 / 3" in viewer.slice_label
     viewer.step_slice(1)
-    assert viewer._slice_index == 2  # clamped at the last slice
+    assert viewer.slice_index == 2  # clamped at the last slice
 
 
 def test_cached_slice_is_painted_without_a_service_request(qtbot, make_file):
     viewer, _ = _make_viewer(qtbot, make_file)
     _drain(viewer)
     calls = []
-    service = viewer._slice_requests
+    service = viewer.slice_requests
     original = service.request
 
     def counting(index):
@@ -96,15 +96,15 @@ def test_cached_slice_is_painted_without_a_service_request(qtbot, make_file):
         return original(index)
 
     service.request = counting
-    viewer._go_to_slice(0)
+    viewer.go_to_slice(0)
     _drain(viewer)
     assert calls == []  # cache hit, no new decode
 
 
 def test_unverified_order_shows_a_warning(qtbot, make_file):
     viewer, _ = _make_viewer(qtbot, make_file, FrameOfReferenceUID=None)
-    assert not viewer._warning_label.isHidden()
-    assert viewer._warning_label.text()
+    assert viewer.warning_visible
+    assert viewer.warning_label
 
 
 def test_verified_order_hides_the_warning(qtbot, make_file):
@@ -114,16 +114,16 @@ def test_verified_order_hides_the_warning(qtbot, make_file):
     viewer.show()
     viewer.set_index(index)
     _drain(viewer)
-    assert viewer._warning_label.isHidden()
+    assert not viewer.warning_visible
 
 
 def test_clear_releases_the_stack(qtbot, make_file):
     viewer, _ = _make_viewer(qtbot, make_file)
     _drain(viewer)
     viewer.clear()
-    assert viewer._index is None
-    assert viewer._canvas._pixmap is None
-    assert viewer._slider.maximum() == 0
+    assert viewer.index is None
+    assert viewer.canvas_pixmap is None
+    assert viewer.slider_maximum == 0
 
 
 def test_multiple_stacks_are_selectable(qtbot, make_file):
@@ -138,8 +138,8 @@ def test_multiple_stacks_are_selectable(qtbot, make_file):
     viewer.stack_changed.connect(seen.append)
     viewer.set_index(index)
     _drain(viewer)
-    assert viewer._stack_combo.count() == 2
-    viewer._stack_combo.setCurrentIndex(1)
+    assert viewer.stack_combo_count() == 2
+    viewer.select_stack(1)
     _drain(viewer)
-    assert viewer._stack_index == 1
+    assert viewer.stack_index == 1
     assert seen == [1]
