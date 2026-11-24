@@ -480,7 +480,7 @@ class CtMrStackViewer(QWidget):
             try:
                 service.close()
             except Exception as exc:  # noqa: BLE001 - closing is best-effort
-                logger.debug("ctmr slice service close failed: %s", exc)
+                logger.debug("ctmr slice service close failed: %s", type(exc).__name__)
         self._poll.stop()
 
     # ── stack / slice selection ───────────────────────────────────

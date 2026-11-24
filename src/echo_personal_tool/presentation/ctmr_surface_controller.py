@@ -16,7 +16,6 @@ can drive the flow with a lightweight double.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Protocol
 
 from PySide6.QtWidgets import QStackedWidget, QWidget
@@ -60,22 +59,19 @@ class CtMrSurfaceController:
     """
 
     def __init__(self, window: CtMrSurfaceWindow) -> None:
+        # Widget references are read lazily from the window: MainWindow creates
+        # this controller before the widgets it drives exist, so they must not
+        # be captured in __init__.
         self._window = window
-        self._viewer_stack = window._viewer_stack
-        self._ultrasound_viewer = window._viewer
-        self._gallery = window._gallery
-        self._tool_panel = window._tool_panel
-        self._content_widget = window._content_widget
-        self._rebuild_layout: Callable[[], None] = window._rebuild_layout
         self._viewer: CtMrStackViewer | None = None
         self._active = False
         self._index: CtMrIndex | None = None
 
     def create_viewer(self) -> CtMrStackViewer:
         """Create the stack viewer widget and mount it in the viewer stack."""
-        viewer = CtMrStackViewer(self._content_widget)
+        viewer = CtMrStackViewer(self._window._content_widget)
         viewer.hide()
-        self._viewer_stack.addWidget(viewer)
+        self._window._viewer_stack.addWidget(viewer)
         self._viewer = viewer
         return viewer
 
@@ -100,10 +96,10 @@ class CtMrSurfaceController:
                 self._active = True
                 assert self._viewer is not None
                 self._viewer.set_index(index)
-                self._viewer_stack.setCurrentWidget(self._viewer)
-            self._ultrasound_viewer.hide()
-            self._gallery.hide()
-            self._tool_panel.hide()
+                self._window._viewer_stack.setCurrentWidget(self._viewer)
+            self._window._viewer.hide()
+            self._window._gallery.hide()
+            self._window._tool_panel.hide()
             tool_rail = self._window._tool_rail
             if tool_rail is not None:
                 tool_rail.hide()
@@ -113,9 +109,9 @@ class CtMrSurfaceController:
             self._index = None
             assert self._viewer is not None
             self._viewer.clear()
-            self._viewer_stack.setCurrentWidget(self._ultrasound_viewer)
-            self._ultrasound_viewer.show()
-            self._rebuild_layout()
+            self._window._viewer_stack.setCurrentWidget(self._window._viewer)
+            self._window._viewer.show()
+            self._window._rebuild_layout()
 
     def sync(self) -> None:
         """Re-evaluate the CT/MR surface for the currently active tab."""
@@ -132,10 +128,10 @@ class CtMrSurfaceController:
         """
         if not self._active or self._viewer is None:
             return False
-        self._viewer_stack.setCurrentWidget(self._viewer)
-        self._ultrasound_viewer.hide()
-        self._gallery.hide()
-        self._tool_panel.hide()
+        self._window._viewer_stack.setCurrentWidget(self._viewer)
+        self._window._viewer.hide()
+        self._window._gallery.hide()
+        self._window._tool_panel.hide()
         tool_rail = self._window._tool_rail
         if tool_rail is not None:
             tool_rail.hide()
@@ -148,4 +144,4 @@ class CtMrSurfaceController:
         selected while the stack viewer owns the image surface.
         """
         if self._active and self._viewer is not None:
-            self._viewer_stack.setCurrentWidget(self._viewer)
+            self._window._viewer_stack.setCurrentWidget(self._viewer)
