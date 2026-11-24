@@ -305,7 +305,7 @@ class MainWindow(QMainWindow):
         #: CT/MR stack surface controller (#557): owns the stack viewer widget
         #: and the routing that decides when it shows instead of the ultrasound
         #: ViewerWidget.
-        self._ctmr = CtMrSurfaceController(self)  # type: ignore[arg-type]
+        self._ctmr = CtMrSurfaceController(self)
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
         # painted: visual reset of the previous clip (strain window, manual

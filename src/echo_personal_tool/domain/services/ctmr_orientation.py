@@ -56,7 +56,7 @@ def _normalise(vector: Vector3) -> Vector3:
     norm = sqrt(sum(component * component for component in vector))
     if norm <= 0.0:
         return vector
-    return tuple(component / norm for component in vector)  # type: ignore[return-value]
+    return (vector[0] / norm, vector[1] / norm, vector[2] / norm)
 
 
 def _axis_label(vector: Vector3) -> str:
