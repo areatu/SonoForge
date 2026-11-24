@@ -70,6 +70,11 @@ class CtMrSurfaceController:
     def create_viewer(self) -> CtMrStackViewer:
         """Create the stack viewer widget and mount it in the viewer stack."""
         viewer = CtMrStackViewer(self._window._content_widget)
+        # The stack viewer's internal canvas has a minimum size; zero it on the
+        # parent so the QStackedWidget does not raise the window's minimum width
+        # when the viewer is hidden (the Expanding size policy still fills the
+        # available space when the viewer is shown).
+        viewer.setMinimumSize(0, 0)
         viewer.hide()
         self._window._viewer_stack.addWidget(viewer)
         self._viewer = viewer
