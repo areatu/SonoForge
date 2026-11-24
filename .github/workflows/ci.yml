@@ -163,7 +163,7 @@ jobs:
       # test gate, so a new colour literal or a low-contrast pair fails the
       # build.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: false
@@ -204,7 +204,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -276,7 +276,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -346,7 +346,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -508,7 +508,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -637,7 +637,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -692,7 +692,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -765,7 +765,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -850,7 +850,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1045,7 +1045,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1087,7 +1087,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1174,7 +1174,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1276,7 +1276,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
@@ -1525,7 +1525,7 @@ jobs:
           python-version: "3.11"
       # QH-5a: the build backend comes from uv.lock like every other tool.
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           version: "0.13.0"
           enable-cache: true
