@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
     inline_caliper_text,
     pixel_to_mm_length,
 )
+from echo_personal_tool.infrastructure.i18n import set_language
 
 
 class TestFormatLengthMm:
@@ -25,6 +26,7 @@ class TestFormatLengthMm:
 
 class TestInlineCaliperText:
     def test_with_mm(self) -> None:
+        set_language("en")
         m = LinearMeasurement(label="IVSd", pixel_length=10, millimeter_length=9.5)
         result = inline_caliper_text(m)
         assert "IVSd" in result
