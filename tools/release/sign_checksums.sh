@@ -27,7 +27,10 @@ if [ -n "${GPG_SIGNING_SUBKEY:-}" ]; then
     exit 1
   fi
   # tr instead of ${var^^}: macOS ships /bin/bash 3.2 without that expansion.
-  keyid="$(printf '%s' "$GPG_SIGNING_SUBKEY" | tr '[:lower:]' '[:upper:]')!"
+  subkey_upper="$(printf '%s' "$GPG_SIGNING_SUBKEY" | tr '[:lower:]' '[:upper:]')"
+  keyid="${subkey_upper}!"
+else
+  subkey_upper=""
 fi
 args=(--batch --yes --armor --detach-sign --local-user "$keyid")
 if [ -n "${GPG_PASSPHRASE:-}" ]; then
@@ -35,7 +38,7 @@ if [ -n "${GPG_PASSPHRASE:-}" ]; then
 fi
 "$GPG" "${args[@]}" "$manifest" 3<<<"${GPG_PASSPHRASE:-}"
 status=$("$GPG" --batch --status-fd 1 --verify "$manifest.asc" "$manifest")
-if [ -n "${GPG_SIGNING_SUBKEY:-}" ] && ! grep -Fq "[GNUPG:] VALIDSIG ${GPG_SIGNING_SUBKEY^^} " <<<"$status"; then
+if [ -n "$subkey_upper" ] && ! grep -Fq "[GNUPG:] VALIDSIG ${subkey_upper} " <<<"$status"; then
   echo 'Signature does not match GPG_SIGNING_SUBKEY' >&2
   exit 1
 fi

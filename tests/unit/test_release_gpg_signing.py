@@ -57,34 +57,50 @@ def _sign(env: dict[str, str], manifest: Path) -> subprocess.CompletedProcess[st
     return subprocess.run(["bash", str(SCRIPT), str(manifest)], env=env, capture_output=True, text=True, check=False)
 
 
+def _context(env: dict[str, str], result: subprocess.CompletedProcess[str]) -> str:
+    """Everything needed to diagnose a platform-specific failure from CI annotations."""
+    calls_path = Path(env["CALLS"])
+    calls = calls_path.read_text(encoding="utf-8") if calls_path.exists() else "<no calls file>"
+    listing = sorted(p.name for p in Path(env["GITHUB_OUTPUT"]).parent.iterdir())
+    return (
+        f"returncode={result.returncode}\n"
+        f"stderr={result.stderr!r}\n"
+        f"stdout={result.stdout!r}\n"
+        f"gpg calls:\n{calls}\n"
+        f"tmp dir listing: {listing}"
+    )
+
+
 def test_signs_with_explicit_subkey_and_cleans_isolated_keyring(signing_environment) -> None:
     env, manifest = signing_environment
     result = _sign(env, manifest)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, _context(env, result)
     calls = Path(env["CALLS"]).read_text(encoding="utf-8")
-    assert f"--local-user {SUBKEY}!" in calls
-    assert "--passphrase-fd 3" in calls
-    assert env["GPG_PASSPHRASE"] not in calls + result.stdout + result.stderr
-    assert env["GPG_PRIVATE_KEY"] not in result.stdout + result.stderr
-    assert Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8") == f"fingerprint={PRIMARY}\n"
-    assert not list(manifest.parent.glob("sonoforge-gpg.*"))
+    assert f"--local-user {SUBKEY}!" in calls, _context(env, result)
+    assert "--passphrase-fd 3" in calls, _context(env, result)
+    assert env["GPG_PASSPHRASE"] not in calls + result.stdout + result.stderr, _context(env, result)
+    assert env["GPG_PRIVATE_KEY"] not in result.stdout + result.stderr, _context(env, result)
+    output = Path(env["GITHUB_OUTPUT"])
+    assert output.exists(), _context(env, result)
+    assert output.read_text(encoding="utf-8") == f"fingerprint={PRIMARY}\n", _context(env, result)
+    assert not list(manifest.parent.glob("sonoforge-gpg.*")), _context(env, result)
 
 
 def test_rejects_signature_from_another_subkey(signing_environment) -> None:
     env, manifest = signing_environment
     env["VALIDSIG"] = PRIMARY
     result = _sign(env, manifest)
-    assert result.returncode != 0
-    assert "does not match GPG_SIGNING_SUBKEY" in result.stderr
-    assert not list(manifest.parent.glob("sonoforge-gpg.*"))
+    assert result.returncode != 0, _context(env, result)
+    assert "does not match GPG_SIGNING_SUBKEY" in result.stderr, _context(env, result)
+    assert not list(manifest.parent.glob("sonoforge-gpg.*")), _context(env, result)
 
 
 def test_rejects_invalid_fingerprint(signing_environment) -> None:
     env, manifest = signing_environment
     env["GPG_SIGNING_SUBKEY"] = "bad fingerprint"
     result = _sign(env, manifest)
-    assert result.returncode != 0
-    assert "full 40-character fingerprint" in result.stderr
+    assert result.returncode != 0, _context(env, result)
+    assert "full 40-character fingerprint" in result.stderr, _context(env, result)
 
 
 def test_preserves_existing_primary_key_selection_without_subkey_variable(signing_environment) -> None:
@@ -92,7 +108,7 @@ def test_preserves_existing_primary_key_selection_without_subkey_variable(signin
     env.pop("GPG_SIGNING_SUBKEY")
     env.pop("GPG_PASSPHRASE")
     result = _sign(env, manifest)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, _context(env, result)
     calls = Path(env["CALLS"]).read_text(encoding="utf-8")
-    assert f"--local-user {PRIMARY}" in calls
-    assert "--passphrase-fd" not in calls
+    assert f"--local-user {PRIMARY}" in calls, _context(env, result)
+    assert "--passphrase-fd" not in calls, _context(env, result)
