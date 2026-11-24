@@ -34,6 +34,7 @@ from shiboken6 import isValid as qobject_is_alive
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.composition import AppServices, resolve_window_dependencies
+from echo_personal_tool.application.ctmr_study import build_ctmr_index
 from echo_personal_tool.application.diagnostics import (
     log_boundary_failure,
     safe_error_category,
@@ -113,6 +114,7 @@ from echo_personal_tool.presentation.coordinators.user_session_coordinator impor
     switch_window_user,
     sync_window_user_session_ui,
 )
+from echo_personal_tool.presentation.ctmr_stack_viewer import CtMrStackViewer
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.display_formats import format_confidence_pct, format_fps, format_whole_pct
 from echo_personal_tool.presentation.doppler_repeats import show_doppler_repeats
@@ -300,6 +302,10 @@ class MainWindow(QMainWindow):
         # but does not persist the path to its portable preferences.
         self._last_folder_for_picker = ""
         self._has_loaded_study = False
+        #: True while the image surface shows the classic CT/MR stack viewer
+        #: (#557) instead of the ultrasound ViewerWidget.
+        self._ctmr_active = False
+        self._ctmr_index = None
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
         # painted: visual reset of the previous clip (strain window, manual
@@ -531,6 +537,9 @@ class MainWindow(QMainWindow):
         self._viewer_stack.setObjectName("viewerStack")
         self._viewer_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._viewer_stack.addWidget(self._viewer)
+        self._ctmr_viewer = CtMrStackViewer(self._content_widget)
+        self._ctmr_viewer.hide()
+        self._viewer_stack.addWidget(self._ctmr_viewer)
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
         self._study_loading_overlay = StudyLoadingOverlay(self._viewer_stack)
@@ -1946,6 +1955,16 @@ class MainWindow(QMainWindow):
     ) -> None:
         if self._viewer_stack.indexOf(self._viewer) < 0:
             self._viewer.show()
+        if self._ctmr_active:
+            # The stack viewer owns the whole workspace: the clip gallery and
+            # the ultrasound tool panel have no meaning on a CT/MR stack (#557).
+            self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
+            self._viewer.hide()
+            self._gallery.hide()
+            self._tool_panel.hide()
+            if self._tool_rail is not None:
+                self._tool_rail.hide()
+            return
         if multiview and self._has_loaded_study:
             if self._pane_left is not None:
                 self._pane_left.show()
@@ -4101,6 +4120,9 @@ class MainWindow(QMainWindow):
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
         self._has_loaded_study = n_inst > 0
+        # Route a classic CT/MR multi-file study to the single multi-page stack
+        # viewer instead of the clip gallery (#557).
+        self._apply_ctmr_surface(study_list)
         self._set_start_page_visible(not self._has_loaded_study)
         self._refresh_tool_buttons()
         self._instance_overlay_cache.clear()
@@ -4111,14 +4133,16 @@ class MainWindow(QMainWindow):
         self._last_overlay_state = None
         self._viewer.set_results_overlay("")
         populate_started_at = perf_counter()
-        self._gallery.populate(study_list)
+        if not self._ctmr_active:
+            self._gallery.populate(study_list)
         populate_elapsed_ms = (perf_counter() - populate_started_at) * 1000.0
         logger.info(
             "tree_populate_done studies=%d duration_ms=%.2f",
             len(study_list),
             populate_elapsed_ms,
         )
-        self._gallery.request_visible_previews()
+        if not self._ctmr_active:
+            self._gallery.request_visible_previews()
         if self._multiview_mode:
             panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
             if not self._has_loaded_study or not panes_attached:
@@ -4126,6 +4150,10 @@ class MainWindow(QMainWindow):
                 # existing panes before main-viewer state starts syncing again.
                 self._rebuild_layout()
         restored = self._after_tab_loaded(loaded_tab_id, study_list)
+        if self._ctmr_active:
+            # The stack viewer owns the surface; there are no clips to autoload
+            # and no reason to enter the ultrasound focus layout.
+            return
         if self._has_loaded_study and not restored and not tab_managed_load:
             self._autoload_first_instance(study_list)
         # (§4.8): the automatic entry runs after the first clip is on
@@ -4151,8 +4179,48 @@ class MainWindow(QMainWindow):
         """Select the welcome page only while the main viewer surface owns a slot."""
         if self._viewer_stack.indexOf(self._start_page) < 0 or self._viewer_stack.indexOf(self._viewer) < 0:
             return
+        if self._ctmr_active:
+            # A CT/MR stack is a real content surface, never the welcome page.
+            self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
+            return
         target = self._start_page if visible else self._viewer
         self._viewer_stack.setCurrentWidget(target)
+
+    def _apply_ctmr_surface(self, studies: list) -> None:
+        """Route a loaded study set to the CT/MR stack viewer when it is one.
+
+        A classic CT/MR multi-file study is presented as one multi-page stack
+        (#557): the stack viewer takes the image surface and the thumbnail
+        gallery / tool panel are hidden, so the slices do not sit in the gallery
+        as if they were ultrasound clips.  Anything without a usable CT/MR
+        stack keeps the ordinary ultrasound surface.
+        """
+        index = build_ctmr_index(studies) if studies else None
+        if index is not None:
+            if not self._ctmr_active or self._ctmr_index is not index:
+                self._ctmr_index = index
+                self._ctmr_active = True
+                self._ctmr_viewer.set_index(index)
+                self._viewer_stack.setCurrentWidget(self._ctmr_viewer)
+            self._viewer.hide()
+            self._gallery.hide()
+            self._tool_panel.hide()
+            if self._tool_rail is not None:
+                self._tool_rail.hide()
+            return
+        if self._ctmr_active:
+            self._ctmr_active = False
+            self._ctmr_index = None
+            self._ctmr_viewer.clear()
+            self._viewer_stack.setCurrentWidget(self._viewer)
+            self._viewer.show()
+            self._rebuild_layout()
+
+    def _sync_ctmr_surface(self) -> None:
+        """Re-evaluate the CT/MR surface for the currently active tab."""
+        tab = self._tabs.active
+        studies = list(tab.studies) if tab is not None else []
+        self._apply_ctmr_surface(studies)
 
     def show_empty_start_page(self) -> None:
         """Show the empty-workspace page (also used by future empty tabs)."""
