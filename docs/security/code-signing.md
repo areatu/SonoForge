@@ -467,13 +467,20 @@ To activate:
    - `GPG_PRIVATE_KEY` — the ASCII-armored private key block, including
      `-----BEGIN PGP PRIVATE KEY BLOCK-----` and trailing newline.
    - `GPG_PASSPHRASE` — only if the exported key is passphrase-protected. Leave unset for an
-     unencrypted CI key; the step adapts (`--pinentry-mode loopback` is added only when a
-     passphrase exists).
-3. Publish the fingerprint in [§3.1](#31-checksums-works-everywhere-no-tooling) of this
+     unencrypted CI key; the step uses loopback pinentry and passes it via a file descriptor.
+   - Set the repository **variable** `GPG_SIGNING_SUBKEY` to the full signing subkey
+     fingerprint (without `!`). The signing step forces that subkey and checks the resulting
+     signature against it. Omit only for compatibility with older single-key configurations.
+3. After these workflow changes are available on the selected ref, dispatch **Release** with
+   `verify_gpg=true` (and preferably `verify_only=true`). This signs and verifies a synthetic
+   manifest with the same script as the release job; either option prevents publication. Do
+   not enable required signing or publish until this check succeeds. The result does not test
+   OS signing or notarization. Never paste key material or passphrases into chat or logs.
+4. Publish the fingerprint in [§3.1](#31-checksums-works-everywhere-no-tooling) of this
    file, on the project site, and ideally in a `KEYS` file, so users can pin it out of
    band. A fingerprint only published next to the signature it validates is worthless.
-4. Upload the public key to a keyserver (`keyserver.ubuntu.com`) so `gpg --recv-keys` works.
-5. Optional but recommended once the key exists: set the repository **variable**
+5. Upload the public key to a keyserver (`keyserver.ubuntu.com`) so `gpg --recv-keys` works.
+6. Optional but recommended after the signing check succeeds: set the repository **variable**
    `GPG_SIGNING_REQUIRED=true` (**Settings → Secrets and variables → Actions → Variables**).
    From then on a release run **fails** instead of publishing an unsigned `SHA256SUMS`
    if `GPG_PRIVATE_KEY` is missing or broken — the dormant-notice behaviour becomes
