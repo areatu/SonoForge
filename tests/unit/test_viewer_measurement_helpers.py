@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.services.nomenclature import catalog_label
+from echo_personal_tool.infrastructure.i18n import set_language
 from echo_personal_tool.presentation.viewer_measurement_helpers import (
     derived_volume_lines,
     with_measurement_identity,
@@ -53,6 +55,11 @@ def test_with_measurement_identity_is_idempotent() -> None:
 
 
 # ── derived_volume_lines ──────────────────────────────────────────
+#
+# Label discipline: the emitted lines speak the *active* locale (the
+# suite-wide ``_ru_locale`` fixture pins Russian before every test), so
+# assertions resolve the catalog label through ``catalog_label`` instead of
+# hard-coding either the EN or the RU string (rule D-11: fully RU or fully EN).
 
 
 def _mm(label: str, value: float | None) -> LinearMeasurement:
@@ -71,7 +78,7 @@ def test_derived_volume_lines_bladder_complete_triplet() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert "Bladder volume" in lines[0]
+    assert catalog_label("bladder.volume") in lines[0]
     assert "mL" in lines[0]
 
 
@@ -83,7 +90,7 @@ def test_derived_volume_lines_bladder_uses_legacy_height_key() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert "Bladder volume" in lines[0]
+    assert catalog_label("bladder.volume") in lines[0]
 
 
 def test_derived_volume_lines_bladder_incomplete_yields_nothing() -> None:
@@ -115,9 +122,9 @@ def test_derived_volume_lines_thyroid_both_lobes() -> None:
     lines = derived_volume_lines(deduped)
     assert len(lines) == 3
     labels = [line.split(":")[0] for line in lines]
-    assert "R lobe volume" in labels
-    assert "L lobe volume" in labels
-    assert "Thyroid volume" in labels
+    assert catalog_label("thyroid.r_volume") in labels
+    assert catalog_label("thyroid.l_volume") in labels
+    assert catalog_label("thyroid.volume") in labels
 
 
 def test_derived_volume_lines_thyroid_single_lobe_no_total() -> None:
@@ -128,7 +135,7 @@ def test_derived_volume_lines_thyroid_single_lobe_no_total() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert "R lobe volume" in lines[0]
+    assert catalog_label("thyroid.r_volume") in lines[0]
 
 
 def test_derived_volume_lines_organ_volume_triplet() -> None:
@@ -139,7 +146,7 @@ def test_derived_volume_lines_organ_volume_triplet() -> None:
     }
     lines = derived_volume_lines(deduped)
     assert len(lines) == 1
-    assert "Volume 3D" in lines[0]
+    assert catalog_label("organ.volume") in lines[0]
     assert "mL" in lines[0]
 
 
@@ -161,3 +168,19 @@ def test_derived_volume_lines_unrelated_measurements_ignored() -> None:
         "b": _mm("LV-ESV", 40.0),
     }
     assert derived_volume_lines(deduped) == []
+
+
+def test_derived_volume_lines_label_follows_active_locale() -> None:
+    """The overlay line label tracks the selected language (rule D-11)."""
+    deduped = {
+        "a": _mm("BL-L", 40.0),
+        "b": _mm("BL-W", 30.0),
+        "c": _mm("BL-D", 20.0),
+    }
+    for lang in ("ru", "en"):
+        set_language(lang)
+        lines = derived_volume_lines(deduped)
+        assert len(lines) == 1
+        assert lines[0].startswith(catalog_label("bladder.volume") + ":")
+        assert "mL" in lines[0]
+    set_language("ru")
