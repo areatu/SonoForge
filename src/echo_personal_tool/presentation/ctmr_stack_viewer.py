@@ -1,4 +1,4 @@
-"""A single multi-page classic CT/MR stack viewer (#557).
+"""A single multi-page classic CT/MR stack viewer (spec 557).
 
 The backend already indexes classic single-frame CT/MR files into patient-space
 ordered stacks (``CtMrIndex``) and decodes one slice at a time
@@ -33,6 +33,7 @@ from collections import OrderedDict
 import numpy as np
 from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
+    QColor,
     QFontMetrics,
     QImage,
     QKeyEvent,
@@ -164,7 +165,8 @@ class _SliceCanvas(QWidget):
     def paintEvent(self, _event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), Qt.GlobalColor.black)
+        tokens = self._tokens
+        painter.fillRect(self.rect(), QColor(tokens["surface.0"]))
         if self._pixmap is not None and not self._pixmap.isNull():
             scaled = self._pixmap.scaled(
                 self.width(),
@@ -180,7 +182,7 @@ class _SliceCanvas(QWidget):
         index, total, position, spacing, plane, column, row = self._caption
         if total > 0:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(Qt.GlobalColor.black)
+            painter.setBrush(QColor(tokens["surface.0"]))
             fact_font = painter.font()
             fact_font.setPointSize(9)
             painter.setFont(fact_font)
@@ -194,8 +196,8 @@ class _SliceCanvas(QWidget):
             metrics = painter.fontMetrics()
             width = metrics.horizontalAdvance(text) + 16
             rect = QRect(8, self.height() - 26, width, 20)
-            painter.fillRect(rect, Qt.GlobalColor.black)
-            painter.setPen(Qt.GlobalColor.white)
+            painter.fillRect(rect, QColor(tokens["surface.0"]))
+            painter.setPen(QColor(tokens["text.1"]))
             painter.drawText(rect, int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), text)
 
 

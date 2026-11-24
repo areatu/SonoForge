@@ -1,8 +1,8 @@
-"""CT/MR stack surface controller (#557, #474 decomposition).
+"""CT/MR stack surface controller (spec 557, spec 474 decomposition).
 
 A slice of ``MainWindow`` moved into its own module: everything that decides
 whether the image surface shows the classic CT/MR multi-page stack viewer
-instead of the ultrasound ``ViewerWidget`` (#557), and what happens when it
+instead of the ultrasound ``ViewerWidget`` (spec 557), and what happens when it
 does — the stack viewer widget itself, the ``CtMrIndex`` that backs it, the
 surface-switching logic, and the visibility of the clip gallery / tool panel /
 tool rail that only apply to ultrasound content.
@@ -51,7 +51,7 @@ class CtMrSurfaceWindow(Protocol):
 
 
 class CtMrSurfaceController:
-    """Owns the CT/MR stack viewer surface and its routing (#557).
+    """Owns the CT/MR stack viewer surface and its routing (spec 557).
 
     Created by ``MainWindow`` once the viewer stack exists; the controller
     creates the ``CtMrStackViewer`` and adds it to the stack, then drives
@@ -88,7 +88,7 @@ class CtMrSurfaceController:
         """Route a loaded study set to the CT/MR stack viewer when it is one.
 
         A classic CT/MR multi-file study is presented as one multi-page stack
-        (#557): the stack viewer takes the image surface and the thumbnail
+        (spec 557): the stack viewer takes the image surface and the thumbnail
         gallery / tool panel are hidden, so the slices do not sit in the gallery
         as if they were ultrasound clips.  Anything without a usable CT/MR
         stack keeps the ordinary ultrasound surface.

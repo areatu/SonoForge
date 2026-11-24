@@ -5436,7 +5436,7 @@ class MainWindow(QMainWindow):
             handler()  # type: ignore[operator]  # mypy does not check this file (outside tool.mypy.files)
 
     def _on_imt_semiauto_requested(self) -> None:
-        """Open the semi-automatic carotid IMT overlay editor (#558).
+        """Open the semi-automatic carotid IMT overlay editor (spec 558).
 
         The editor is a research workflow, not a plain caliper: it proposes two
         editable far-wall boundaries inside an operator-selected ROI and only

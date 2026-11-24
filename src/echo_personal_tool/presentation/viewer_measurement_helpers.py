@@ -1,4 +1,4 @@
-"""Pure helpers extracted from :class:`ViewerWidget` (issue #474 decomposition).
+"""Pure helpers extracted from :class:`ViewerWidget` (spec 474 decomposition).
 
 These functions used to live as private methods of ``ViewerWidget``.  They
 touch no viewer state — only measurement/contour values and catalog formatting

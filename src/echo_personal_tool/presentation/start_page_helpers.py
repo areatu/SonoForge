@@ -1,4 +1,4 @@
-"""Pure helpers for the start page recent-studies block (#474 decomposition).
+"""Pure helpers for the start page recent-studies block (spec 474 decomposition).
 
 Extracted from ``MainWindow`` so the window class stays under its size
 ceiling.  These functions format listing data into ``RecentStudySummary`` rows

@@ -1,8 +1,8 @@
 {
   "version": 1,
   "comment": "Ratchet for issue #329 (python scripts/check_id_references.py). 'total' is the number of spec-ID references (QH-, TP-, UI-, UD-, UQ-, UA-, S-nn, A-nn, D-nn) in the .py files under src; it only goes down - run --fix after turning references into a reason. 'comments' and 'strings' (docstrings and string literals) split the total and 'files' shows where the references live (both informational).",
-  "total": 638,
-  "comments": 200,
+  "total": 637,
+  "comments": 199,
   "strings": 438,
   "files": {
     "src/echo_personal_tool/__main__.py": 1,
@@ -39,6 +39,7 @@
     "src/echo_personal_tool/domain/doppler_catalog.py": 1,
     "src/echo_personal_tool/domain/measurement_catalog.py": 19,
     "src/echo_personal_tool/domain/models/contour.py": 2,
+    "src/echo_personal_tool/domain/models/diastology.py": 1,
     "src/echo_personal_tool/domain/models/doppler.py": 2,
     "src/echo_personal_tool/domain/models/linear_measurement.py": 3,
     "src/echo_personal_tool/domain/models/manual_calculator_input.py": 1,
@@ -52,6 +53,7 @@
     "src/echo_personal_tool/domain/services/bsa_freshness.py": 1,
     "src/echo_personal_tool/domain/services/bsa_provenance.py": 1,
     "src/echo_personal_tool/domain/services/derived_freshness.py": 1,
+    "src/echo_personal_tool/domain/services/diastology_workflow.py": 1,
     "src/echo_personal_tool/domain/services/doppler_freshness.py": 1,
     "src/echo_personal_tool/domain/services/doppler_repeats.py": 2,
     "src/echo_personal_tool/domain/services/nomenclature.py": 5,
@@ -95,7 +97,7 @@
     "src/echo_personal_tool/presentation/layout/__init__.py": 1,
     "src/echo_personal_tool/presentation/layout/layout_settings.py": 2,
     "src/echo_personal_tool/presentation/layout/presets.py": 4,
-    "src/echo_personal_tool/presentation/main_window.py": 47,
+    "src/echo_personal_tool/presentation/main_window.py": 46,
     "src/echo_personal_tool/presentation/measurement_storage_dialog.py": 2,
     "src/echo_personal_tool/presentation/measures_menu.py": 2,
     "src/echo_personal_tool/presentation/mmode_measurement.py": 2,
@@ -156,8 +158,6 @@
     "src/echo_personal_tool/presentation/window_chrome/caption_drag.py": 3,
     "src/echo_personal_tool/presentation/window_chrome/hit_test.py": 1,
     "src/echo_personal_tool/presentation/window_chrome/title_bar.py": 7,
-    "src/echo_personal_tool/presentation/window_chrome/win32_chrome.py": 1,
-    "src/echo_personal_tool/domain/services/diastology_workflow.py": 1,
-    "src/echo_personal_tool/domain/models/diastology.py": 1
+    "src/echo_personal_tool/presentation/window_chrome/win32_chrome.py": 1
   }
 }
