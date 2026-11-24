@@ -77,7 +77,7 @@ def test_seen_keys_are_skipped() -> None:
 
 def test_failed_listing_produces_unavailable_row() -> None:
     listing = SavedRecordsListing(
-        records=(_record("rec-1"),),
+        records=(),
         failed=True,
         error="disk error",
     )
