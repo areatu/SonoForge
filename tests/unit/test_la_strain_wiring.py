@@ -205,7 +205,7 @@ class TestReportSection:
 
     def test_rows_in_the_left_atrium_group(self) -> None:
         from echo_personal_tool.domain.models.measurements import StrainReport
-        from echo_personal_tool.domain.services.report_builder import build_report_groups
+        from echo_personal_tool.domain.services.report_builder import GROUP_LEFT_ATRIUM, build_report_groups
 
         report = StrainReport(
             gls_by_view=(("A4C", -18.0),),
@@ -221,8 +221,11 @@ class TestReportSection:
             "echo_personal_tool.domain.models.measurements", fromlist=["MeasurementSnapshot"]
         ).MeasurementSnapshot(strain=report, spacing_calibrated=True)
         groups = build_report_groups(snapshot, sex="M")
-        ids = {value.parameter_id for group in groups for value in group.values}
-        assert not ids.intersection({"la.lasr", "la.lascd", "la.lasct"})
+        la = next(group for group in groups if group.key == GROUP_LEFT_ATRIUM)
+        labels = {value.label for value in la.values}
+        assert any("LASr" in label for label in labels)
+        assert any("LAScd" in label for label in labels)
+        assert any("LASct" in label for label in labels)
 
     def test_no_la_measurement_adds_no_rows(self) -> None:
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport

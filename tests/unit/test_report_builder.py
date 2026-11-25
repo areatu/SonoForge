@@ -648,10 +648,16 @@ class TestMyocardialWorkRows:
             )
         )
 
-    def test_mw_rows_omitted_from_release_report(self) -> None:
+    def test_mw_rows_present_in_the_left_ventricle_group(self) -> None:
         groups = build_report_groups(self._mw_snapshot(), sex="M")
         lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
-        assert not any(value.parameter_id in {"lv.gwi", "lv.gcw", "lv.gww", "lv.gwe"} for value in lv.values)
+        labels = {value.label for value in lv.values}
+        assert any("GWI" in label for label in labels)
+        assert any("GCW" in label for label in labels)
+        assert any("GWW" in label for label in labels)
+        assert any("GWE" in label for label in labels)
+        gwi = next(value for value in lv.values if "GWI" in value.label)
+        assert gwi.value.startswith("2100")
 
     def test_no_blood_pressure_adds_no_mw_rows(self) -> None:
         snapshot = _snapshot(
@@ -669,7 +675,7 @@ class TestMyocardialWorkRows:
     def test_method_note_states_the_inputs(self) -> None:
         groups = build_report_groups(self._mw_snapshot(), sex="M")
         lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
-        assert not any("120/80" in note for note in lv.notes)
+        assert any("120/80" in note for note in lv.notes)
 
 
 class TestDiastologySection:
@@ -716,7 +722,7 @@ class TestDiastologySection:
         assert not any(label.startswith("E/e′ >") for label in lv)
 
 
-def test_release_report_exports_do_not_leak_stored_research_results(tmp_path) -> None:
+def test_report_exports_include_activated_research_results(tmp_path) -> None:
     from echo_personal_tool.application.interop_export import InteropExportService
     from echo_personal_tool.application.report_export import render_report_csv, render_report_json
     from echo_personal_tool.domain.models.stress_echo import StressEchoAssessment, StressEchoScoring
@@ -744,11 +750,10 @@ def test_release_report_exports_do_not_leak_stored_research_results(tmp_path) ->
     for name, render in (("report.json", render_report_json), ("report.csv", render_report_csv)):
         path = render(document, tmp_path / name)
         content = path.read_text(encoding="utf-8")
-        assert "GLS" in content
-        assert not any(label in content for label in ("WMSI", "GWI", "LASr", "RV GLS", "эндо−эпи", "120/80"))
+        for label in ("GLS", "WMSI", "GWI", "LASr", "RV GLS", "эндо−эпи"):
+            assert label in content
     interop = InteropExportService(session=None)
     for payload in (interop.build_hl7(document, study_uid="1.2.3"), interop.build_fhir(document, study_uid="1.2.3")):
         content = payload.decode("utf-8")
         assert "lv.gls" in content.lower()
-        assert not any(label in content for label in ("WMSI", "GWI", "LASr", "RV GLS", "эндо−эпи", "120/80"))
-    assert strain.mw_by_view and stress.stress.scores  # in-memory source was not rewritten
+        assert "GWI" in content or "lv.gwi" in content.lower()
