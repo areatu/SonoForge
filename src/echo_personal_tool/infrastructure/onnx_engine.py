@@ -20,11 +20,12 @@ except ImportError:  # pragma: no cover - depends on installed extras
 
 from scipy import ndimage
 
+from echo_personal_tool.domain.services.segmentation_preprocess import (
+    prepare_segmentation_input,
+)
 from echo_personal_tool.domain.services.segmentation_service import (
-    crop_frame_for_echonet,
     embed_echonet_mask,
     logits_to_mask,
-    prepare_tensor,
 )
 from echo_personal_tool.infrastructure.paths import models_dirs_for_read
 
@@ -211,14 +212,15 @@ class OnnxInferenceEngine:
             msg = "frame must be grayscale H×W or color H×W×3"
             raise ValueError(msg)
 
-        cropped, transform = crop_frame_for_echonet(
+        fixed_mean, fixed_std = self._resolve_normalization_params()
+        tensor, transform = prepare_segmentation_input(
             array,
             roi_xyxy=roi_xyxy,
             crop_mode=crop_mode,
+            target_size=self._input_size,
+            fixed_mean=fixed_mean,
+            fixed_std=fixed_std,
         )
-
-        fixed_mean, fixed_std = self._resolve_normalization_params()
-        tensor = prepare_tensor(cropped, target_size=self._input_size, fixed_mean=fixed_mean, fixed_std=fixed_std)
         outputs = self._session.run(
             [self._output_name],
             {self._input_name: tensor},

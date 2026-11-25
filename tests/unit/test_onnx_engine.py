@@ -132,3 +132,65 @@ def test_segment_uses_cpu_provider_when_creating_session(tmp_path: Path) -> None
         OnnxInferenceEngine(models_dir=models_dir)
 
     mock_create_session.assert_called_once_with(onnx_path)
+
+
+def test_segment_masks_burned_ecg_matching_training_preprocess(tmp_path: Path) -> None:
+    from echo_personal_tool.domain.services.segmentation_preprocess import prepare_training_pair
+
+    models_dir = tmp_path / "models"
+    _write_manifest(models_dir)
+    logits = np.full((1, 1, 112, 112), -2.0, dtype=np.float32)
+    session = MagicMock()
+    session.run.return_value = [logits]
+
+    engine = OnnxInferenceEngine(models_dir=models_dir, session=session)
+    frame = np.full((160, 200, 3), 60, dtype=np.uint8)
+    frame[130:140, 10:190, 0] = 5
+    frame[130:140, 10:190, 1] = 240
+    frame[130:140, 10:190, 2] = 10
+
+    engine.segment(frame)
+
+    served_tensor = session.run.call_args.args[1]["input"]
+    dummy_mask = np.zeros((160, 200), dtype=np.uint8)
+    train_chw, _ = prepare_training_pair(
+        frame,
+        dummy_mask,
+        crop_mode="center_square",
+        target_size=112,
+        augment=False,
+    )
+    assert float(np.max(np.abs(served_tensor[0] - train_chw))) < 1e-6
+
+
+def test_finetune_la_and_lv_scripts_expose_ml0a_contracts(tmp_path: Path) -> None:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from scripts import finetune_la_seg, finetune_lv_seg
+
+    studies = [
+        {
+            "study_uid": "study_1",
+            "chamber": "LA",
+            "instance_path": "/fake/a4c.dcm",
+            "frames": [
+                {"chamber": "LA", "view": "A4C", "frame_index": 10, "points": [[10, 10], [30, 10], [20, 30]]},
+                {"chamber": "LA", "view": "A2C", "frame_index": 12, "points": [[12, 10], [32, 10], [22, 32]]},
+                {"chamber": "LA", "view": "PLAX", "frame_index": 14, "points": [[12, 10], [32, 10], [22, 32]]},
+            ],
+        }
+    ]
+    extracted = finetune_la_seg.extract_la_samples(studies)
+    assert [s["view"] for s in extracted] == ["A4C", "A2C"]
+    assert all(s["study_uid"] == "study_1" for s in extracted)
+
+    la_args = finetune_la_seg.parse_args(["--gold-root", str(tmp_path), "--backbone-init", "manifest"])
+    assert la_args.backbone_init == "manifest"
+    assert la_args.val_ratio == pytest.approx(0.2)
+
+    lv_args = finetune_lv_seg.parse_args(["--backbone-init", "manifest", "--val-ratio", "0.25"])
+    assert lv_args.backbone_init == "manifest"
+    assert lv_args.val_ratio == pytest.approx(0.25)
