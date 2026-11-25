@@ -283,3 +283,18 @@ def test_ood_accepts_confident_extended_class() -> None:
         min_confidence=0.3,
     )
     assert result.view == "RV_A4C" and result.confidence == pytest.approx(0.99)
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+def test_rgb_phase_channels_remain_float32(dtype: type) -> None:
+    from echo_personal_tool.domain.services.view_recognition_inference import (
+        ViewInferenceConfig,
+        prepare_clip_for_view_model,
+    )
+
+    rgb = np.empty((8, 8, 3), dtype=dtype)
+    rgb[...] = [30, 60, 90] if dtype == np.uint8 else [0.1, 0.2, 0.3]
+    config = ViewInferenceConfig(input_size=8, input_mode="phase_triplet")
+    batch = prepare_clip_for_view_model([rgb], config=config)
+    assert batch.dtype == np.float32
+    np.testing.assert_allclose(batch, 60 / 255 if dtype == np.uint8 else 0.2, atol=1e-7)

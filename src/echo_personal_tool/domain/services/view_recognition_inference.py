@@ -142,7 +142,7 @@ def _to_grayscale_unit(frame: np.ndarray) -> np.ndarray:
     elif arr.ndim == 3 and arr.shape[2] == 1:
         gray = arr[..., 0].astype(np.float32)
     elif arr.ndim == 3 and arr.shape[2] == 3:
-        gray = np.mean(arr.astype(np.float32), axis=2)
+        gray = np.mean(arr.astype(np.float32), axis=2, dtype=np.float32)
     else:
         raise ValueError(f"frame must be H×W or H×W×3, got shape {arr.shape}")
     if float(gray.max()) > 1.0:
