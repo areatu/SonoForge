@@ -212,20 +212,20 @@ def test_application_key_conflicts_use_effective_not_stale_bindings(widget):
         configure_shortcuts("")
 
 
-def test_release_hidden_tools_are_absent_from_editor_but_kept_in_layout(widget) -> None:
-    from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
+def test_release_hidden_tools_are_absent_from_editor_but_kept_in_layout(widget, monkeypatch) -> None:
+    from echo_personal_tool.presentation import tool_settings_2
     from echo_personal_tool.presentation.tool_settings_2 import _ROLE_ID
 
+    hidden = frozenset({"la.strain", "rv.gls"})
+    monkeypatch.setattr(tool_settings_2, "HIDDEN_TOOL_IDS", hidden)
     before = widget.encoded_layout()
-    assert any(tool in before for tool in HIDDEN_TOOL_IDS)
+    assert any(tool in before for tool in hidden)
     for context in ("common", "2d", "m", "doppler", "vessels"):
         widget._context = context
         widget._refresh_context()
         listed = {widget._catalog.item(i).data(_ROLE_ID) for i in range(widget._catalog.count())}
-        assert not listed.intersection(HIDDEN_TOOL_IDS)
+        assert not listed.intersection(hidden)
         for i in range(widget._sections.topLevelItemCount()):
             section = widget._sections.topLevelItem(i)
-            assert not {section.child(j).data(0, _ROLE_ID) for j in range(section.childCount())}.intersection(
-                HIDDEN_TOOL_IDS
-            )
+            assert not {section.child(j).data(0, _ROLE_ID) for j in range(section.childCount())}.intersection(hidden)
     assert widget.encoded_layout() == before

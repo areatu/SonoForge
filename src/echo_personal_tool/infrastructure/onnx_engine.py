@@ -320,6 +320,15 @@ class OnnxInferenceEngine:
             return None
         return float(threshold)
 
+    def _effective_models_dir(self) -> Path:
+        models_dir = getattr(self, "_models_dir", None)
+        if isinstance(models_dir, Path):
+            return models_dir
+        model_path = getattr(self, "_model_path", None)
+        if isinstance(model_path, Path):
+            return model_path.parent
+        return Path(".")
+
     def _resolve_input_size(self) -> int:
         """Resolve model input spatial size from manifest, default 112."""
         if self._manifest is None:
@@ -327,7 +336,7 @@ class OnnxInferenceEngine:
         models = self._manifest.get("models", {})
         manifest_section = getattr(self, "_manifest_section", "inference")
         active = _resolve_effective_model_id(
-            self._models_dir,
+            self._effective_models_dir(),
             self._manifest,
             manifest_section=manifest_section,
         )
@@ -345,7 +354,7 @@ class OnnxInferenceEngine:
         models = self._manifest.get("models", {})
         manifest_section = getattr(self, "_manifest_section", "inference")
         active = _resolve_effective_model_id(
-            self._models_dir,
+            self._effective_models_dir(),
             self._manifest,
             manifest_section=manifest_section,
         )
