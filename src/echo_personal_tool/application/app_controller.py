@@ -26,7 +26,9 @@ from echo_personal_tool.application.calculator_inputs import (
 from echo_personal_tool.application.composition import (
     AppServices,
     analysis_jobs_of,
+    assist_jobs_of,
     bind_controller_services,
+    fusion_jobs_of,
     in_memory_app_services,
     segmentation_jobs_of,
     services_of,
@@ -34,6 +36,14 @@ from echo_personal_tool.application.composition import (
 from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority, cancel_request
 from echo_personal_tool.application.frame_access import FrameAccess
+from echo_personal_tool.application.fusion_delivery import (
+    begin_assist_request,
+    begin_fusion_run,
+    finish_assist_request,
+    finish_fusion_run,
+    observe_publication_owners,
+)
+from echo_personal_tool.application.fusion_jobs import AssistTicket, FusionTicket, finalize_fused_contour
 from echo_personal_tool.application.localization import get_language
 from echo_personal_tool.application.segmentation_delivery import connect_segmentation
 from echo_personal_tool.application.state_manager import StateManager
@@ -105,10 +115,7 @@ from echo_personal_tool.domain.services.bsa_provenance import evaluate_bsa_recor
 from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.diastology_workflow import diastology_for_snapshot
 from echo_personal_tool.domain.services.doppler_freshness import DopplerBasis
-from echo_personal_tool.domain.services.lv_temporal_fusion import (
-    compute_window,
-    temporal_fuse,
-)
+from echo_personal_tool.domain.services.lv_temporal_fusion import compute_window
 from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
 from echo_personal_tool.domain.services.provenance_notes import (
     evaluate_derived_record_status,
@@ -517,6 +524,7 @@ class AppController(QObject):
     def _begin_study_switch(self) -> None:
         analysis_jobs_of(self).invalidate()
         segmentation_jobs_of(self).invalidate()
+        assist_jobs_of(self).invalidate()  # fusion is revoked by _clear_fusion_state below
         self._segment_in_progress = False
         self._cache_retained_studies = tuple(self._studies)
         self._study_load_generation += 1
@@ -658,6 +666,7 @@ class AppController(QObject):
             return
         analysis_jobs_of(self).invalidate()  # even a reload of the same SOP revokes old jobs
         segmentation_jobs_of(self).invalidate()
+        assist_jobs_of(self).invalidate()  # fusion is revoked by _clear_fusion_state below
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
         prefetch_was_active = self._prefetch_load_id != 0
@@ -1201,6 +1210,7 @@ class AppController(QObject):
 
     def _clear_fusion_state(self) -> None:
         """Clear temporal fusion state after accept/discard/instance change."""
+        fusion_jobs_of(self).invalidate()  # late neighbor results cannot resume the run
         self._fusion_in_progress = False
         self._fusion_config = None
         self._fusion_anchor_frame = -1
@@ -1481,6 +1491,9 @@ class AppController(QObject):
             self._study_load_generation,
             self._loaded_frame_index,
         )
+        # emit=False bypasses _on_state_changed, so the fusion and assist owners are
+        # observed here too: a contour edit mid-run/while pending revokes publication.
+        observe_publication_owners(self, self._state_manager.snapshot)
         study_uid = self._resolve_study_uid()
         # The viewer reports every contour of the clip it shows, so for that
         # clip the report is authoritative: a planimeter polygon it no longer
@@ -1661,6 +1674,8 @@ class AppController(QObject):
         study_uid = self._resolve_study_uid()
         analysis_jobs_of(self).invalidate()
         segmentation_jobs_of(self).invalidate()
+        assist_jobs_of(self).invalidate()
+        self._clear_fusion_state()  # a pending fusion must not publish into the reset document
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self.measurement_persistence.barrier(study_uid)
         self._measurement_session.reset_measurements(study_uid)
@@ -1746,6 +1761,7 @@ class AppController(QObject):
             self._study_load_generation,
             self._loaded_frame_index,
         )
+        observe_publication_owners(self, state)
         if self._advancing_frame:
             # Playback advanced the frame itself and owns the timer schedule; only make sure
             # the decoded frame request is up to date.
@@ -3064,6 +3080,13 @@ class AppController(QObject):
                 target,
                 [idx for idx, _ in frames],
             )
+        if emitted and _playback_diag is not None:
+            # #553: live scrub-target latency (submit -> published), kept apart from the
+            # prefetch batch round trip. Superseded targets are cancelled, not counted.
+            _playback_diag.on_interactive_decode(
+                target,
+                (perf_counter() - self._scroll_load_started_at) * 1000.0,
+            )
         self._maybe_start_scroll_neighbors(target)
 
     def _on_scroll_neighbors_loaded(
@@ -3768,7 +3791,7 @@ class AppController(QObject):
         if self._current_frame_pixels is None:
             return
 
-        frame = np.ascontiguousarray(self._current_frame_pixels)
+        frame = np.ascontiguousarray(self._current_frame_pixels).copy()
         instance_path = self._current_instance.path if self._current_instance is not None else None
         media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
         roi_xyxy = self._resolve_segment_roi_bounds(
@@ -3790,9 +3813,13 @@ class AppController(QObject):
             manifest_section="la_inference",
             parent=self,
         )
+        # Single-use publication ticket (#552): the newest request supersedes older
+        # ones, and delivery re-checks the document/frame context before proposing.
+        ticket = begin_assist_request(self, frame_index=frame_index)
         worker.signals.finished.connect(
             partial(
                 self._on_la_assist_finished,
+                ticket=ticket,
                 user_septal=user_septal,
                 user_lateral=user_lateral,
                 user_apex=user_apex,
@@ -3818,83 +3845,40 @@ class AppController(QObject):
 
     def _on_la_assist_finished(
         self,
-        result: dict,
+        payload: object,
         *,
+        ticket: AssistTicket,
         user_septal: tuple[float, float],
         user_lateral: tuple[float, float],
         user_apex: tuple[float, float],
         frame_index: int,
     ) -> None:
-        """Handle LA inference result for manual contour assist."""
-        mask = result.get("mask")
-        if mask is None or mask.sum() < 80:
+        """Handle LA inference result for manual contour assist (#552).
+
+        ``OnnxWorker`` emits the mask ndarray directly (the legacy ``{'mask': ...}`` dict
+        this handler used to expect made the whole assist path dead code — #609 recorded
+        the contract mismatch and left it out of that slice). The single-use ticket
+        admits exactly one terminal delivery of the newest request against an unchanged
+        document/frame context; anything stale keeps the drawn contour untouched.
+        """
+        from echo_personal_tool.domain.services.la_segmentation_service import build_la_assist_contour
+
+        if finish_assist_request(self, ticket) is not True:
+            return
+
+        mask = payload.get("mask") if isinstance(payload, dict) else payload
+        contour = build_la_assist_contour(
+            mask,
+            user_septal=user_septal,
+            user_lateral=user_lateral,
+            user_apex=user_apex,
+            frame_index=frame_index,
+        )
+        if contour is None:
             return  # Fallback: keep geometric ellipse
-
-        try:
-            from echo_personal_tool.domain.services.la_segmentation_service import (
-                la_landmarks_from_mask_or_user,
-                la_mask_boundary_to_open_arc,
-            )
-            from echo_personal_tool.domain.services.mbs_lite_service import (
-                fit_contour_from_landmarks,
-            )
-
-            # Blend AI landmarks with user landmarks
-            blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
-                mask,
-                user_septal=user_septal,
-                user_lateral=user_lateral,
-                user_apex=user_apex,
-                blend_factor=0.7,
-            )
-
-            # Try boundary extraction from mask first
-            boundary_pts = la_mask_boundary_to_open_arc(
-                mask,
-                blended_septal,
-                blended_lateral,
-                blended_apex,
-                num_nodes=32,
-            )
-            if boundary_pts is not None:
-                from echo_personal_tool.domain.models import Contour as ContourModel
-
-                contour = ContourModel(
-                    phase="ES",
-                    view="A4C",
-                    chamber="LA",
-                    mitral_annulus=(blended_septal, blended_lateral),
-                    apex_landmark=blended_apex,
-                    points=boundary_pts,
-                    source="manual",
-                    num_nodes=32,
-                    frame_index=frame_index,
-                    review_pending=False,
-                )
-                logger.debug("[LA-ASSIST] boundary extraction succeeded with %d points", len(boundary_pts))
-            else:
-                # Fallback: geometric contour from landmarks
-                contour = fit_contour_from_landmarks(
-                    septal=blended_septal,
-                    lateral=blended_lateral,
-                    apex=blended_apex,
-                    phase="ES",
-                    view="A4C",
-                    chamber="LA",
-                )
-                contour = dataclasses.replace(
-                    contour,
-                    source="manual",
-                    frame_index=frame_index,
-                    review_pending=False,
-                )
-                logger.debug("[LA-ASSIST] boundary extraction failed; using superellipse fallback")
-
-            # Emit for viewer to pick up
-            self.la_assist_contour_ready.emit(contour)
-
-        except Exception as exc:  # noqa: BLE001 - optional assist, nothing is committed
-            log_boundary_failure(logger, "contour.assist", exc, code="blocked", level=logging.DEBUG)
+        logger.debug("[LA-ASSIST] assisted contour ready with %d points", len(contour.points))
+        # Emit for viewer to pick up
+        self.la_assist_contour_ready.emit(contour)
 
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
@@ -3938,11 +3922,14 @@ class AppController(QObject):
         self._fusion_window = window
         self._fusion_processed = {frame_index}  # anchor already done
         self._fusion_result = None
+        # One publication ticket per run (#552): a newer run supersedes the older one,
+        # so late callbacks of a superseded run cannot contaminate the current one.
+        ticket = begin_fusion_run(self, anchor_frame=frame_index, window=tuple(window), original_shape=original_shape)
 
         self.status_message.emit(tr_plural("status.temporal_fusion_started", len(neighbors)))
 
         for neighbor_idx in neighbors:
-            self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path)
+            self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path, ticket)
 
     def _queue_neighbor_segment(
         self,
@@ -3951,6 +3938,7 @@ class AppController(QObject):
         view: str,
         chamber: str,
         instance_path: Path | None,
+        ticket: FusionTicket,
     ) -> None:
         """Load frame at neighbor_idx and segment it."""
         if self._current_instance is None:
@@ -3975,12 +3963,14 @@ class AppController(QObject):
                 chamber=chamber,
                 instance_path=instance_path,
                 neighbor_idx=neighbor_idx,
+                ticket=ticket,
             ),
             Qt.ConnectionType.QueuedConnection,
         )
 
         worker.signals.failed.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx, ticket=ticket),
+            Qt.ConnectionType.QueuedConnection,
         )
         self._retain_worker(worker)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -3997,13 +3987,18 @@ class AppController(QObject):
         chamber: str,
         instance_path: Path | None,
         neighbor_idx: int,
+        ticket: FusionTicket,
     ) -> None:
         """Got neighbor frame pixels — segment them."""
+        if not fusion_jobs_of(self).owns(ticket):
+            # A superseded/revoked run: switching studies or starting a new run
+            # must leave this neighbor's late pixels unsegmented and unpublished.
+            return
         if not isinstance(pixels, np.ndarray):
-            self._on_neighbor_segment_failed(neighbor_idx)
+            self._on_neighbor_segment_failed(neighbor_idx, ticket=ticket)
             return
 
-        frame = np.ascontiguousarray(pixels)
+        frame = np.ascontiguousarray(pixels).copy()
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
         media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
 
@@ -4029,17 +4024,29 @@ class AppController(QObject):
                 neighbor_idx=neighbor_idx,
                 original_shape=original_shape,
                 phase=phase,
+                ticket=ticket,
             ),
             Qt.ConnectionType.QueuedConnection,
         )
 
         worker.signals.failed.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx, ticket=ticket),
+            Qt.ConnectionType.QueuedConnection,
         )
 
         worker.signals.timed_out.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx, ticket=ticket),
+            Qt.ConnectionType.QueuedConnection,
         )
+
+        # Same lifetime contract as the auto-segment and assist workers (#553/#552):
+        # the pool must not delete the runnables out from under queued signal
+        # deliveries, and every terminal signal releases the retained reference.
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
 
         self._thread_pool.start(worker)
 
@@ -4053,10 +4060,14 @@ class AppController(QObject):
         instance_path: Path | None,
         neighbor_idx: int,
         original_shape: tuple[int, int],
+        ticket: FusionTicket,
     ) -> None:
         """Neighbor ONNX finished — store mask and contour, try fusion."""
+        if not fusion_jobs_of(self).owns(ticket):
+            # A superseded/revoked run: its masks must never reach the current run.
+            return
         if not isinstance(mask, np.ndarray):
-            self._on_neighbor_segment_failed(neighbor_idx)
+            self._on_neighbor_segment_failed(neighbor_idx, ticket=ticket)
             return
 
         is_la = chamber.upper() == "LA"
@@ -4066,13 +4077,13 @@ class AppController(QObject):
             try:
                 open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
             except ValueError:
-                self._on_neighbor_segment_failed(neighbor_idx)
+                self._on_neighbor_segment_failed(neighbor_idx, ticket=ticket)
                 return
             refined_points = open_points
         else:
             cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
             if int(np.count_nonzero(cleaned_mask)) < 80:
-                self._on_neighbor_segment_failed(neighbor_idx)
+                self._on_neighbor_segment_failed(neighbor_idx, ticket=ticket)
                 return
 
             try:
@@ -4082,7 +4093,7 @@ class AppController(QObject):
                     view=view,
                 )
             except ValueError:
-                self._on_neighbor_segment_failed(neighbor_idx)
+                self._on_neighbor_segment_failed(neighbor_idx, ticket=ticket)
                 return
             refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
 
@@ -4107,16 +4118,18 @@ class AppController(QObject):
         done = len(self._fusion_processed)
         self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
 
-        self._try_complete_temporal_fusion()
+        self._try_complete_temporal_fusion(ticket)
 
-    def _on_neighbor_segment_failed(self, neighbor_idx: int) -> None:
+    def _on_neighbor_segment_failed(self, neighbor_idx: int, *, ticket: FusionTicket) -> None:
         """Neighbor segment failed — mark processed and try fusion."""
+        if not fusion_jobs_of(self).owns(ticket):
+            return
         self._fusion_processed.add(neighbor_idx)
         done = len(self._fusion_processed)
         self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
-        self._try_complete_temporal_fusion()
+        self._try_complete_temporal_fusion(ticket)
 
-    def _try_complete_temporal_fusion(self) -> None:
+    def _try_complete_temporal_fusion(self, ticket: FusionTicket) -> None:
         """If all window frames processed (or enough valid), run fusion.
 
         Early-exit: if ≥3 valid frames (including anchor) have completed,
@@ -4143,6 +4156,14 @@ class AppController(QObject):
         if config is None:
             return
 
+        # Single-use publication ticket (#552): the run publishes only while the
+        # document, study generation, SOP, calibration and contours still match the
+        # basis it began with. Any decision consumes the ticket — a stale or
+        # superseded run is dropped, not published.
+        if finish_fusion_run(self, ticket) is not True:
+            self._clear_fusion_state()
+            return
+
         anchor = self._fusion_anchor_frame
         center_mask = self._fusion_masks.get(anchor)
         center_contour = self._fusion_contours.get(anchor)
@@ -4152,53 +4173,32 @@ class AppController(QObject):
         neighbor_masks = {i: m for i, m in self._fusion_masks.items() if i != anchor}
         neighbor_contours = {i: c for i, c in self._fusion_contours.items() if i != anchor}
 
-        result = temporal_fuse(
+        # Fuse, optionally refine on the anchor frame (only while it is still the
+        # displayed one — refining against a frame the user has scrolled to would
+        # move the contour) and quality-gate the result. Publication stays behind
+        # the ticket decision above.
+        result, fused_contour = finalize_fused_contour(
             center_mask=center_mask,
-            neighbor_masks=neighbor_masks,
             center_contour=center_contour,
+            neighbor_masks=neighbor_masks,
             neighbor_contours=neighbor_contours,
-            anchor_frame_index=anchor,
+            anchor_frame=anchor,
             phase=self._fusion_phase or "ED",
             config=config,
             original_shape=self._fusion_original_shape,
+            chamber=self._fusion_chamber,
+            refine_pixels=(
+                self._current_frame_pixels
+                if self._current_frame_pixels is not None
+                and self._loaded_frame_index == anchor
+                and self._should_auto_refine_after_segment()
+                else None
+            ),
+            refine_is_cine=self._current_instance is not None and self._current_instance.media_format != "dicom",
+            instance_pixel_spacing=getattr(self._current_instance, "pixel_spacing", None),
         )
 
         self._fusion_result = result
-
-        # Refine fused contour on frame N pixels (spec §5.2 step 6)
-        fused_contour = result.fused_contour
-        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
-            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
-
-            is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
-            refined, _ = refine_open_arc_contour(
-                self._current_frame_pixels,
-                fused_contour,
-                cine=is_cine,
-            )
-            fused_contour = refined
-            # Keep fusion_result in sync with refined contour
-            self._fusion_result = dataclasses.replace(result, fused_contour=fused_contour)
-
-        # Replace pending contour with fused contour
-        # Quality gate: reject fused contour if it fails geometry checks
-        is_la = (self._fusion_chamber or "").upper() == "LA"
-        pixel_spacing = None
-        if self._current_instance is not None:
-            ps = getattr(self._current_instance, "pixel_spacing", None)
-            if ps is not None:
-                pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
-        if is_la:
-            from echo_personal_tool.domain.services.la_segmentation_service import explain_la_auto_reject_reason
-
-            reject_reason = explain_la_auto_reject_reason(fused_contour, pixel_spacing)
-        else:
-            from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
-
-            reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
-        if reject_reason is not None:
-            logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
-            fused_contour = center_contour
 
         contours = [
             existing
