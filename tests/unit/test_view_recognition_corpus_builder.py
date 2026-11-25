@@ -214,3 +214,17 @@ def test_validator_rejects_empty_manifest(tmp_path: Path) -> None:
     )
     # Loads fine but has no training samples — a corpus-level failure, not a load error.
     assert validate_main([str(manifest)]) == 1
+
+
+def test_builder_auto_promotes_extended_classes(tmp_path: Path) -> None:
+    from echo_personal_tool.domain.models.view_recognition import EXTENDED_KNOWN_VIEWS
+
+    root = tmp_path / "dicoms"
+    root.mkdir()
+    _make_dicom(root / "rv.dcm", "RV-A4C")
+    _make_dicom(root / "sc.dcm", "Subxiphoid")
+    output = tmp_path / "manifest.json"
+    assert build_main(["--dicom-dir", str(root), "--output", str(output)]) == 0
+    manifest = json.loads(output.read_text())
+    assert manifest["class_names"] == list(EXTENDED_KNOWN_VIEWS)
+    assert {s["view"] for s in manifest["samples"]} == {"RV_A4C", "SUBCOSTAL"}

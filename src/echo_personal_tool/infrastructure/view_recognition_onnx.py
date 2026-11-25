@@ -28,11 +28,15 @@ try:  # optional dependency — absent in the Presenter (lite) profile
 except ImportError:  # pragma: no cover - depends on installed extras
     ort = None
 
-from echo_personal_tool.domain.models.view_recognition import KNOWN_VIEWS, RecognizedView
+from echo_personal_tool.domain.models.view_recognition import (
+    EXTENDED_KNOWN_VIEWS,
+    KNOWN_VIEWS,
+    RecognizedView,
+)
 from echo_personal_tool.domain.services.view_recognition_inference import (
-    aggregate_predictions,
-    batch_to_channels,
-    clip_to_batch,
+    ViewInferenceConfig,
+    aggregate_predictions_with_ood,
+    prepare_clip_for_view_model,
 )
 from echo_personal_tool.infrastructure.paths import models_dirs_for_read
 
@@ -181,9 +185,16 @@ class OnnxViewRecognizer:
         if self._manifest is not None:
             self._input_name, self._output_name = _resolve_io_names(self._manifest)
             self._input_size = _resolve_input_size(self._manifest)
+            raw_section = self._manifest.get(MANIFEST_SECTION)
+            section = raw_section if isinstance(raw_section, dict) else None
+            self._inference_config = ViewInferenceConfig.from_manifest_section(
+                section,
+                input_size=self._input_size,
+            )
         else:
             self._input_name, self._output_name = "input", "logits"
             self._input_size = 224
+            self._inference_config = ViewInferenceConfig(input_size=self._input_size)
 
         if session is not None:
             self._session = session
@@ -211,22 +222,47 @@ class OnnxViewRecognizer:
         """Classify a cine clip's frames into a single :class:`RecognizedView`."""
         if self._session is None:
             raise RuntimeError("ONNX view-recognition model is not available")
-        batch = batch_to_channels(clip_to_batch(frames, self._input_size))
-        probs = self._select_active_columns(self._softmax_logits(batch))
-        return aggregate_predictions(probs, self._class_names)
+        batch = prepare_clip_for_view_model(frames, config=self._inference_config)
+        logits = self._run_logits(batch)
+        probs = self._select_active_columns(self._logits_to_probs(logits))
+        cosine_sims: np.ndarray | None = None
+        scale = self._inference_config.logit_scale
+        if scale is not None and scale > 0.0:
+            cosine_sims = self._select_active_columns(logits / float(scale))
+        return aggregate_predictions_with_ood(
+            probs,
+            self._class_names,
+            cosine_similarities=cosine_sims,
+            min_cosine=self._inference_config.ood_min_cosine,
+            max_entropy_ratio=self._inference_config.ood_max_entropy_ratio,
+            min_confidence=self._inference_config.ood_min_confidence,
+        )
 
     def _select_active_columns(self, probs: np.ndarray) -> np.ndarray:
         """Drop logits of classes that are not in the active manifest set."""
-        if probs.shape[1] == len(self._class_names):
+        trained_names = _TRAINED_CLASS_NAMES
+        explicit_order = False
+        if self._manifest is not None:
+            section = self._manifest.get(MANIFEST_SECTION)
+            if isinstance(section, dict):
+                raw_trained = section.get("trained_class_names")
+                if isinstance(raw_trained, (list, tuple)) and len(raw_trained) == probs.shape[1]:
+                    trained_names = tuple(str(name) for name in raw_trained)
+                    explicit_order = True
+        if not explicit_order and probs.shape[1] == len(self._class_names):
             return probs
+        if probs.shape[1] != len(trained_names) and probs.shape[1] == len(EXTENDED_KNOWN_VIEWS):
+            trained_names = EXTENDED_KNOWN_VIEWS
+        if probs.shape[1] != len(trained_names):
+            raise RuntimeError("model output width does not match the trained class order")
         indices: list[int] = []
         for name in self._class_names:
-            if name not in _TRAINED_CLASS_NAMES:
+            if name not in trained_names:
                 raise RuntimeError(f"class {name!r} is not in the published model output")
-            indices.append(_TRAINED_CLASS_NAMES.index(name))
+            indices.append(trained_names.index(name))
         return probs[:, indices]
 
-    def _softmax_logits(self, batch: np.ndarray) -> np.ndarray:
+    def _run_logits(self, batch: np.ndarray) -> np.ndarray:
         outputs = self._session.run(
             [self._output_name],
             {self._input_name: batch},
@@ -234,6 +270,10 @@ class OnnxViewRecognizer:
         logits = np.asarray(outputs[0], dtype=np.float64)
         if logits.ndim == 1:
             logits = logits[np.newaxis, :]
+        return logits
+
+    @staticmethod
+    def _logits_to_probs(logits: np.ndarray) -> np.ndarray:
         shifted = logits - logits.max(axis=1, keepdims=True)
         exp = np.exp(shifted)
         probs: np.ndarray = exp / exp.sum(axis=1, keepdims=True)

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.localization import tr
-from echo_personal_tool.domain.models.view_recognition import KNOWN_VIEWS, UNKNOWN_VIEW
+from echo_personal_tool.domain.models.view_recognition import EXTENDED_KNOWN_VIEWS, UNKNOWN_VIEW
 from echo_personal_tool.domain.services.view_recognition_workflow import ViewSuggestion
 
 
@@ -43,7 +43,7 @@ class ViewOverrideDialog(QDialog):
         layout.addWidget(QLabel(detail, self))
 
         self._view_combo = QComboBox(self)
-        self._view_combo.addItems(list(KNOWN_VIEWS) + [UNKNOWN_VIEW])
+        self._view_combo.addItems(list(EXTENDED_KNOWN_VIEWS) + [UNKNOWN_VIEW])
         index = self._view_combo.findText(suggestion.view)
         if index >= 0:
             self._view_combo.setCurrentIndex(index)

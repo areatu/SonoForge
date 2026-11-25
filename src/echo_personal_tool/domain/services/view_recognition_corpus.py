@@ -57,7 +57,8 @@ def split_corpus(
     rng = random.Random(seed)
     train_samples: list[ViewRecognitionSample] = []
     val_samples: list[ViewRecognitionSample] = []
-    for view in (*views, UNKNOWN_VIEW):
+    extra_views = tuple(sorted(set(groups) - set(views) - {UNKNOWN_VIEW}))
+    for view in (*views, *extra_views, UNKNOWN_VIEW):
         members = groups.get(view) or []
         if not members:
             continue

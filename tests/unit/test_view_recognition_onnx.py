@@ -173,3 +173,45 @@ def test_recognize_uniform_logits_pick_first_class_with_low_confidence(
     result = recognizer.recognize(_frames(4))
     assert result.view == "A4C"
     assert result.confidence < 0.3
+
+
+@pytest.mark.parametrize("winner", ["RV_A4C", "SUBCOSTAL"])
+def test_extended_model_sector_phase_input_and_ood(tmp_path: Path, winner: str) -> None:
+    from echo_personal_tool.domain.models.view_recognition import EXTENDED_KNOWN_VIEWS
+    from echo_personal_tool.domain.services.view_recognition_inference import (
+        ViewInferenceConfig,
+        prepare_clip_for_view_model,
+    )
+
+    _write_manifest(tmp_path, class_names=EXTENDED_KNOWN_VIEWS)
+    path = tmp_path / "model_manifest.json"
+    manifest = json.loads(path.read_text())
+    cfg = ViewInferenceConfig.ml0b_default()
+    manifest["view_recognition"].update(cfg.to_manifest_fields())
+    path.write_text(json.dumps(manifest))
+    logits = np.zeros((1, 9), dtype=np.float32)
+    logits[0, EXTENDED_KNOWN_VIEWS.index(winner)] = 9.6
+    session = _fake_session(logits)
+    recognizer = OnnxViewRecognizer(models_dir=tmp_path, session=session)
+    assert recognizer.recognize(_frames()).view == winner
+    supplied = session.run.call_args.args[1]["input"]
+    np.testing.assert_array_equal(supplied, prepare_clip_for_view_model(_frames(), config=cfg))
+    session.run.return_value = [np.zeros((1, 9), dtype=np.float32)]
+    assert recognizer.recognize(_frames()).view == "UNKNOWN"
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_extended_output_column_selection(tmp_path: Path, explicit: bool) -> None:
+    from echo_personal_tool.domain.models.view_recognition import EXTENDED_KNOWN_VIEWS
+
+    _write_manifest(tmp_path, class_names=["SUBCOSTAL", "RV_A4C"])
+    trained = tuple(reversed(EXTENDED_KNOWN_VIEWS)) if explicit else EXTENDED_KNOWN_VIEWS
+    if explicit:
+        path = tmp_path / "model_manifest.json"
+        manifest = json.loads(path.read_text())
+        manifest["view_recognition"]["trained_class_names"] = list(trained)
+        path.write_text(json.dumps(manifest))
+    logits = np.zeros((1, 9), dtype=np.float32)
+    logits[0, trained.index("RV_A4C")] = 5.0
+    recognizer = OnnxViewRecognizer(models_dir=tmp_path, session=_fake_session(logits))
+    assert recognizer.recognize(_frames()).view == "RV_A4C"

@@ -76,3 +76,11 @@ def test_override_dialog_preselects_suggestion(qtbot) -> None:
     dialog = ViewOverrideDialog(_suggestion("PSAX", 0.77))
     qtbot.addWidget(dialog)
     assert dialog._view_combo.currentText() == "PSAX"
+
+
+@pytest.mark.parametrize("view", ["RV_A4C", "SUBCOSTAL"])
+def test_override_dialog_accepts_extended_views(qtbot, view: str) -> None:
+    dialog = ViewOverrideDialog(_suggestion(view))
+    qtbot.addWidget(dialog)
+    dialog.accept()
+    assert dialog.chosen_view() == view

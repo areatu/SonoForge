@@ -122,3 +122,33 @@ def test_evaluate_raises_when_model_missing(tmp_path: Path) -> None:
         assert "not available" in str(exc)
     else:
         raise AssertionError("expected RuntimeError when model is unavailable")
+
+
+def test_evaluate_extended_classes_uses_manifest_label_order_and_raw_frames(tmp_path: Path) -> None:
+    from echo_personal_tool.domain.models.view_recognition import EXTENDED_KNOWN_VIEWS, RecognizedView
+
+    eval_mod = _load_eval_module()
+    corpus_path = tmp_path / "corpus.json"
+    _write_manifest(corpus_path, ["RV_A4C", "SUBCOSTAL"])
+    corpus = json.loads(corpus_path.read_text())
+    corpus["class_names"] = list(EXTENDED_KNOWN_VIEWS)
+    corpus_path.write_text(json.dumps(corpus))
+    recognizer = MagicMock()
+    recognizer.is_available.return_value = True
+    seen: list[np.ndarray] = []
+
+    def recognize(frames: list[np.ndarray]) -> RecognizedView:
+        seen.append(frames[0])
+        return RecognizedView("RV_A4C" if len(seen) == 1 else "SUBCOSTAL", 0.9)
+
+    recognizer.recognize.side_effect = recognize
+    with patch.object(eval_mod, "OnnxViewRecognizer", return_value=recognizer):
+        report = eval_mod.evaluate(
+            manifest_path=corpus_path,
+            models_dir=tmp_path,
+            split="test",
+            clip_provider=lambda _: np.full((3, 8, 8), 128, dtype=np.uint8),
+        )
+    assert report["top1_accuracy"] == 1.0
+    assert report["per_class_recall"]["SUBCOSTAL"] == 1.0
+    assert np.all(seen[0] == 128)

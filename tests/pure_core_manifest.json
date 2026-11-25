@@ -35,6 +35,9 @@
     "tests/unit/test_view_decision_store.py",
     "tests/unit/test_view_recognition.py",
     "tests/unit/test_view_recognition_schema.py",
-    "tests/unit/test_view_recognition_workflow.py"
+    "tests/unit/test_view_recognition_workflow.py",
+    "tests/unit/test_view_recognition_inference.py",
+    "tests/unit/test_view_recognition_corpus.py",
+    "tests/unit/test_view_recognition_training_contract.py"
   ]
 }

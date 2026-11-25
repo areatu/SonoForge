@@ -293,3 +293,20 @@
 - [#691](https://github.com/areatu/SonoForge/issues/691) — `[План ML.3] Единая шаблонно-ориентированная ONNX-модель (View + Landmarks + LV/LA/RV Shape) и авто-сегментация ПЖ (FAC + RV strain)` (`enhancement`, `plan:A`, `size:L`)
 - [#692](https://github.com/areatu/SonoForge/issues/692) — `[План ML.4] Самообучение на сырых неразмеченных DICOM-клипах: спекл-консистентность и физиологические инварианты фазового поля φ(t)` (`enhancement`, `plan:A`, `size:M`)
 - [#693](https://github.com/areatu/SonoForge/issues/693) — `[План ML.5] Протокольный контекст исследования для Auto View Recognition, слабое обучение по 3 точкам и Active Mining` (`enhancement`, `plan:A`, `size:M`)
+
+## 9. Реализованные контракты ML.0a / ML.0b (25.11.2026)
+
+- **ML.0a:** `segmentation_preprocess.py` объединяет подготовку обучающего примера и ONNX-входа, подавляет вшитую ЭКГ до статистики интенсивности и исключает горизонтальное отражение. Скрипты LA/LV выбирают локальный checkpoint энкодера, затем ImageNet; разделяют выборку по исследованию и считают validation Dice.
+- **ML.0b:** `segment_roi.py` выделяет B-mode сектор по связной области/временно́й активности (отдельно от Doppler ROI). Общая функция `prepare_clip_for_view_model()` использует этот сектор после подавления ЭКГ, выбирает фазовые каналы и выполняет ImageNet-нормализацию. При недоступности фаз — детерминированная равномерная выборка, для статичного кадра — три копии. Аугментация не отражает анатомию.
+- Пресеты классов: `legacy7` сохраняет старый порядок; `tte7` включает `RV_A4C` и `SUBCOSTAL`; `extended9` сохраняет также `SAX`/`TEE`. Сборщик с `--class-preset auto` автоматически расширяет таксономию при новых метках. Обучение использует порядок классов манифеста, не подаёт `UNKNOWN` как индекс `-1` в cross-entropy и не применяет отдельный min/max stretch клипа.
+- Новая голова — L2-нормированные прототипы с обучаемым масштабом `1/τ`; loss — class-balanced focal loss; лучший checkpoint выбирается по validation Macro-F1. Экспорт переносит `preprocessing`, `head_type`, `logit_scale`, `ood` и порядок выходов в `model_manifest.json`. Старые манифесты без этих полей сохраняют single-frame `[0,1]`-обработку без новых OOD-гейтов; новые режимы требуют переобучения, а не переключения метаданных старых весов.
+
+Пример запуска **на локальных размеченных DICOM**, с установленными ML-зависимостями:
+
+```bash
+python scripts/build_view_recognition_corpus.py --dicom-dir /local/dicoms --output /local/corpus.json --class-preset extended9
+python scripts/train_view_recognition.py --manifest /local/corpus.json --output-dir /local/view-checkpoint --class-preset manifest
+python scripts/export_view_recognition_onnx.py --checkpoint /local/view-checkpoint --verify
+```
+
+**Ограничение проверки:** исправлена реализация пайплайнов, но новые клинические веса не обучены и не опубликованы. Пороговые значения OOD (`min_cosine=0.25`, `max_entropy_ratio=0.88`, `min_confidence=0.30`) — стартовые, не клинически откалиброванные: их необходимо валидировать на отложенных локальных исследованиях. Целевые Dice/IoU/Macro-F1/AUROC из §6 не считаются достигнутыми на основании unit-тестов. Внешние публичные клинические датасеты не используются.

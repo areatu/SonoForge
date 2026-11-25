@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 import numpy as np
 from scipy import ndimage
@@ -268,3 +269,71 @@ def resolve_segment_roi_xyxy(
     if frozen_cine_roi is not None:
         return frozen_cine_roi
     return resolve_cine_segment_roi_xyxy(frame)
+
+
+def detect_view_sector_crop_box(
+    frames: Sequence[np.ndarray],
+    *,
+    pad_ratio: float = 0.03,
+) -> tuple[int, int, int, int]:
+    """Locate the canonical ultrasound sector cone ``(y0, x0, y1, x1)``.
+
+    Input frames are grayscale float arrays in [0, 1], with burned ECG removed.
+    This B-mode fan detector is separate from the Doppler time-axis ROI resolver.
+
+    Uses temporal variation + max intensity across sampled frames to isolate
+    the largest connected ultrasound fan component while dropping black borders
+    and isolated corner vendor text glyphs. Falls back to the full frame on
+    tiny or spatially uniform synthetic inputs.
+    """
+    if not frames:
+        raise ValueError("clip is empty: at least one frame is required")
+    first_gray = np.asarray(frames[0], dtype=np.float32)
+    height, width = first_gray.shape
+    full_box = (0, 0, height, width)
+    if min(height, width) < 24:
+        return full_box
+
+    sample_indices = np.linspace(0, len(frames) - 1, num=min(len(frames), 8), dtype=int)
+    sampled = [
+        np.asarray(frames[int(i)], dtype=np.float32)
+        for i in sample_indices
+        if np.asarray(frames[int(i)]).shape[:2] == (height, width)
+    ]
+    if not sampled:
+        return full_box
+
+    stack = np.stack(sampled, axis=0)
+    max_proj = np.max(stack, axis=0)
+    if float(max_proj.max() - max_proj.min()) < 0.05:
+        return full_box
+
+    bg_floor = float(np.percentile(max_proj, 15))
+    temporal_std = np.std(stack, axis=0) if len(sampled) >= 2 else np.zeros_like(max_proj)
+    active = (max_proj > max(bg_floor + 0.04, 0.05)) | (temporal_std > 0.015)
+
+    # Morphological opening removes thin 1-2px text/ruler ticks outside the fan cone
+    opened = np.asarray(ndimage.binary_opening(active, structure=np.ones((3, 3), dtype=bool)), dtype=bool)
+    candidate = opened if int(np.count_nonzero(opened)) >= int(0.08 * height * width) else active
+
+    labeled_raw, n_comp = ndimage.label(candidate)
+    labeled = np.asarray(labeled_raw, dtype=np.int32)
+    if int(n_comp) == 0:
+        return full_box
+
+    counts = np.bincount(labeled.ravel())
+    counts[0] = 0
+    largest = int(np.argmax(counts))
+    if counts[largest] < int(0.05 * height * width):
+        return full_box
+
+    ys, xs = np.where(labeled == largest)
+    pad_y = max(2, int(round(height * pad_ratio)))
+    pad_x = max(2, int(round(width * pad_ratio)))
+    y0 = max(0, int(ys.min()) - pad_y)
+    y1 = min(height, int(ys.max()) + 1 + pad_y)
+    x0 = max(0, int(xs.min()) - pad_x)
+    x1 = min(width, int(xs.max()) + 1 + pad_x)
+    if (y1 - y0) < 16 or (x1 - x0) < 16:
+        return full_box
+    return (y0, x0, y1, x1)
