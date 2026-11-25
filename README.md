@@ -29,13 +29,13 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 ---
 
-## What's new in 0.4.1
+## What's new in 0.4.2
 
-- DICOM display pipeline: modality → VOI → presentation, window/level from headers or numeric values, MONOCHROME1 and Pixel Padding; valid DICOM without a Part 10 preamble opens.
-- Study comparison with an explicitly chosen previous study; patient identity is confirmed by `PatientID` + issuer, not by surname alone.
-- Doppler repeats: accepted/excluded cycles with explicit selection, n, mean/SD/CV and a dedicated dialog.
-- Key images: study bookmarks that survive re-sorting with an honest `available/missing/changed` status.
-- Biplane LA volume from paired A4C/A2C discs; assumed calibration is labeled and gated instead of silently converting units.
+- dP/dt guides on the CW spectrum follow the cursor above or below the baseline (MR 1→3 m/s, TR 1→2 m/s); the interval and the result land in the overlay and the report.
+- Load from Server accepts an exact study date, passed to the server as `study_date` to filter the result list.
+- Report: denser two-column layout, revised measurement set and order, per-value provenance, and a formal conclusion draft for the cardiologist to verify. Diastolic-function criteria remain experimental and clinically unvalidated.
+- Research surfaces that are not validated yet ship disabled in this release: myocardial deformation tracking (layered and chamber-specific), myocardial work, stress echo, the semi-automatic IMT editor, the paediatric/fetal study profiles and the CT/MR stack viewer stay out of the interface until clinical validation; the data formats stay intact.
+- Release checksums are GPG-signed: verify `SHA256SUMS.asc` against the fingerprint published in [`KEYS`](KEYS) and [docs/security/code-signing.md](docs/security/code-signing.md).
 
 ## Highlights in 0.4.0
 
@@ -78,7 +78,7 @@ Press `F10` → present. Download `SonoForgePresenter-<version>.exe` (Windows) o
 
 ---
 
-Release preparation and verification: [0.4.1 checklist](docs/release/0.4.1-checklist.md).
+Release notes: [0.4.2](docs/release/0.4.2-release-notes.md).
 
 ## Installation
 
@@ -339,7 +339,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory by d
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (this checkout: **v0.4.1**; see [Releases](https://github.com/areatu/SonoForge/releases) for published builds).
+> Check the installed version anytime: `sonoforge --version` (this checkout: **v0.4.2**; see [Releases](https://github.com/areatu/SonoForge/releases) for published builds).
 
 ### 1. Open DICOM Data
 

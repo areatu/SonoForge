@@ -459,12 +459,15 @@ limited to the US and Canada).
 
 ### Enabling GPG signing
 
-**Status (2026-11-24):** steps 1–3 are done — the key exists (primary `E231CA97068B6FD9DBA2696B56A26E00755AA57A`
-offline, signing subkey `1A5627BF368987B7F1DCC9409EE80D1A063BE8C8` exported to CI alone)
-and the `verify_gpg` dry run passed (run 45419508391: the subkey signed and verified a
-test manifest through the same script the release job uses). Step 4 is done in this
-document and in `KEYS`. Remaining: upload the public key to a keyserver (step 5) and
-decide on `GPG_SIGNING_REQUIRED=true` (step 6).
+**Status (2026-11-24):** steps 1–6 are done — the key exists (primary
+`E231CA97068B6FD9DBA2696B56A26E00755AA57A` offline, signing subkey
+`1A5627BF368987B7F1DCC9409EE80D1A063BE8C8` exported to CI alone), the `verify_gpg` dry
+run passed (run 45419508391: the subkey signed and verified a test manifest through the
+same script the release job uses), the fingerprint is published in this document and in
+`KEYS`, the public key is on `keyserver.ubuntu.com`, and `GPG_SIGNING_REQUIRED=true`
+makes a release fail closed instead of publishing an unsigned manifest. Remaining: the
+first signed release itself (v0.4.2) and the post-publication verification of
+`SHA256SUMS.asc` on the release page.
 
 The `release.yml` job `release` already contains the signing step. It is gated on a
 repository secret and publishes a workflow **notice** (not a failure) when the secret is
