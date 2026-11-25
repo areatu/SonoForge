@@ -28,4 +28,6 @@
 
 ## Unreleased
 
+- `fix(arch)`: #553 — закрывающий срез приёмки очередей decode/prefetch: интерактивная латентность scrub-цели «submit → published» в живом отчёте `ECHO_PLAYBACK_DIAG=1` (avg/p95/max, заменённые цели не считаются), метрика отделена от prefetch batch round trip; чек-лист критериев сведён в `docs/reviews/2026-11-25-553-queue-closeout-ru.md`. ([полностью](changelog.d/001-fix-arch-553.md))
+
 Выпущено в 0.4.2 (2026-11-24); состав релиза — [примечания 0.4.2](docs/release/0.4.2-release-notes.md).

@@ -128,12 +128,41 @@ def test_a_new_run_starts_with_empty_counters(diag) -> None:
     assert report.batch_round_trips == []
 
 
+def test_interactive_decode_round_trip_is_reported_separately(diag) -> None:
+    diag.on_batch_round_trip(0, 5, 35.0)
+    diag.on_interactive_decode(7, 18.0)
+    diag.on_interactive_decode(9, 22.0)
+
+    report = diag.stop()
+
+    assert len(report.interactive_decodes) == 2
+    assert report.interactive_decodes[0].frame_index == 7
+    assert report.interactive_decodes[1].elapsed_ms == 22.0
+    summary = report.summary()
+    assert "Interactive decode round trip" in summary
+    assert "targets:       2" in summary
+    assert "avg:           20.0 ms" in summary
+    # The prefetch batch round trip must not bleed into the interactive metric (#553).
+    assert "Batch round trip" in summary
+
+
+def test_a_clean_report_has_no_interactive_section(diag) -> None:
+    diag.on_decode_batch(0, 5, 20.0)
+    diag.on_batch_round_trip(0, 5, 35.0)
+
+    summary = diag.stop().summary()
+
+    assert "Interactive decode round trip" not in summary
+
+
 def test_inactive_collector_records_nothing() -> None:
     collector = PlaybackDiagnostics()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(pd, "_ENABLED", False)
         collector.on_batch_round_trip(0, 5, 35.0)
+        collector.on_interactive_decode(3, 12.0)
         collector.on_frame_tick(0, phase="cache_hit", buffered_frames=3, frame_time_ms=33.3)
 
     assert collector._round_trips == []
+    assert collector._interactive_decodes == []
     assert collector._ticks == []

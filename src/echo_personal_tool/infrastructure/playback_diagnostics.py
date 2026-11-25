@@ -167,6 +167,19 @@ class BatchRoundTripRecord:
 
 
 @dataclass
+class InteractiveDecodeRecord:
+    """Scroll-target decode measured submit -> published on the UI thread (#553).
+
+    The scrub target is the latency the user actually feels, so it is kept apart from
+    the prefetch batch round trip, which measures background pipeline health. A target
+    superseded before it decoded never reaches this list - it was cancelled, not slow.
+    """
+
+    frame_index: int
+    elapsed_ms: float
+
+
+@dataclass
 class InstanceSwitchRecord:
     timestamp: float
     rss_before_mb: float
@@ -201,6 +214,7 @@ class PlaybackReport:
     instance_switches: list[InstanceSwitchRecord] = field(default_factory=list)
     prefetch_cancel_count: int = 0
     batch_round_trips: list[BatchRoundTripRecord] = field(default_factory=list)
+    interactive_decodes: list[InteractiveDecodeRecord] = field(default_factory=list)
     decode_queue: DecodeQueueSnapshot = field(default_factory=DecodeQueueSnapshot)
 
     def summary(self) -> str:
@@ -286,6 +300,17 @@ class PlaybackReport:
             lines.append(f"    p95:           {p95:.1f} ms")
             lines.append(f"    max:           {rt[-1]:.1f} ms")
 
+        # Interactive (scrub target) decode round trip (#553)
+        if self.interactive_decodes:
+            rt = sorted(r.elapsed_ms for r in self.interactive_decodes)
+            p95 = rt[max(0, int(len(rt) * 0.95) - 1)]
+            lines.append("")
+            lines.append("  Interactive decode round trip (scroll target submit -> published):")
+            lines.append(f"    targets:       {len(rt)}")
+            lines.append(f"    avg:           {sum(rt) / len(rt):.1f} ms")
+            lines.append(f"    p95:           {p95:.1f} ms")
+            lines.append(f"    max:           {rt[-1]:.1f} ms")
+
         # Buffer depth, in frames and in seconds of playback
         buffered = [t for t in self.frame_ticks if t.buffered_frames >= 0]
         if buffered:
@@ -358,6 +383,7 @@ class PlaybackDiagnostics:
         self._ticks: list[FrameTickRecord] = []
         self._decode_batches: list[DecodeBatchRecord] = []
         self._round_trips: list[BatchRoundTripRecord] = []
+        self._interactive_decodes: list[InteractiveDecodeRecord] = []
         self._numpy_snapshots: list[dict[str, object]] = []
         self._rss_start_mb: float = 0.0
         self._rss_end_mb: float = 0.0
@@ -388,6 +414,7 @@ class PlaybackDiagnostics:
         self._ticks.clear()
         self._decode_batches.clear()
         self._round_trips.clear()
+        self._interactive_decodes.clear()
         self._numpy_snapshots.clear()
         self._wall_jitter.clear()
         self._decode_queue = DecodeQueueSnapshot()
@@ -469,6 +496,21 @@ class PlaybackDiagnostics:
             "[PLAYBACK_DIAG] batch_round_trip  start=%d  count=%d  elapsed=%.1f ms",
             start_idx,
             count,
+            elapsed_ms,
+        )
+
+    def on_interactive_decode(self, frame_index: int, elapsed_ms: float) -> None:
+        """One scroll-target decode measured submit -> published on the UI thread (#553).
+
+        Called only for targets that actually reached the screen: a superseded target was
+        cancelled, and counting it would blur the latency the user can still feel.
+        """
+        if not self.enabled:
+            return
+        self._interactive_decodes.append(InteractiveDecodeRecord(frame_index=frame_index, elapsed_ms=elapsed_ms))
+        _LOG.info(
+            "[PLAYBACK_DIAG] interactive_decode  frame=%d  elapsed=%.1f ms",
+            frame_index,
             elapsed_ms,
         )
 
@@ -557,6 +599,7 @@ class PlaybackDiagnostics:
                 instance_switches=[],
                 prefetch_cancel_count=0,
                 batch_round_trips=[],
+                interactive_decodes=[],
                 decode_queue=DecodeQueueSnapshot(),
             )
         self._rss_end_mb = _rss_mb()
@@ -575,6 +618,7 @@ class PlaybackDiagnostics:
             instance_switches=list(self._instance_switches),
             prefetch_cancel_count=self._prefetch_cancels,
             batch_round_trips=list(self._round_trips),
+            interactive_decodes=list(self._interactive_decodes),
             decode_queue=self._decode_queue,
         )
         _LOG.info("\n%s", report.summary())

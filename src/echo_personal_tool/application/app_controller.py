@@ -3064,6 +3064,13 @@ class AppController(QObject):
                 target,
                 [idx for idx, _ in frames],
             )
+        if emitted and _playback_diag is not None:
+            # #553: live scrub-target latency (submit -> published), kept apart from the
+            # prefetch batch round trip. Superseded targets are cancelled, not counted.
+            _playback_diag.on_interactive_decode(
+                target,
+                (perf_counter() - self._scroll_load_started_at) * 1000.0,
+            )
         self._maybe_start_scroll_neighbors(target)
 
     def _on_scroll_neighbors_loaded(
