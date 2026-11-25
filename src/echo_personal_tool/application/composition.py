@@ -35,6 +35,7 @@ from echo_personal_tool.application.analysis_jobs import AnalysisJobs
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore
 from echo_personal_tool.application.ctmr_slice_requests import CtMrSliceRequests
 from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.application.fusion_jobs import AssistJobs, FusionJobs
 from echo_personal_tool.application.key_images import KeyImageService
 from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
 from echo_personal_tool.application.preferences_contract import UserPreferences
@@ -315,6 +316,8 @@ class AppServices:
     user_session: UserSessionService | None = None
     analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
     segmentation_jobs: SegmentationJobs = field(default_factory=SegmentationJobs)
+    fusion_jobs: FusionJobs = field(default_factory=FusionJobs)
+    assist_jobs: AssistJobs = field(default_factory=AssistJobs)
     #: View classifier behind the ``IViewRecognizer`` port (PR-A). Disabled
     #: until the ONNX adapter (#639 step 2) lands.
     view_recognizer: IViewRecognizer = field(default_factory=DisabledViewRecognizer)
@@ -363,6 +366,22 @@ def segmentation_jobs_of(controller: object) -> SegmentationJobs:
     if services is None:
         raise RuntimeError("Controller services are not bound")
     return services.segmentation_jobs
+
+
+def fusion_jobs_of(controller: object) -> FusionJobs:
+    """The composition-owned temporal-fusion publication ledger."""
+    services = services_of(controller)
+    if services is None:
+        raise RuntimeError("Controller services are not bound")
+    return services.fusion_jobs
+
+
+def assist_jobs_of(controller: object) -> AssistJobs:
+    """The composition-owned LA-assist publication ledger."""
+    services = services_of(controller)
+    if services is None:
+        raise RuntimeError("Controller services are not bound")
+    return services.assist_jobs
 
 
 def user_session_of(controller: object) -> UserSessionService | None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 
@@ -20,6 +21,7 @@ from echo_personal_tool.domain.services.contour_geometry import (
 from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
     _warp_superellipse_open_arc,
+    fit_contour_from_landmarks,
 )
 from echo_personal_tool.domain.translation import tr
 
@@ -540,3 +542,71 @@ def explain_la_auto_reject_reason(
             return tr("domain.la_seg.center_outside_roi")
 
     return None
+
+
+def build_la_assist_contour(
+    mask: object,
+    *,
+    user_septal: tuple[float, float],
+    user_lateral: tuple[float, float],
+    user_apex: tuple[float, float],
+    frame_index: int,
+) -> Contour | None:
+    """Blend AI-derived LA landmarks with the user's and build the assisted open arc.
+
+    Total function for the manual-contour assist path (#552): a non-``ndarray`` payload
+    (e.g. the legacy ``{'mask': ...}`` dict some callers used to expect), a too-small
+    mask or degenerate geometry yields ``None`` instead of raising, so the caller keeps
+    the manually drawn contour unchanged. The result is an AI-assisted *proposal* with
+    ``source="manual"`` and ``review_pending=False`` — the viewer applies it to the frame
+    it was requested for and still runs its own magnetic-snap/optical-flow refinement.
+    """
+    if not isinstance(mask, np.ndarray) or int(np.count_nonzero(mask)) < 80:
+        return None
+    try:
+        blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+            mask,
+            user_septal=user_septal,
+            user_lateral=user_lateral,
+            user_apex=user_apex,
+            blend_factor=0.7,
+        )
+        boundary_pts = la_mask_boundary_to_open_arc(
+            mask,
+            blended_septal,
+            blended_lateral,
+            blended_apex,
+            num_nodes=32,
+        )
+    except (ValueError, IndexError):
+        return None
+    if boundary_pts is not None:
+        return Contour(
+            phase="ES",
+            view="A4C",
+            chamber="LA",
+            mitral_annulus=(blended_septal, blended_lateral),
+            apex_landmark=blended_apex,
+            points=boundary_pts,
+            source="manual",
+            num_nodes=32,
+            frame_index=frame_index,
+            review_pending=False,
+        )
+    try:
+        fallback = fit_contour_from_landmarks(
+            septal=blended_septal,
+            lateral=blended_lateral,
+            apex=blended_apex,
+            phase="ES",
+            view="A4C",
+            chamber="LA",
+        )
+    except (ValueError, IndexError):
+        return None
+    return dataclasses.replace(
+        fallback,
+        source="manual",
+        frame_index=frame_index,
+        review_pending=False,
+    )
