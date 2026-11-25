@@ -34,7 +34,7 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 - dP/dt guides on the CW spectrum follow the cursor above or below the baseline (MR 1→3 m/s, TR 1→2 m/s); the interval and the result land in the overlay and the report.
 - Load from Server accepts an exact study date, passed to the server as `study_date` to filter the result list.
 - Report: denser two-column layout, revised measurement set and order, per-value provenance, and a formal conclusion draft for the cardiologist to verify. Diastolic-function criteria remain experimental and clinically unvalidated.
-- Research surfaces that are not validated yet ship disabled in this release: LA/RV strain and strain layers, myocardial work, stress echo, the semi-automatic IMT editor, the paediatric/fetal study profiles and the CT/MR stack viewer stay out of the interface until clinical validation; the data formats stay intact.
+- Research surfaces that are not validated yet ship disabled in this release: myocardial deformation tracking (layered and chamber-specific), myocardial work, stress echo, the semi-automatic IMT editor, the paediatric/fetal study profiles and the CT/MR stack viewer stay out of the interface until clinical validation; the data formats stay intact.
 - Release checksums are GPG-signed: verify `SHA256SUMS.asc` against the fingerprint published in [`KEYS`](KEYS) and [docs/security/code-signing.md](docs/security/code-signing.md).
 
 ## Highlights in 0.4.0
