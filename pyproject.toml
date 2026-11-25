@@ -201,6 +201,7 @@ files = [
     "src/echo_personal_tool/constructor",
     "src/echo_personal_tool/presentation/__init__.py",
     "src/echo_personal_tool/presentation/anonymization_filter.py",
+    "src/echo_personal_tool/presentation/auto_ef_dialog.py",
     "src/echo_personal_tool/presentation/calibration_snap.py",
     "src/echo_personal_tool/presentation/calibration_status.py",
     "src/echo_personal_tool/presentation/caliper_label_item.py",

@@ -95,7 +95,7 @@ def test_every_menu_button_has_a_catalog_alias() -> None:
     buttons = _menu_buttons()
     from echo_personal_tool.domain.release_visibility import HIDDEN_TOOL_IDS
 
-    assert len(CATALOG) == 169  # 164 + fetal biometry + semi-auto CCA IMT (#558)
+    assert len(CATALOG) == 172  # 169 + one-click Auto-EF biplane + A2C ED/ES auto (#640)
     assert len(buttons) == len(CATALOG) - len(HIDDEN_TOOL_IDS)
     missing = [button.tool_id for _, button in buttons if button.tool_id not in LEGACY_ALIASES]
     assert missing == []

@@ -416,13 +416,13 @@ def test_on_auto_segment_finished_auto_refines_when_enabled(
     assert refine_calls[0][0] is pixels
 
 
-def test_request_auto_segment_requires_a4c_view(
+def test_request_auto_segment_accepts_a2c_and_rejects_non_apical_view(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
     synthetic_dicom_path: Path,
 ) -> None:
     controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
-    controller.set_simpson_workflow_context(phase="ED", view="A2C")
+    controller.set_simpson_workflow_context(phase="ED", view="PLAX")
     messages: list[str] = []
     controller.status_message.connect(messages.append)
 
@@ -430,6 +430,11 @@ def test_request_auto_segment_requires_a4c_view(
 
     assert thread_pool.started == []
     assert "unavailable" in messages[-1].lower() or "недоступн" in messages[-1]
+
+    controller.set_simpson_workflow_context(phase="ED", view="A2C")
+    controller.request_auto_segment()
+    assert len(thread_pool.started) == 1
+    assert thread_pool.started[0].kwargs["manifest_section"] == "a2c_inference"
 
 
 @pytest.fixture(autouse=True)

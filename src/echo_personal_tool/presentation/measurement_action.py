@@ -30,6 +30,7 @@ class MeasurementAction(str, Enum):
     RESET = "reset"
     MANUAL_SIMPSON = "manual_simpson"
     MBS_SIMPSON = "mbs_simpson"
+    AUTO_EF = "auto_ef"
     LV2D_ALL_DIASTOLE = "lv2d_all_diastole"
     LV2D_ES = "lv2d_es"
     LA_DIAMETER = "la_diameter"
