@@ -35,6 +35,88 @@ class WindowPreset:
 
 
 @dataclass(frozen=True)
+class AnatomicalWindowSpec:
+    """Standard radiological anatomical window/level preset (HU)."""
+
+    key: str
+    center: float
+    width: float
+    i18n_key: str
+    aliases: tuple[str, ...] = ()
+
+    def to_preset(self, explanation: str = "") -> WindowPreset:
+        return WindowPreset(center=self.center, width=self.width, explanation=explanation or self.key)
+
+
+ANATOMICAL_WINDOW_PRESETS: tuple[AnatomicalWindowSpec, ...] = (
+    AnatomicalWindowSpec(
+        key="brain",
+        center=40.0,
+        width=80.0,
+        i18n_key="ctmr.window.brain",
+        aliases=("brain", "head", "cerebrum", "neuro", "мозг", "головной мозг"),
+    ),
+    AnatomicalWindowSpec(
+        key="lungs",
+        center=-600.0,
+        width=1500.0,
+        i18n_key="ctmr.window.lungs",
+        aliases=("lungs", "lung", "pulmonary", "лёгкие", "легкие"),
+    ),
+    AnatomicalWindowSpec(
+        key="bones",
+        center=400.0,
+        width=1800.0,
+        i18n_key="ctmr.window.bones",
+        aliases=("bones", "bone", "skeletal", "osseous", "кости", "костный"),
+    ),
+    AnatomicalWindowSpec(
+        key="chest",
+        center=40.0,
+        width=400.0,
+        i18n_key="ctmr.window.chest",
+        aliases=("chest", "mediastinum", "thorax", "грудная клетка", "средостение"),
+    ),
+    AnatomicalWindowSpec(
+        key="abdomen",
+        center=50.0,
+        width=350.0,
+        i18n_key="ctmr.window.abdomen",
+        aliases=("abdomen", "abdominal", "soft tissue", "soft", "брюшная полость", "живот"),
+    ),
+    AnatomicalWindowSpec(
+        key="angio",
+        center=300.0,
+        width=600.0,
+        i18n_key="ctmr.window.angio",
+        aliases=("angio", "cta", "vascular", "vessels", "ангио", "сосуды"),
+    ),
+)
+
+ANATOMICAL_WINDOW_BY_KEY: dict[str, AnatomicalWindowSpec] = {spec.key: spec for spec in ANATOMICAL_WINDOW_PRESETS}
+
+
+def anatomical_window_preset(key: str) -> WindowPreset | None:
+    """Resolve one canonical anatomical window preset by key."""
+    spec = ANATOMICAL_WINDOW_BY_KEY.get(key.strip().casefold())
+    return spec.to_preset() if spec is not None else None
+
+
+def match_anatomical_window(name: str) -> AnatomicalWindowSpec | None:
+    """Match a header explanation or user query to an anatomical window spec."""
+    token = name.strip().casefold()
+    if not token:
+        return None
+    direct = ANATOMICAL_WINDOW_BY_KEY.get(token)
+    if direct is not None:
+        return direct
+    for spec in ANATOMICAL_WINDOW_PRESETS:
+        if any(alias in token for alias in spec.aliases):
+            return spec
+    return None
+
+
+@dataclass(frozen=True)
 class LookupTable:
     """A DICOM LUT: first mapped input plus its entries."""
 

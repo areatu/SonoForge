@@ -143,3 +143,66 @@ def test_multiple_stacks_are_selectable(qtbot, make_file):
     _drain(viewer)
     assert viewer.stack_index == 1
     assert seen == [1]
+
+
+def test_anatomical_window_maps_and_keyboard_shortcuts_apply_cleanly(qtbot, make_file):
+    from PySide6.QtCore import Qt
+
+    viewer, _ = _make_viewer(qtbot, make_file)
+    _drain(viewer)
+    assert viewer.anatomical_window_keys() == (
+        "brain",
+        "lungs",
+        "bones",
+        "chest",
+        "abdomen",
+        "angio",
+    )
+    assert viewer.apply_anatomical_window("lungs")
+    assert viewer.window_level == (-600.0, 1500.0)
+    assert viewer.apply_anatomical_window("bones")
+    assert viewer.window_level == (400.0, 1800.0)
+    qtbot.keyClick(viewer, Qt.Key.Key_1)
+    assert viewer.window_level == (40.0, 80.0)
+    qtbot.keyClick(viewer, Qt.Key.Key_6)
+    assert viewer.window_level == (300.0, 600.0)
+
+
+def test_high_resolution_wheel_accumulates_and_scrub_drag_steps_slices(qtbot, make_file):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+
+    paths = [make_file(f"s{i}.dcm", z=i * 2) for i in range(6)]
+    index = index_ctmr_files(paths)
+    viewer = CtMrStackViewer(slice_requests=_FakeService())
+    qtbot.addWidget(viewer)
+    viewer.show()
+    viewer.set_index(index)
+    _drain(viewer)
+    assert viewer.slice_index == 0
+
+    # Three -40 angleDelta ticks downward accumulate to +1 slice symmetrically.
+    for _ in range(3):
+        ev = QWheelEvent(
+            QPointF(20.0, 20.0),
+            QPointF(20.0, 20.0),
+            QPoint(0, 0),
+            QPoint(0, -40),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.ScrollUpdate,
+            False,
+        )
+        viewer.wheelEvent(ev)
+    _drain(viewer)
+    assert viewer.slice_index == 1
+
+    # Left-drag scrub signal advances slices and right-drag W/L adjusts center/width.
+    viewer.scrub_slices(3)
+    _drain(viewer)
+    assert viewer.slice_index == 4
+    before_c, before_w = viewer.window_level
+    viewer.adjust_window_by_drag(15.0, 25.0)
+    after_c, after_w = viewer.window_level
+    assert after_c > before_c
+    assert after_w > before_w

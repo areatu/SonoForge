@@ -18,6 +18,7 @@ measurable number (HU for a properly rescaled CT, otherwise stored units).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Protocol, cast
 
 import numpy as np
@@ -135,7 +136,9 @@ def padding_mask(stored: np.ndarray, display: DicomDisplayLike | None) -> np.nda
 
 
 def _percentile_range(values: np.ndarray, low_pct: float, high_pct: float) -> tuple[float, float]:
-    flat = np.asarray(values, dtype=np.float32)
+    flat = np.asarray(values, dtype=np.float32).ravel()
+    if flat.size > 65536:
+        flat = flat[:: max(1, flat.size // 65536)]
     flat = flat[np.isfinite(flat)]
     if flat.size == 0:
         return 0.0, 1.0
@@ -215,6 +218,35 @@ def _voi_lut_display(values: np.ndarray, table: LookupTableLike) -> np.ndarray:
     return cast(np.ndarray, np.clip(result, 0.0, 255.0))
 
 
+@lru_cache(maxsize=64)
+def _build_16bit_window_lut(
+    signed: bool,
+    slope: float,
+    intercept: float,
+    center: float,
+    width: float,
+    function: str,
+    invert: bool,
+    pad_value: float | None,
+    pad_limit: float | None,
+) -> np.ndarray:
+    """Precompute an exact 65536-entry uint8 LUT for 16-bit CT/MR pixels."""
+    raw_u16 = np.arange(65536, dtype=np.uint16)
+    stored = raw_u16.view(np.int16) if signed else raw_u16
+    modality = stored.astype(np.float32) * float(slope) + float(intercept)
+    windowed = _apply_window(modality, center, width, function)
+    if invert:
+        windowed = 255.0 - windowed
+    lut = np.asarray(np.rint(np.clip(windowed, 0.0, 255.0)), dtype=np.uint8)
+    if pad_value is not None:
+        if pad_limit is None:
+            lut[stored == pad_value] = 0
+        else:
+            low, high = min(pad_value, pad_limit), max(pad_value, pad_limit)
+            lut[(stored >= low) & (stored <= high)] = 0
+    return lut
+
+
 def render_dicom_frame(
     stored: np.ndarray,
     display: DicomDisplayLike,
@@ -232,8 +264,48 @@ def render_dicom_frame(
     only while the W/L sliders are untouched, and a study without either gets
     an auto range from non-padding modality values.
     """
-    values = stored_to_modality(stored, display)
-    mask = padding_mask(stored, display)
+    use_voi_lut = (
+        display.voi_lut is not None
+        and numeric_window is None
+        and not display.window_presets
+        and float(window_scale) == 1.0
+        and float(level_offset) == 0.0
+    )
+    stored_arr = np.asarray(stored)
+
+    # Fast 16-bit LUT path when the window does not need per-frame percentiles
+    # (explicit numeric/anatomical window or DICOM header default window).
+    if (
+        not use_voi_lut
+        and display.modality_lut is None
+        and stored_arr.dtype in (np.int16, np.uint16)
+        and (numeric_window is not None or display.default_window is not None)
+    ):
+        center, width = resolve_window(
+            display,
+            np.empty(0, dtype=np.float32),
+            dr_low_pct=dr_low_pct,
+            dr_high_pct=dr_high_pct,
+            window_scale=window_scale,
+            level_offset=level_offset,
+            numeric=numeric_window,
+        )
+        lut = _build_16bit_window_lut(
+            stored_arr.dtype == np.int16,
+            float(display.rescale_slope),
+            float(display.rescale_intercept),
+            center,
+            width,
+            display.voi_lut_function,
+            bool(display.is_monochrome1),
+            None if display.pixel_padding_value is None else float(display.pixel_padding_value),
+            None if display.pixel_padding_range_limit is None else float(display.pixel_padding_range_limit),
+        )
+        indexed = lut[np.ascontiguousarray(stored_arr).view(np.uint16)]
+        return RenderedDisplay(pixels=indexed, center=center, width=width)
+
+    values = stored_to_modality(stored_arr, display)
+    mask = padding_mask(stored_arr, display)
     valid = values[~mask] if mask is not None else values
     center, width = resolve_window(
         display,
@@ -245,13 +317,21 @@ def render_dicom_frame(
         numeric=numeric_window,
     )
 
-    use_voi_lut = (
-        display.voi_lut is not None
-        and numeric_window is None
-        and not display.window_presets
-        and float(window_scale) == 1.0
-        and float(level_offset) == 0.0
-    )
+    if not use_voi_lut and display.modality_lut is None and stored_arr.dtype in (np.int16, np.uint16):
+        lut = _build_16bit_window_lut(
+            stored_arr.dtype == np.int16,
+            float(display.rescale_slope),
+            float(display.rescale_intercept),
+            center,
+            width,
+            display.voi_lut_function,
+            bool(display.is_monochrome1),
+            None if display.pixel_padding_value is None else float(display.pixel_padding_value),
+            None if display.pixel_padding_range_limit is None else float(display.pixel_padding_range_limit),
+        )
+        indexed = lut[np.ascontiguousarray(stored_arr).view(np.uint16)]
+        return RenderedDisplay(pixels=indexed, center=center, width=width)
+
     if use_voi_lut and display.voi_lut is not None:
         pixels = _voi_lut_display(values, display.voi_lut)
     else:

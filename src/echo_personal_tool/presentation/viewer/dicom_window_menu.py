@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox, QWidget
 
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.models.dicom_display import ANATOMICAL_WINDOW_PRESETS
 
 if TYPE_CHECKING:
     from echo_personal_tool.presentation.viewer.display import ViewerDisplay
@@ -22,7 +23,7 @@ _SPLIT = re.compile(r"[,;\s]+")
 
 
 def add_dicom_window_actions(menu: QMenu, display: ViewerDisplay) -> None:
-    """Append header windows / numeric W/L when the current instance has them."""
+    """Append header windows, anatomical maps, and numeric W/L when supported."""
     if not display.has_dicom_display():
         return
     submenu = menu.addMenu(tr("viewer.window_menu"))
@@ -32,6 +33,11 @@ def add_dicom_window_actions(menu: QMenu, display: ViewerDisplay) -> None:
         action.triggered.connect(lambda _checked=False, i=index: display.apply_window_preset(i))
     if presets:
         submenu.addSeparator()
+    for spec in ANATOMICAL_WINDOW_PRESETS:
+        action = submenu.addAction(tr(spec.i18n_key))
+        action.setData(spec.key)
+        action.triggered.connect(lambda _checked=False, c=spec.center, w=spec.width: display.apply_numeric_window(c, w))
+    submenu.addSeparator()
     submenu.addAction(tr("viewer.window_numeric"), lambda: _ask_numeric(display))
     submenu.addAction(tr("viewer.window_reset"), display.reset_dicom_window)
 

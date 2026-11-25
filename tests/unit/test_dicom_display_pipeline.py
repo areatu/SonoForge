@@ -208,3 +208,55 @@ def test_mapper_voi_lut_first_input_comes_from_the_second_descriptor_element() -
     assert display.voi_lut.first_input == 100.0
     rendered = render_dicom_frame(np.array([[100, 101, 102]], dtype=np.uint16), display)
     assert rendered.pixels.tolist() == [[0, 128, 255]]
+
+
+def test_anatomical_window_presets_cover_all_six_maps_and_aliases() -> None:
+    from echo_personal_tool.domain.models.dicom_display import (
+        ANATOMICAL_WINDOW_BY_KEY,
+        ANATOMICAL_WINDOW_PRESETS,
+        anatomical_window_preset,
+        match_anatomical_window,
+    )
+
+    assert tuple(spec.key for spec in ANATOMICAL_WINDOW_PRESETS) == (
+        "brain",
+        "lungs",
+        "bones",
+        "chest",
+        "abdomen",
+        "angio",
+    )
+    assert anatomical_window_preset("brain").center == 40.0
+    assert anatomical_window_preset("brain").width == 80.0
+    assert anatomical_window_preset("lungs").center == -600.0
+    assert anatomical_window_preset("lungs").width == 1500.0
+    assert anatomical_window_preset("bones").center == 400.0
+    assert anatomical_window_preset("bones").width == 1800.0
+    assert anatomical_window_preset("chest").center == 40.0
+    assert anatomical_window_preset("chest").width == 400.0
+    assert anatomical_window_preset("abdomen").center == 50.0
+    assert anatomical_window_preset("abdomen").width == 350.0
+    assert anatomical_window_preset("angio").center == 300.0
+    assert anatomical_window_preset("angio").width == 600.0
+    assert match_anatomical_window("Pulmonary") == ANATOMICAL_WINDOW_BY_KEY["lungs"]
+    assert match_anatomical_window("CTA") == ANATOMICAL_WINDOW_BY_KEY["angio"]
+    assert match_anatomical_window("Mediastinum") == ANATOMICAL_WINDOW_BY_KEY["chest"]
+
+
+def test_16bit_lut_fast_path_matches_float_reference_across_all_anatomical_windows() -> None:
+    from echo_personal_tool.domain.models.dicom_display import ANATOMICAL_WINDOW_PRESETS, DicomDisplay
+
+    display = DicomDisplay(
+        photometric="MONOCHROME2",
+        rescale_slope=1.0,
+        rescale_intercept=-1024.0,
+        value_unit="HU",
+        pixel_padding_value=-2048,
+    )
+    stored_i16 = np.array([[-2048, -1024, -600, 0, 40, 300, 400, 1500]], dtype=np.int16)
+    stored_i32 = stored_i16.astype(np.int32)
+    for spec in ANATOMICAL_WINDOW_PRESETS:
+        fast = render_dicom_frame(stored_i16, display, numeric_window=(spec.center, spec.width))
+        ref = render_dicom_frame(stored_i32, display, numeric_window=(spec.center, spec.width))
+        assert np.array_equal(fast.pixels, ref.pixels), spec.key
+        assert int(fast.pixels[0, 0]) == 0
