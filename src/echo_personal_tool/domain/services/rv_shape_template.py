@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from echo_personal_tool.domain.services.cardiac_atlas import CoupledShapeModel, fit_chamber_landmarks
 from echo_personal_tool.domain.services.contour_geometry import (
     _resample_polyline,
     point_line_distance,
@@ -68,6 +69,9 @@ def warp_rv_crescent_open_arc(
     apex: tuple[float, float],
     *,
     num_points: int = 81,
+    atlas_model: CoupledShapeModel | None = None,
+    phase: str = "ED",
+    pixel_spacing_mm: tuple[float, float] | None = None,
 ) -> list[tuple[float, float]]:
     """RV crescent open arc: S→A (septal) + A→L (free wall), two quadratics.
 
@@ -88,6 +92,18 @@ def warp_rv_crescent_open_arc(
     if depth < _MIN_DEPTH_PX:
         msg = "apex must be off TV annulus"
         raise ValueError(msg)
+
+    if atlas_model is not None:
+        return fit_chamber_landmarks(
+            atlas_model,
+            "RV",
+            septal,
+            lateral,
+            apex,
+            phase=phase,
+            num_points=num_points,
+            pixel_spacing_mm=pixel_spacing_mm,
+        )
 
     s_pt, l_pt, a_pt = septal, lateral, apex
 

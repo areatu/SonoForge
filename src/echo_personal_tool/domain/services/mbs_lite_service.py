@@ -16,6 +16,7 @@ from echo_personal_tool.domain.services.active_contour_refine import (
     ActiveContourConfig,
     refine_open_arc,
 )
+from echo_personal_tool.domain.services.cardiac_atlas import CoupledShapeModel, fit_chamber_landmarks
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     apex_point,
@@ -201,8 +202,10 @@ def fit_contour_from_landmarks(
     view: str = "A4C",
     chamber: str = "LV",
     num_nodes: int = DEFAULT_NODE_COUNT,
+    atlas_model: CoupledShapeModel | None = None,
+    pixel_spacing_mm: tuple[float, float] | None = None,
 ) -> Contour:
-    """Fit an open-arc contour from annulus and apex landmarks."""
+    """Fit an open arc; an explicitly injected atlas replaces the legacy seed."""
     chamber_key = chamber.upper()
     if chamber_key not in {"LV", "LA", "RA", "RV"}:
         msg = "fit_contour_from_landmarks supports LV, LA, RA, and RV only"
@@ -212,7 +215,20 @@ def fit_contour_from_landmarks(
 
     node_count = RV_FAC_NODE_COUNT if chamber_key == "RV" else num_nodes
 
-    if chamber_key == "LV":
+    if atlas_model is not None:
+        if atlas_model.view != view.upper():
+            raise ValueError("atlas projection does not match requested view")
+        warped = fit_chamber_landmarks(
+            atlas_model,
+            chamber_key,
+            septal,
+            lateral,
+            apex,
+            phase=phase,
+            num_points=_TEMPLATE_POINT_COUNT,
+            pixel_spacing_mm=pixel_spacing_mm,
+        )
+    elif chamber_key == "LV":
         warped = fit_lv_bezier_contour(
             septal,
             lateral,

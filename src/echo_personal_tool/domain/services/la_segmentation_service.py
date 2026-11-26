@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.bench_metrics import mask_iou
+from echo_personal_tool.domain.services.cardiac_atlas import CoupledShapeModel, fit_chamber_landmarks
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     resample_open_arc_landmarks,
@@ -403,6 +404,9 @@ def la_mask_to_contour(
     mask: np.ndarray,
     *,
     num_nodes: int = DEFAULT_NODE_COUNT,
+    atlas_model: CoupledShapeModel | None = None,
+    phase: str = "ES",
+    pixel_spacing_mm: tuple[float, float] | None = None,
 ) -> tuple[
     list[tuple[float, float]],
     tuple[tuple[float, float], tuple[float, float]],
@@ -439,16 +443,28 @@ def la_mask_to_contour(
     if boundary_result is not None:
         logger.debug("[LA-mask2contour] boundary extraction succeeded with %d points", len(boundary_result))
         return boundary_result, (septal, lateral), apex
-    logger.debug("[LA-mask2contour] boundary extraction failed; using superellipse fallback")
+    logger.debug("[LA-mask2contour] boundary extraction failed; using anatomical fallback")
 
-    # Fallback: superellipse template (geometric approximation)
-    template = _warp_superellipse_open_arc(
-        septal,
-        lateral,
-        apex,
-        num_points=81,
-        short_axis_ratio=_ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
-    )
+    # Keep observed boundaries authoritative; an atlas is only an explicit fallback.
+    if atlas_model is not None:
+        template = fit_chamber_landmarks(
+            atlas_model,
+            "LA",
+            septal,
+            lateral,
+            apex,
+            phase=phase,
+            num_points=81,
+            pixel_spacing_mm=pixel_spacing_mm,
+        )
+    else:
+        template = _warp_superellipse_open_arc(
+            septal,
+            lateral,
+            apex,
+            num_points=81,
+            short_axis_ratio=_ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
+        )
     resampled = resample_open_arc_landmarks(
         template,
         septal=septal,

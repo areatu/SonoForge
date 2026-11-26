@@ -40,6 +40,11 @@
     "tests/unit/test_view_recognition_inference.py",
     "tests/unit/test_view_recognition_corpus.py",
     "tests/unit/test_view_recognition_training_contract.py",
-    "tests/unit/test_finetune_lv_seg.py"
+    "tests/unit/test_finetune_lv_seg.py",
+    "tests/unit/test_cardiac_atlas.py",
+    "tests/unit/test_cardiac_atlas_training.py",
+    "tests/unit/test_rv_shape_template.py",
+    "tests/unit/test_mbs_lite_service.py",
+    "tests/unit/test_la_segmentation_service.py"
   ]
 }
