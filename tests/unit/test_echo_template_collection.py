@@ -14,8 +14,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize("selection,selected,skipped", [("gui", 1, 0), ("not gui", 2, 2)], ids=["gui", "logic"])
-def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, monkeypatch, selection, selected, skipped):
+@pytest.mark.parametrize(
+    "selection,selected,skipped,suite",
+    [("gui", 1, 0, "onnx"), ("not gui", 2, 2, "onnx"), ("gui", 1, 0, "ssl"), ("not gui", 27, 6, "ssl")],
+    ids=["gui", "logic", "ssl-gui", "ssl-logic"],
+)
+def test_ml_extras_absence_preserves_selected_junit_inventory(
+    tmp_path, monkeypatch, selection, selected, skipped, suite
+):
     # A fresh interpreter emulates CI without torch even on an ML workstation.
     # Do not uninstall packages or loosen check_pytest_counts.py's equality gate.
     (tmp_path / "no_training_extras.py").write_text(
@@ -44,6 +50,17 @@ def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, monkeypa
     env["PYTHONPATH"] = os.pathsep.join(
         [str(tmp_path), str(ROOT / ".github" / "scripts"), str(ROOT / "src"), str(ROOT)]
     )
+    modules = (
+        ["test_echo_template_onnx.py"]
+        if suite == "onnx"
+        else [
+            "test_echo_ssl_objectives.py",
+            "test_echo_ssl_data.py",
+            "test_echo_ssl_training.py",
+            "test_echo_ssl_smoke.py",
+            "test_echo_ssl_gates.py",
+        ]
+    )
     result = subprocess.run(
         [
             sys.executable,
@@ -62,7 +79,7 @@ def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, monkeypa
             "-m",
             selection,
             f"--junitxml={junit}",
-            str(ROOT / "tests/unit/test_echo_template_onnx.py"),
+            *(str(ROOT / "tests/unit" / module) for module in modules),
             str(probe),
         ],
         cwd=ROOT,

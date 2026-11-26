@@ -122,7 +122,7 @@ def block_match_single(
         best_dy = max_loc[1] + k_h / 2.0 - (cy_l - y0)
 
         if level == 0 and config.subpixel and best_ncc > 0:
-            py_r, px_r = max_loc
+            px_r, py_r = max_loc  # OpenCV returns (x, y), unlike NumPy's (row, column).
             if 1 <= py_r < result.shape[0] - 1 and 1 <= px_r < result.shape[1] - 1:
                 corr_3x3 = result[py_r - 1 : py_r + 2, px_r - 1 : px_r + 2]
                 sub_dy, sub_dx = refine_subpixel(corr_3x3, (1, 1))

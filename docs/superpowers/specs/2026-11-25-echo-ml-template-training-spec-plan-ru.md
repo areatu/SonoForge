@@ -206,6 +206,12 @@
 
 ### 4.6. Этап `ML.4` ([#692](https://github.com/areatu/SonoForge/issues/692)) — Самообучение на сырых неразмеченных DICOM-клипах (Self-Supervised + инварианты $\phi(t)$)
 
+**Статус реализации:** offline CLI и проверяемые fail-safe objectives реализованы;
+[руководство, manifest, gate и результаты smoke](../../echo_ssl_ru.md).
+Positive-control снижает LA/RV jitter без ухудшения synthetic gold, но улучшение
+настоящего ML.3 checkpoint на реалистичных cine ещё не доказано; случайная
+MobileNet корректно отклоняется. Автоактивации и клинической валидации нет.
+
 **Цель:** адаптировать обученную на синтетике и малом `gold` модель `ML.3` к реальным сканерам клиники вообще без ручной разметки, используя две уникальные подсистемы, которые **уже реализованы в домене SonoForge**: спекл-трекинг (`speckle_tracking.py` / `optical_flow_refine.py`) и непрерывное фазовое поле $\phi(t)$ (`phase_field.py`, `#641`).
 
 1. **Схема EMA Mean-Teacher (`scripts/train_self_supervised_echo.py`):**
