@@ -318,9 +318,9 @@ class TestLayeredStrainRecord:
             set_language("en")
         lv = next(group for group in groups if group.key == GROUP_LEFT_VENTRICLE)
         labels = {value.label for value in lv.values}
-        assert not any("среднего слоя" in label for label in labels)
-        assert not any("эпикарда" in label for label in labels)
-        assert not any("эндо−эпи" in label for label in labels)
+        assert any("среднего слоя" in label for label in labels)
+        assert any("эпикарда" in label for label in labels)
+        assert any("эндо−эпи" in label for label in labels)
 
     def test_no_layers_adds_no_protocol_rows(self) -> None:
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot, StrainReport
@@ -355,8 +355,11 @@ class TestStressEchoReportSection:
         )
         groups = build_report_groups(self._snapshot(assessment), sex="M")
         all_values = {value.label: value.value for group in groups for value in group.values}
-        assert not any("WMSI" in label for label in all_values)
-        assert not any("ишемии" in value for value in all_values.values())
+        assert any("WMSI покой" in label for label in all_values)
+        assert any("WMSI стресс" in label for label in all_values)
+        assert any("ΔWMSI" in label for label in all_values)
+        assert any("Ухудшенных" in label for label in all_values)
+        assert any("ишемии" in value for value in all_values.values())
 
     def test_no_scoring_adds_no_rows(self) -> None:
         from echo_personal_tool.domain.services.report_builder import build_report_groups
@@ -371,7 +374,10 @@ class TestStressEchoReportSection:
         assessment = StressEchoAssessment(rest=StressEchoScoring(scores={3: 2}))
         groups = build_report_groups(self._snapshot(assessment), sex="M")
         values = {value.label: value.value for group in groups for value in group.values}
-        assert not any("WMSI" in label for label in values)
+        assert any("WMSI покой" in label for label in values)
+        assert not any("WMSI стресс" in label for label in values)
+        assert not any("ΔWMSI" in label for label in values)
+        assert any("Недостаточно" in value for value in values.values())
 
     def test_the_stress_rows_module_builds_honest_rows_directly(self) -> None:
         """Direct coverage of report_stress_echo: nothing scored → no rows at all."""

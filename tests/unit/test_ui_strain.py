@@ -267,7 +267,7 @@ class TestPhaseMarkers:
         assert panel._phase_bar.width() == panel._frame_slider.width()
 
 
-def test_release_hides_research_controls_and_summary_rows(qtbot):
+def test_research_controls_and_summary_rows_are_visible(qtbot):
     from PySide6.QtWidgets import QGroupBox
 
     from echo_personal_tool.ui.control_panel import ControlPanel
@@ -279,11 +279,11 @@ def test_release_hides_research_controls_and_summary_rows(qtbot):
     qtbot.addWidget(summary)
     panel.show()
     summary.show()
-    for name in ("releaseHiddenStrainLayers", "releaseHiddenStressEcho"):
+    for name in ("strainLayersGroup", "stressEchoGroup"):
         group = panel.findChild(QGroupBox, name)
-        assert group is not None and group.isHidden()
+        assert group is not None and not group.isHidden()
     assert panel._metric_sr.isHidden() and panel._metric_peak.isHidden()
     for key in ("gwi", "gwe", "la_lasr", "la_lascd", "la_lasct", "rv_gls", "gls_mid", "gls_epi", "gls_grad"):
         label, value, _unit = summary._rows[key]
-        assert label.isHidden() and value.isHidden()
-    assert summary._sbp_edit.isHidden() and summary._dbp_edit.isHidden()
+        assert not label.isHidden() and not value.isHidden()
+    assert not summary._sbp_edit.isHidden() and not summary._dbp_edit.isHidden()

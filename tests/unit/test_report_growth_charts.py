@@ -33,16 +33,7 @@ def _paediatric_document(*, research=False):
         spacing_calibrated=True,
         linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=34.0, millimeter_length=34.0),),
     )
-    patient = PatientInfo(bsa_m2=1.0)
-    document = build_report_document(snapshot, patient, study_profile_id=PEDIATRIC_PROFILE)
-    if research:
-        from echo_personal_tool.domain.services.report_builder import with_extra_values
-        from echo_personal_tool.domain.services.report_zscore import zscore_report_values
-
-        document = with_extra_values(
-            document, zscore_report_values(snapshot, patient, study_profile_id=PEDIATRIC_PROFILE)
-        )
-    return document
+    return build_report_document(snapshot, PatientInfo(bsa_m2=1.0), study_profile_id=PEDIATRIC_PROFILE)
 
 
 class TestPatientHeaderGestationalAge:
@@ -126,9 +117,7 @@ class TestSheetButton:
         preview = ReportPreview()
         assert preview._growth_button.isVisibleTo(preview) is False
         document = _paediatric_document()
-        assert _document_has_growth_rows(document) is False
-        legacy_document = _paediatric_document(research=True)
-        assert _document_has_growth_rows(legacy_document) is True
+        assert _document_has_growth_rows(document) is True
         assert _document_has_growth_rows(ReportDocument()) is False
-        preview.set_document(legacy_document)
-        assert preview._growth_button.isVisibleTo(preview) is False
+        preview.set_document(document)
+        assert preview._growth_button.isVisibleTo(preview) is True

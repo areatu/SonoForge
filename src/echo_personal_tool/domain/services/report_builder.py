@@ -529,6 +529,11 @@ def _strain_report_notes(strain: StrainReport) -> tuple[str, ...]:
         notes.append(tr("domain.report.strain_avc_source", source=avc_text).strip())
     if strain.contour_source != "manual":
         notes.append(tr("domain.report.strain_contour_draft").strip())
+    if strain.blood_pressure_mmhg is not None and strain.mw_by_view:
+        sbp, dbp = strain.blood_pressure_mmhg
+        notes.append(
+            tr("domain.report.mw_method", sbp=f"{sbp:g}", dbp=f"{dbp:g}", n=str(len(strain.mw_by_view))).strip()
+        )
     if strain.segments_missing:
         notes.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing).strip())
     return tuple(notes)
@@ -704,6 +709,9 @@ def _append_left_ventricle_report_values(
                 tr("calc.experimental_research"), tr("calc.experimental_research_warning"), group=GROUP_LEFT_VENTRICLE
             )
         )
+    # Stress-echo WMSI (plan А.11) lives at the snapshot level, not inside the
+    # strain section: scoring works without strain and without a GLS row.
+    _append_stress_echo_report_values(values, snapshot, group=GROUP_LEFT_VENTRICLE)
 
 
 def _append_diastology_report_values(
@@ -1136,43 +1144,16 @@ def _append_indexed_report_values(values: list[ReportValue], snapshot: Measureme
             group=GROUP_OTHER,
             origin=bsa_origin,
         )
+        lv_grp = GROUP_LEFT_VENTRICLE
         indexed_values = (
             ("BSA", "patient.bsa", indexed.bsa_m2, "m²", GROUP_OTHER, None),
-            (_label_catalog("lv.mass_i"), "lv.mass_i", indexed.lvmi_g_m2, "g/m²", GROUP_LEFT_VENTRICLE, "LVMI"),
-            (_label_catalog("lv.edvi"), "lv.edvi", indexed.simpson_edvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVEDVi"),
-            (_label_catalog("lv.esvi"), "lv.esvi", indexed.simpson_esvi_ml_m2, "mL/m²", GROUP_LEFT_VENTRICLE, "LVESVi"),
-            (
-                _label_index("edvi", "4C"),
-                "lv.edvi_a4c",
-                indexed.simpson_a4c_edvi_ml_m2,
-                "mL/m²",
-                GROUP_LEFT_VENTRICLE,
-                "LVEDVi",
-            ),
-            (
-                _label_index("esvi", "4C"),
-                "lv.esvi_a4c",
-                indexed.simpson_a4c_esvi_ml_m2,
-                "mL/m²",
-                GROUP_LEFT_VENTRICLE,
-                "LVESVi",
-            ),
-            (
-                _label_index("edvi", "2C"),
-                "lv.edvi_a2c",
-                indexed.simpson_a2c_edvi_ml_m2,
-                "mL/m²",
-                GROUP_LEFT_VENTRICLE,
-                "LVEDVi",
-            ),
-            (
-                _label_index("esvi", "2C"),
-                "lv.esvi_a2c",
-                indexed.simpson_a2c_esvi_ml_m2,
-                "mL/m²",
-                GROUP_LEFT_VENTRICLE,
-                "LVESVi",
-            ),
+            (_label_catalog("lv.mass_i"), "lv.mass_i", indexed.lvmi_g_m2, "g/m²", lv_grp, "LVMI"),
+            (_label_catalog("lv.edvi"), "lv.edvi", indexed.simpson_edvi_ml_m2, "mL/m²", lv_grp, "LVEDVi"),
+            (_label_catalog("lv.esvi"), "lv.esvi", indexed.simpson_esvi_ml_m2, "mL/m²", lv_grp, "LVESVi"),
+            (_label_index("edvi", "4C"), "lv.edvi_a4c", indexed.simpson_a4c_edvi_ml_m2, "mL/m²", lv_grp, "LVEDVi"),
+            (_label_index("esvi", "4C"), "lv.esvi_a4c", indexed.simpson_a4c_esvi_ml_m2, "mL/m²", lv_grp, "LVESVi"),
+            (_label_index("edvi", "2C"), "lv.edvi_a2c", indexed.simpson_a2c_edvi_ml_m2, "mL/m²", lv_grp, "LVEDVi"),
+            (_label_index("esvi", "2C"), "lv.esvi_a2c", indexed.simpson_a2c_esvi_ml_m2, "mL/m²", lv_grp, "LVESVi"),
             (_label_index("lavi", "4C"), "la.lavi_a4c", indexed.lav_4c_index_ml_m2, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
             (_label_index("lavi", "BP"), "la.lavi_bp", lav_bi_index, "mL/m²", GROUP_LEFT_ATRIUM, "LAVi"),
             # Item 6 of the 2026-11-18 list: иОПП has its own reference
@@ -1228,6 +1209,10 @@ def _append_strain_report_values(values: list[ReportValue], snapshot: Measuremen
         )
         if item:
             values.append(item)
+        _append_myocardial_work_values(values, strain, sex=sex)
+        _append_la_strain_report_values(values, strain, sex=sex)
+        _append_rv_strain_report_values(values, strain, sex=sex)
+        _append_layered_strain_report_values(values, strain, sex=sex)
 
 
 def _append_stress_echo_report_values(values: list[ReportValue], snapshot: MeasurementSnapshot, *, group: str) -> None:
@@ -1960,6 +1945,12 @@ def build_report_document(
         chosen = profile(profile_id)
         document = replace(
             document, groups=chosen.groups(groups), title=profile_title(chosen.id, tr), profile_id=chosen.id
+        )
+    if snapshot is not None and study_profile_id:
+        from echo_personal_tool.domain.services.report_zscore import zscore_report_values
+
+        document = with_extra_values(
+            document, zscore_report_values(snapshot, document.patient, study_profile_id=study_profile_id)
         )
     return _with_export_status(without_values(document, hidden_keys), snapshot, draft)
 

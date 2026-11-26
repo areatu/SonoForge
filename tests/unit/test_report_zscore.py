@@ -73,15 +73,19 @@ class TestFetalRows:
 
 
 class TestDocumentHook:
-    def test_the_paediatric_document_omits_unverified_z_rows(self) -> None:
+    def test_the_paediatric_document_prints_the_z_rows(self) -> None:
         document = build_report_document(
-            _snapshot_with(36.0), PatientInfo(bsa_m2=1.0), study_profile_id=PEDIATRIC_PROFILE
+            _snapshot_with(36.0),
+            PatientInfo(bsa_m2=1.0),
+            study_profile_id=PEDIATRIC_PROFILE,
         )
-        assert not any(
-            row.parameter_id == "lv.lvedd" and row.value.startswith(("+", "-"))
+        lvedd = next(
+            row
             for group in document.groups
             for row in group.values
+            if row.parameter_id == "lv.lvedd" and row.value.startswith(("+", "-"))
         )
+        assert lvedd.value.startswith("+0.48")
 
     def test_the_full_document_hook_skips_the_adult_study(self) -> None:
         document = build_report_document(

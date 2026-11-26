@@ -375,11 +375,13 @@ class TestStudyProfileButton:
         qtbot.addWidget(bar)
         return bar
 
-    def test_one_button_with_the_release_profiles(self, qtbot) -> None:
-        """The switch grew by plan А.12; the unfinished studies stay off the release surface."""
+    def test_one_button_with_the_seven_profiles(self, qtbot) -> None:
+        """The switch grew by the paediatric and fetal studies (plan А.12)."""
         bar = self._bar(qtbot)
         assert [action.text() for action in bar._study_profile_menu.actions()] == [
             "Эхокардиография",
+            "ЭхоКГ педиатрическая",
+            "Фетальная ЭхоКГ",
             "УЗИ прецеребральных артерий",
             "УЗИ ОБП и почек",
             "УЗИ почек",
@@ -432,9 +434,7 @@ class TestStudyProfileButton:
         try:
             set_language("en")
             bar.reload_text()
-            # The switch lists the release profiles (А.12): echo, vascular,
-            # abdomen, kidney, thyroid — the unfinished studies stay hidden.
-            assert [action.text() for action in bar._study_profile_menu.actions()][1] == "Precerebral artery ultrasound"
+            assert [action.text() for action in bar._study_profile_menu.actions()][3] == "Precerebral artery ultrasound"
             assert bar._btn_study_profile.text() == "Echocardiography"
         finally:
             set_language("ru")

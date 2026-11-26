@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 def _surface_enabled() -> bool:
-    """The release gate for the spec 557 surface (read per call, tests monkeypatch it)."""
-    return os.environ.get("SONOFORGE_ENABLE_CTMR") == "1"
+    """Whether the classic CT/MR stack surface is enabled (enabled by default; ``SONOFORGE_ENABLE_CTMR=0`` opts out)."""
+    return os.environ.get("SONOFORGE_ENABLE_CTMR", "1").strip() != "0"
 
 
 class CtMrSurfaceWindow(Protocol):

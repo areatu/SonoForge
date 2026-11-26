@@ -7,17 +7,27 @@ silently treated as one classic slice. Only Part-10 image files are accepted.
 
 from __future__ import annotations
 
+import struct
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from math import isfinite
 from pathlib import Path
 from struct import error as StructError
-from typing import cast
+from threading import Lock
+from typing import BinaryIO, cast
 
 import pydicom
 from pydicom.dataset import Dataset
 from pydicom.errors import BytesLengthException, InvalidDicomError
 from pydicom.filereader import read_file_meta_info
-from pydicom.uid import UID, CTImageStorage, DeflatedExplicitVRLittleEndian, MRImageStorage
+from pydicom.uid import (
+    UID,
+    CTImageStorage,
+    DeflatedExplicitVRLittleEndian,
+    ExplicitVRLittleEndian,
+    ImplicitVRLittleEndian,
+    MRImageStorage,
+)
 
 from echo_personal_tool.domain.models.ctmr_stack import (
     CtMrIndex,
@@ -188,6 +198,146 @@ def _frame(ds: Dataset, path: Path, identity: FileIdentity) -> StackFrameRef:
     )
 
 
+_VERIFIED_REFS_LOCK = Lock()
+_VERIFIED_REFS_MAX = 8192
+_VERIFIED_REFS: OrderedDict[tuple[Path, int, tuple[int, ...]], tuple[StackFrameRef, tuple[int, str] | None]] = (
+    OrderedDict()
+)
+_DEFAULT_DCMREAD = pydicom.dcmread
+_DEFAULT_READ_META = read_file_meta_info
+
+
+def _probe_direct_pixel_spec(
+    fh: BinaryIO,
+    ds: Dataset,
+    frame: StackFrameRef,
+    file_size: int,
+) -> tuple[int, str] | None:
+    """Return (byte_offset, numpy_dtype_str) for uncompressed LE classic frames."""
+    syntax = UID(str(ds.file_meta.get("TransferSyntaxUID", "")))
+    if syntax not in (ExplicitVRLittleEndian, ImplicitVRLittleEndian):
+        return None
+    if frame.bits_allocated not in (8, 16) or frame.bits_stored != frame.bits_allocated:
+        return None
+    itemsize = frame.bits_allocated // 8
+    dtype_str = ("<i" if frame.pixel_representation == 1 else "<u") + str(itemsize)
+    pos = fh.tell()
+    tag_hdr = fh.read(12)
+    if len(tag_hdr) < 8:
+        return None
+    group, elem = struct.unpack_from("<HH", tag_hdr, 0)
+    if (group, elem) != (0x7FE0, 0x0010):
+        return None
+    if syntax == ImplicitVRLittleEndian:
+        vl = int(struct.unpack_from("<I", tag_hdr, 4)[0])
+        data_offset = pos + 8
+    else:
+        vr = tag_hdr[4:6]
+        if vr in (b"OB", b"OW"):
+            if len(tag_hdr) < 12:
+                return None
+            vl = int(struct.unpack_from("<I", tag_hdr, 8)[0])
+            data_offset = pos + 12
+        else:
+            vl = int(struct.unpack_from("<H", tag_hdr, 6)[0])
+            data_offset = pos + 8
+    if vl == 0xFFFFFFFF:
+        return None
+    frame_bytes = frame.rows * frame.columns * itemsize
+    end_byte = data_offset + (frame.local_frame + 1) * frame_bytes
+    if vl < (frame.local_frame + 1) * frame_bytes or file_size < end_byte:
+        return None
+    return (data_offset + frame.local_frame * frame_bytes, dtype_str)
+
+
+def _read_classic_header_with_stream(path: Path) -> tuple[Dataset, BinaryIO | None]:
+    if pydicom.dcmread is not _DEFAULT_DCMREAD or read_file_meta_info is not _DEFAULT_READ_META:
+        return _read_classic_header(path), None
+    meta = read_file_meta_info(path)
+    syntax = UID(str(meta.get("TransferSyntaxUID", "")))
+    if syntax == DeflatedExplicitVRLittleEndian or not syntax.is_transfer_syntax:
+        raise CtMrHeaderError("unsupported_header_transfer_syntax")
+    fh = path.open("rb")
+    keep_open = False
+    try:
+        probe = pydicom.dcmread(fh, stop_before_pixels=True, specific_tags=["SOPClassUID", "NumberOfFrames"])
+        if str(probe.get("SOPClassUID", "")) not in (str(CTImageStorage), str(MRImageStorage)):
+            raise CtMrHeaderError("unsupported_sop_class_enhanced_requires_frame_index")
+        if int(probe.get("NumberOfFrames", 1)) != 1:
+            raise CtMrHeaderError("multiframe_not_supported")
+        fh.seek(0)
+        ds = pydicom.dcmread(fh, stop_before_pixels=True, specific_tags=list(_TAGS))
+        keep_open = True
+        return ds, fh
+    finally:
+        if not keep_open:
+            fh.close()
+
+
+def remember_verified_ref(ref: StackFrameRef, direct_spec: tuple[int, str] | None = None) -> None:
+    """Cache a header-validated StackFrameRef keyed by path, frame, and file stamp."""
+    if not ref.file_stamp:
+        return
+    key = (ref.path, ref.local_frame, ref.file_stamp)
+    with _VERIFIED_REFS_LOCK:
+        existing = _VERIFIED_REFS.get(key)
+        effective_spec = direct_spec if direct_spec is not None else (existing[1] if existing else None)
+        _VERIFIED_REFS[key] = (ref, effective_spec)
+        _VERIFIED_REFS.move_to_end(key)
+        while len(_VERIFIED_REFS) > _VERIFIED_REFS_MAX:
+            _VERIFIED_REFS.popitem(last=False)
+
+
+def lookup_verified_entry(ref: StackFrameRef) -> tuple[StackFrameRef, tuple[int, str] | None] | None:
+    """Return cached (StackFrameRef, direct_pixel_spec) if stamp was verified."""
+    if not ref.file_stamp:
+        return None
+    key = (ref.path, ref.local_frame, ref.file_stamp)
+    with _VERIFIED_REFS_LOCK:
+        cached = _VERIFIED_REFS.get(key)
+        if cached is not None:
+            _VERIFIED_REFS.move_to_end(key)
+        return cached
+
+
+def lookup_verified_ref(ref: StackFrameRef) -> StackFrameRef | None:
+    """Return the cached StackFrameRef if path, frame, and stamp were verified."""
+    entry = lookup_verified_entry(ref)
+    return entry[0] if entry is not None else None
+
+
+def _index_single_path(path: Path) -> StackFrameRef | StackIndexDiagnostic:
+    fh: BinaryIO | None = None
+    try:
+        before = FileIdentity.capture(path)
+        ds, fh = _read_classic_header_with_stream(path)
+        frame = _frame(ds, path, before)
+        direct_spec = _probe_direct_pixel_spec(fh, ds, frame, before.size) if fh is not None else None
+        if fh is not None:
+            fh.close()
+            fh = None
+        if FileIdentity.capture(path) != before:
+            raise CtMrHeaderError("source_changed_during_index")
+        remember_verified_ref(frame, direct_spec)
+        return frame
+    except CtMrHeaderError as exc:
+        return StackIndexDiagnostic(path, str(exc))
+    except (
+        OSError,
+        InvalidDicomError,
+        BytesLengthException,
+        EOFError,
+        StructError,
+        ValueError,
+        TypeError,
+        OverflowError,
+    ):
+        return StackIndexDiagnostic(path, "invalid_or_unreadable_header")
+    finally:
+        if fh is not None:
+            fh.close()
+
+
 def index_ctmr_files(
     paths: Iterable[Path],
     *,
@@ -218,30 +368,20 @@ def index_ctmr_files(
         path = Path(candidate)
         try:
             if path.is_symlink():
-                raise CtMrHeaderError("symlink_not_supported")
-            path = path.resolve()
-            if path in seen:
+                diagnostics.append(StackIndexDiagnostic(path, "symlink_not_supported"))
                 continue
-            seen.add(path)
-            before = FileIdentity.capture(path)
-            ds = _read_classic_header(path)
-            frame = _frame(ds, path, before)
-            if FileIdentity.capture(path) != before:
-                raise CtMrHeaderError("source_changed_during_index")
-            frames.append(frame)
-        except CtMrHeaderError as exc:
-            diagnostics.append(StackIndexDiagnostic(path, str(exc)))
-        except (
-            OSError,
-            InvalidDicomError,
-            BytesLengthException,
-            EOFError,
-            StructError,
-            ValueError,
-            TypeError,
-            OverflowError,
-        ):
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+        except OSError:
             diagnostics.append(StackIndexDiagnostic(path, "invalid_or_unreadable_header"))
+            continue
+        outcome = _index_single_path(resolved)
+        if isinstance(outcome, StackFrameRef):
+            frames.append(outcome)
+        else:
+            diagnostics.append(outcome)
     if cancelled():
         complete = False
         if not any(d.code == "cancelled" for d in diagnostics):

@@ -1,10 +1,8 @@
-"""Release surface restrictions; data and research implementations stay intact."""
+"""Release surface visibility; experimental research features are active."""
 
-# These are not user preferences: existing custom layouts must not expose
-# unvalidated tools via search, favourites, radial menus or restored layouts.
-HIDDEN_TOOL_IDS = frozenset({"la.strain", "rv.gls", "cca.imt_semiauto"})
+from __future__ import annotations
 
-# Unfinished study profiles (#650 follow-ups): the profile switch never offers
-# them and a saved selection falls back to the default profile. The profile
-# data itself stays intact, so reports of older snapshots rebuild unchanged.
-HIDDEN_PROFILE_IDS = frozenset({"builtin.pediatric_echo", "builtin.fetal_echo"})
+# Kept as exported sets so layout, profile, and catalog callers share one gate.
+# All experimental research tools and study profiles hidden in 0.4.2 are active.
+HIDDEN_TOOL_IDS: frozenset[str] = frozenset()
+HIDDEN_PROFILE_IDS: frozenset[str] = frozenset()

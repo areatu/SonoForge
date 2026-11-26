@@ -491,6 +491,10 @@ class StrainWindow(QMainWindow):
             drift=_finite_float(getattr(result, "drift_measured", None)),
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
+        self._refresh_la_strain(result)
+        self._refresh_rv_strain(result)
+        self._refresh_layer_strain(result)
+        self._refresh_myocardial_work()
         self._update_bullseye(result)
         # Stress-echo WMSI combos follow the measured segments (plan А.11).
         self._refresh_stress_panel()
@@ -535,17 +539,11 @@ class StrainWindow(QMainWindow):
         # image-derived signals take over, and an unusable clip stays muted.
         self._apply_phase_timeline(result, frames)
 
-        # Only the endocardial layer is shown, including for older
-        # results that contain additional tracked layers.
-        positions_all = result.tracked_positions_all
-        if positions_all is not None:
-            if positions_all.ndim == 3 and positions_all.shape[1] == len(result.kernels):
-                positions_all = positions_all[:, endo_indices, :]
-            else:
-                positions_all = None
+        # Per-frame animated overlay (kernels + live endo/mid/epi contours follow the wall)
+        layers = [k.layer for k in result.kernels]
         self._panel_a4c.set_tracked_overlay(
-            positions_all,
-            layers=["endo"] * len(endo_indices),
+            result.tracked_positions_all,
+            layers=layers,
             ed_index=result.ed_index,
             es_index=result.es_index,
         )
@@ -587,6 +585,8 @@ class StrainWindow(QMainWindow):
         # Keep the overview in sync even when it's not the active page, so
         # switching to it later shows the latest study without a second click.
         self._refresh_overview()
+        self._update_arc_window(result)
+
         if not self.isVisible():
             self.show()
         self.raise_()
@@ -1257,16 +1257,10 @@ class StrainWindow(QMainWindow):
         analysis = getattr(self, "_analysis", None) or StrainAnalysis.from_result(self._result)
         analysis_dict = analysis.to_dict(with_curves=True)
         analysis_dict["qc_accepted_segments"] = sorted(int(seg) for seg in self._qc_accepted_segments)
-        study_dict = self._study.to_dict()
-        for record in [analysis_dict, *study_dict.get("analyses", {}).values()]:
-            record.get("definitions", {}).pop("layers", None)
-            values = record.get("values", {})
-            values.pop("layer_gls", None)
-            values.pop("transmural_gradient_pp", None)
         data = {
             "kind": "sonoforge.ste.analysis",
             "analysis": analysis_dict,
-            "study": study_dict,
+            "study": self._study.to_dict(),
         }
         # Keep the legacy flat keys for consumers written against the old file.
         legacy_keys = {
@@ -1292,16 +1286,10 @@ class StrainWindow(QMainWindow):
         }
         data.update(legacy_keys)
 
-        # Keep kernel positions aligned with the endocardial analysis only.
-        # Unknown or mismatched kernel metadata is omitted rather than exposing
-        # other layers from an older result.
-        endo_indices = [i for i, kernel in enumerate(self._result.kernels) if kernel.layer == "endo"]
-        for key, positions in (
-            ("kernel_positions_ed", self._result.tracked_ed_positions),
-            ("kernel_positions_es", self._result.tracked_es_positions),
-        ):
-            if positions is not None and len(positions) == len(self._result.kernels) and endo_indices:
-                data[key] = positions[endo_indices].tolist()
+        if self._result.tracked_ed_positions is not None:
+            data["kernel_positions_ed"] = self._result.tracked_ed_positions.tolist()
+        if self._result.tracked_es_positions is not None:
+            data["kernel_positions_es"] = self._result.tracked_es_positions.tolist()
 
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -1426,6 +1414,15 @@ class StrainWindow(QMainWindow):
             writer.writerow(
                 ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
             )
+            if analysis.layer_gls:
+                layer_text = " / ".join(
+                    f"{layer}=" + ("" if analysis.layer_gls.get(layer) is None else f"{analysis.layer_gls[layer]:.2f}")
+                    for layer in LAYERS
+                    if layer in analysis.layer_gls
+                )
+                writer.writerow(["# GLS layers (endo/mid/epi)", layer_text])
+                if analysis.transmural_gradient_pp is not None:
+                    writer.writerow(["# Transmural gradient (endo−epi)", f"{analysis.transmural_gradient_pp:.2f}"])
 
         logger.info("Exported CSV")
 

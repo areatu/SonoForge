@@ -31,6 +31,7 @@ from echo_personal_tool.application.composition import (
     fusion_jobs_of,
     in_memory_app_services,
     segmentation_jobs_of,
+    segmenter_for_view,
     services_of,
 )
 from echo_personal_tool.application.contour_calibration import contour_spacing_resolver, express_contours_on_grid
@@ -1247,16 +1248,14 @@ class AppController(QObject):
         if phase is None or phase not in {"ED", "ES"}:
             self.status_message.emit(tr("status.auto_segmentation_select_phase"))
             return
-
-        if (view or "").upper() != "A4C":
+        view_norm = (view or "").upper()
+        if view_norm not in {"A4C", "A2C"}:
             self.status_message.emit(tr("app.segmentation_unavailable"))
             return
-
         if self._current_frame_pixels is None or self._loaded_frame_index != state.current_frame_index:
             self.status_message.emit(tr("status.frame_not_loaded"))
             return
-
-        if not self._segmenter.is_available():
+        if not segmenter_for_view(self, view_norm, self._segmenter).is_available():
             self.status_message.emit(tr("app.segmentation_unavailable"))
             return
 
@@ -1265,12 +1264,7 @@ class AppController(QObject):
         instance_path = self._current_instance.path if self._current_instance is not None else None
         media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
         frame_index = state.current_frame_index
-        roi_xyxy = self._resolve_segment_roi_bounds(
-            frame,
-            instance_path,
-            media_format=media_format,
-            phase=phase,
-        )
+        roi_xyxy = self._resolve_segment_roi_bounds(frame, instance_path, media_format=media_format, phase=phase)
         self._last_segment_roi_xyxy = roi_xyxy
         crop_mode = echonet_crop_mode_for_media(media_format)
 
@@ -1279,7 +1273,8 @@ class AppController(QObject):
             frame = np.stack([gray, gray, gray], axis=-1)  # grayscale → 3ch for ONNX
 
         self._segment_in_progress = True
-        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        manifest_sec = "a2c_inference" if view_norm == "A2C" else "inference"
+        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, manifest_section=manifest_sec, parent=self)
         connect_segmentation(
             self,
             worker,
@@ -3458,7 +3453,12 @@ class AppController(QObject):
 
         refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
 
-        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
+        should_refine = (
+            self._should_auto_refine_after_segment("a2c_inference")
+            if view.upper() == "A2C"
+            else self._should_auto_refine_after_segment()
+        )
+        if self._current_frame_pixels is not None and should_refine:
             from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
 
             instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
@@ -3474,11 +3474,7 @@ class AppController(QObject):
                 frame_index=frame_index,
                 sop_instance_uid=instance_uid,
             )
-            refined, _ = refine_open_arc_contour(
-                self._current_frame_pixels,
-                draft,
-                cine=is_cine,
-            )
+            refined, _ = refine_open_arc_contour(self._current_frame_pixels, draft, cine=is_cine)
             refined_points = list(refined.points)
             if refined.mitral_annulus is not None:
                 annulus = refined.mitral_annulus
@@ -4014,7 +4010,8 @@ class AppController(QObject):
             gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
             frame = np.stack([gray, gray, gray], axis=-1)
 
-        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        manifest_sec = "a2c_inference" if view.upper() == "A2C" else "inference"
+        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, manifest_section=manifest_sec, parent=self)
         worker.signals.finished.connect(
             partial(
                 self._on_neighbor_segment_finished,

@@ -55,16 +55,47 @@ def _load_manifest(models_dir: Path) -> dict[str, Any] | None:
         return cast(dict[str, Any], json.load(handle))
 
 
+def _resolve_effective_model_id(
+    models_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    manifest_section: str = "inference",
+) -> str | None:
+    models = manifest.get("models", {})
+    if not isinstance(models, dict):
+        return None
+    section = manifest.get(manifest_section, {})
+    primary = section.get("active_model") if isinstance(section, dict) else None
+    fallback = section.get("fallback_model") if isinstance(section, dict) else None
+    if primary and isinstance(models.get(primary), dict):
+        primary_entry = models[primary]
+        primary_file = primary_entry.get("filename")
+        if primary_file and (models_dir / str(primary_file)).is_file():
+            return str(primary)
+        if fallback and isinstance(models.get(fallback), dict):
+            fallback_file = models[fallback].get("filename")
+            if fallback_file and (
+                (models_dir / str(fallback_file)).is_file() or primary_entry.get("status") == "not_exported"
+            ):
+                return str(fallback)
+        return str(primary)
+    if fallback and isinstance(models.get(fallback), dict):
+        return str(fallback)
+    default_active = manifest.get("active_model")
+    return str(default_active) if default_active else None
+
+
 def _resolve_model_path(
     models_dir: Path,
     manifest: dict[str, Any],
     *,
     manifest_section: str = "inference",
 ) -> Path | None:
-    section = manifest.get(manifest_section, {})
-    active_model = section.get("active_model") if isinstance(section, dict) else None
-    if not active_model:
-        active_model = manifest.get("active_model")
+    active_model = _resolve_effective_model_id(
+        models_dir,
+        manifest,
+        manifest_section=manifest_section,
+    )
     if not active_model:
         return None
     models = manifest.get("models", {})
@@ -81,11 +112,19 @@ def _resolve_io_names(
     manifest: dict[str, Any],
     *,
     manifest_section: str = "inference",
+    models_dir: Path | None = None,
 ) -> tuple[str, str]:
-    section = manifest.get(manifest_section, {})
-    active_model = section.get("active_model") if isinstance(section, dict) else None
-    if not active_model:
-        active_model = manifest.get("active_model")
+    if models_dir is not None:
+        active_model = _resolve_effective_model_id(
+            models_dir,
+            manifest,
+            manifest_section=manifest_section,
+        )
+    else:
+        section = manifest.get(manifest_section, {})
+        active_model = section.get("active_model") if isinstance(section, dict) else None
+        if not active_model:
+            active_model = manifest.get("active_model")
     models = manifest.get("models", {})
     entry = models.get(active_model, {}) if active_model else {}
     onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
@@ -160,9 +199,19 @@ class OnnxInferenceEngine:
             self._input_name, self._output_name = _resolve_io_names(
                 self._manifest,
                 manifest_section=manifest_section,
+                models_dir=self._models_dir,
+            )
+            self._resolved_model_id = (
+                _resolve_effective_model_id(
+                    self._models_dir,
+                    self._manifest,
+                    manifest_section=manifest_section,
+                )
+                or ""
             )
         else:
             self._input_name, self._output_name = "input", "logits"
+            self._resolved_model_id = ""
         self._input_size = self._resolve_input_size()
 
         if session is not None:
@@ -181,6 +230,16 @@ class OnnxInferenceEngine:
             and self._model_path is not None
             and self._model_path.is_file()
         )
+
+    @property
+    def model_id(self) -> str:
+        """Resolved model identifier in model_manifest.json."""
+        return self._resolved_model_id
+
+    @property
+    def model_sha256(self) -> str:
+        """Expected SHA256 digest of the resolved model, or empty string."""
+        return self._resolve_sha256() or ""
 
     @property
     def crop_mode(self) -> str:
@@ -261,19 +320,27 @@ class OnnxInferenceEngine:
             return None
         return float(threshold)
 
+    def _effective_models_dir(self) -> Path:
+        models_dir = getattr(self, "_models_dir", None)
+        if isinstance(models_dir, Path):
+            return models_dir
+        model_path = getattr(self, "_model_path", None)
+        if isinstance(model_path, Path):
+            return model_path.parent
+        return Path(".")
+
     def _resolve_input_size(self) -> int:
         """Resolve model input spatial size from manifest, default 112."""
         if self._manifest is None:
             return 112
         models = self._manifest.get("models", {})
         manifest_section = getattr(self, "_manifest_section", "inference")
-        section = self._manifest.get(manifest_section, {})
-        active = None
-        if isinstance(section, dict):
-            active = section.get("active_model")
-        if not active:
-            active = self._manifest.get("active_model", "")
-        entry = models.get(active, {}) if isinstance(models, dict) else {}
+        active = _resolve_effective_model_id(
+            self._effective_models_dir(),
+            self._manifest,
+            manifest_section=manifest_section,
+        )
+        entry = models.get(active, {}) if (active and isinstance(models, dict)) else {}
         onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
         shape = onnx_meta.get("input_shape", [1, 3, 112, 112])
         if isinstance(shape, (list, tuple)) and len(shape) >= 3:
@@ -286,11 +353,10 @@ class OnnxInferenceEngine:
             return None
         models = self._manifest.get("models", {})
         manifest_section = getattr(self, "_manifest_section", "inference")
-        section = self._manifest.get(manifest_section, {})
-        active = None
-        if isinstance(section, dict):
-            active = section.get("active_model")
-        if not active:
-            active = self._manifest.get("active_model", "")
-        entry = models.get(active, {}) if isinstance(models, dict) else {}
+        active = _resolve_effective_model_id(
+            self._effective_models_dir(),
+            self._manifest,
+            manifest_section=manifest_section,
+        )
+        entry = models.get(active, {}) if (active and isinstance(models, dict)) else {}
         return entry.get("sha256") if isinstance(entry, dict) else None

@@ -313,6 +313,7 @@ class AppServices:
     frame_cache: FrameCache
     segmenter: IOnnxSegmenter
     io: AppIoFacades
+    a2c_segmenter: IOnnxSegmenter = field(default_factory=DisabledOnnxSegmenter)
     user_session: UserSessionService | None = None
     analysis_jobs: AnalysisJobs = field(default_factory=AnalysisJobs)
     segmentation_jobs: SegmentationJobs = field(default_factory=SegmentationJobs)
@@ -350,6 +351,14 @@ def services_of(controller: object) -> AppServices | None:
         return _CONTROLLER_SERVICES.get(controller)
     except TypeError:
         return None
+
+
+def segmenter_for_view(controller: object, view: str, fallback: IOnnxSegmenter) -> IOnnxSegmenter:
+    """Return the active view segmenter (A2C when available, else fallback)."""
+    bound = services_of(controller)
+    if view.upper() == "A2C" and bound is not None and bound.a2c_segmenter.is_available():
+        return bound.a2c_segmenter
+    return fallback
 
 
 def analysis_jobs_of(controller: object) -> AnalysisJobs:
@@ -597,12 +606,18 @@ def build_app_services(
 
     if segmenter is not None:
         resolved_segmenter = segmenter
+        resolved_a2c_segmenter: IOnnxSegmenter = segmenter
     elif capabilities.ai_segmentation:
         from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
         resolved_segmenter = OnnxInferenceEngine(models_dir=resolved_paths.models_dir)
+        resolved_a2c_segmenter = OnnxInferenceEngine(
+            models_dir=resolved_paths.models_dir,
+            manifest_section="a2c_inference",
+        )
     else:
         resolved_segmenter = DisabledOnnxSegmenter()
+        resolved_a2c_segmenter = DisabledOnnxSegmenter()
 
     # View recognition (#639 step 2): the ONNX classifier adapter is used
     # when a trained model is present in the models dir; otherwise the workflow
@@ -641,6 +656,7 @@ def build_app_services(
         unified_budget=cache_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
+        a2c_segmenter=resolved_a2c_segmenter,
         io=io_facades,
         user_session=user_session,
         view_recognizer=view_recognizer,
@@ -716,6 +732,7 @@ def in_memory_app_services(
         unified_budget=unified_budget,
         frame_cache=frame_cache,
         segmenter=resolved_segmenter,
+        a2c_segmenter=resolved_segmenter,
         io=io_facades,
         user_session=inmem_user_session,
     )
