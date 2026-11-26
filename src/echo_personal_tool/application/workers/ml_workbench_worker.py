@@ -7,6 +7,8 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.domain.models.training_archive import ArchiveWriteError
+
 
 class MLWorkbenchSignals(QObject):
     completed = Signal(int, object)
@@ -24,7 +26,19 @@ class MLWorkbenchWorker(QRunnable):
     def run(self) -> None:
         try:
             result = self.action()
-        except Exception:  # noqa: BLE001 - local I/O boundary, never expose PHI-bearing exceptions
+        except (
+            ArchiveWriteError,
+            OSError,
+            ValueError,
+            LookupError,
+            TypeError,
+            RuntimeError,
+            EOFError,
+            OverflowError,
+            MemoryError,
+        ):
+            # Expected storage, format/path and resource failures have no safe
+            # exception text. Programming errors are not silently swallowed.
             self.signals.failed.emit(self.generation)
         else:
             self.signals.completed.emit(self.generation, result)

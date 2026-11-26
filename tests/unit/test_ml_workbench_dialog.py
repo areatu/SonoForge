@@ -9,6 +9,8 @@ from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QMenu, QWidget
 
 from echo_personal_tool.application.ml_workbench import LocalMLWorkbench
+from echo_personal_tool.application.workers.ml_workbench_worker import MLWorkbenchWorker
+from echo_personal_tool.domain.models.training_archive import ArchiveWriteError
 from echo_personal_tool.presentation.ml_workbench_dialog import (
     MLWorkbenchDialog,
     _preview_pixmap,
@@ -108,9 +110,24 @@ def test_workspace_change_invalidates_previous_result(qtbot, dialog, tmp_path):
     assert dialog._report.toPlainText() == ""
 
 
-def test_failed_job_does_not_echo_patient_path(qtbot, dialog):
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        ArchiveWriteError,
+        OSError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+        RuntimeError,
+        EOFError,
+        OverflowError,
+        MemoryError,
+    ],
+)
+def test_failed_job_does_not_echo_patient_path(qtbot, dialog, error_type):
     def fail():
-        raise OSError("/secret-patient-name/clinical-data")
+        raise error_type("/secret-patient-name/clinical-data")
 
     dialog._run(fail)
     wait_for_job(qtbot, dialog)
@@ -128,3 +145,26 @@ def test_dev_only_full_menu_and_image_formats(qtbot):
     assert not any(a.objectName() == "localMLWorkbench" for a in presenter.actions())
     for shape in ((16, 16), (16, 16, 1), (16, 16, 3), (16, 16, 4)):
         assert not _preview_pixmap(np.ones(shape, dtype=np.uint16), [[1, 1], [5, 5], [8, 1]]).isNull()
+
+
+def test_worker_does_not_swallow_programming_errors(qapp):
+    def fail():
+        raise AssertionError("broken worker invariant")
+
+    worker = MLWorkbenchWorker(7, fail)
+    failures = []
+    worker.signals.failed.connect(failures.append)
+    with pytest.raises(AssertionError, match="broken worker invariant"):
+        worker.run()
+    assert failures == []
+
+
+def test_frozen_build_has_no_ml_workbench_menu(qtbot, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    menu = QMenu(parent)
+    populate_local_tools_menu(parent, menu, lambda: None, "full", object())
+    assert not any(action.objectName() == "localMLWorkbench" for action in menu.actions())
