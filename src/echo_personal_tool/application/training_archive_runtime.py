@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol
+from weakref import WeakKeyDictionary
 
 import numpy as np
 
@@ -15,6 +16,26 @@ from echo_personal_tool.application.training_archive import MeasurementArchiveCa
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.training_archive import ArchiveContext
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+# Composition supplies the optional capability. This module never imports the
+# composition root (including lazily), keeping the complete import graph acyclic.
+_BINDINGS: WeakKeyDictionary[object, tuple[MeasurementArchiveCapture, Callable[[], ViewerState]]] = WeakKeyDictionary()
+
+
+def bind_archive(
+    controller: object, capture: MeasurementArchiveCapture | None, snapshot: Callable[[], ViewerState]
+) -> None:
+    if capture is None:
+        _BINDINGS.pop(controller, None)
+    else:
+        _BINDINGS[controller] = capture, snapshot
+
+
+def _binding(controller: object) -> tuple[MeasurementArchiveCapture, Callable[[], ViewerState]] | None:
+    try:
+        return _BINDINGS.get(controller)
+    except TypeError:
+        return None
 
 
 def local_archive_capture(*, permitted: bool) -> MeasurementArchiveCapture | None:
@@ -60,12 +81,11 @@ def observe_archive(
     loaded_index: int | None,
     study_uid: str,
 ) -> None:
-    from echo_personal_tool.application.composition import services_of
-
-    services = services_of(controller)
-    if services is None or services.training_archive is None:
+    binding = _binding(controller)
+    if binding is None:
         return
-    state = services.state_manager.snapshot
+    capture, snapshot = binding
+    state = snapshot()
     instance = state.instance
     if instance is None:
         return
@@ -82,19 +102,18 @@ def observe_archive(
         selected = state.calibration_for_points(contour.points, frame_index=contour.frame_index)
         return selected.context.spacing if selected.context is not None else None
 
-    services.training_archive.observe(contours, pixels, loaded_index, context, spacing_for=spacing_for)
+    capture.observe(contours, pixels, loaded_index, context, spacing_for=spacing_for)
 
 
 def confirm_archive(controller: object) -> None:
     """Shared explicit apply; AI acceptance calls this after clearing pending."""
-    from echo_personal_tool.application.composition import services_of
-
-    services = services_of(controller)
-    if services is None or services.training_archive is None:
+    binding = _binding(controller)
+    if binding is None:
         return
-    state = services.state_manager.snapshot
+    capture, snapshot = binding
+    state = snapshot()
     if state.instance is not None:
-        services.training_archive.confirm(state.instance.sop_instance_uid, state.current_frame_index)
+        capture.confirm(state.instance.sop_instance_uid, state.current_frame_index)
 
 
 class _ContourConfirmationHost(Protocol):
@@ -106,18 +125,13 @@ def complete_archive(controller: _ContourConfirmationHost, contours: Sequence[Co
 
     Disabled archive must not add a second clinical recomputation per tool.
     """
-    from echo_personal_tool.application.composition import services_of
-
-    services = services_of(controller)
-    if services is None or services.training_archive is None:
+    if _binding(controller) is None:
         return
     controller.on_contours_changed(list(contours))
     confirm_archive(controller)
 
 
 def reset_archive(controller: object, study_uid: str) -> None:
-    from echo_personal_tool.application.composition import services_of
-
-    services = services_of(controller)
-    if services is not None and services.training_archive is not None:
-        services.training_archive.reset(study_uid)
+    binding = _binding(controller)
+    if binding is not None:
+        binding[0].reset(study_uid)

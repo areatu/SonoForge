@@ -55,7 +55,11 @@ from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
 from echo_personal_tool.application.training_archive import MeasurementArchiveCapture
-from echo_personal_tool.application.training_archive_runtime import archive_state_changed, local_archive_capture
+from echo_personal_tool.application.training_archive_runtime import (
+    archive_state_changed,
+    bind_archive,
+    local_archive_capture,
+)
 from echo_personal_tool.application.user_preferences import (
     default_user_preferences,
     load_user_preferences,
@@ -346,8 +350,9 @@ _CONTROLLER_SERVICES: WeakKeyDictionary[object, AppServices] = WeakKeyDictionary
 def bind_controller_services(controller: object, services: AppServices) -> None:
     """Associate ``services`` with ``controller`` without adding instance attributes."""
     _CONTROLLER_SERVICES[controller] = services
-    if services.training_archive is not None:
-        capture = services.training_archive
+    capture = getattr(services, "training_archive", None)
+    bind_archive(controller, capture, lambda: services.state_manager.snapshot)
+    if capture is not None:
         services.state_manager.state_changed.connect(lambda state: archive_state_changed(capture, state))
 
 
