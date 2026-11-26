@@ -45,6 +45,8 @@
     "tests/unit/test_cardiac_atlas_training.py",
     "tests/unit/test_rv_shape_template.py",
     "tests/unit/test_mbs_lite_service.py",
-    "tests/unit/test_la_segmentation_service.py"
+    "tests/unit/test_la_segmentation_service.py",
+    "tests/unit/test_ultrasound_phantom.py",
+    "tests/unit/test_synthetic_echo_corpus.py"
   ]
 }
