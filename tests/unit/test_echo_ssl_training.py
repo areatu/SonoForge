@@ -18,6 +18,12 @@ def torch_runtime():
 
 
 def test_ssl_import_and_help_do_not_require_torch(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    # The pure-core lane intentionally does not install the application. Its
+    # conftest sys.path injection is not inherited by a fresh interpreter.
+    # Replace inherited PYTHONPATH so this probe also works on an uninstalled
+    # checkout rather than relying on a developer's editable installation.
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(root / "src"), str(root))))
     code = """
 import builtins
 real=builtins.__import__
