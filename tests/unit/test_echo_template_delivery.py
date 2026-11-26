@@ -20,6 +20,8 @@ from echo_personal_tool.domain.models.metadata import InstanceMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from tests.unit.test_echo_template_core import decode
 
+pytestmark = pytest.mark.gui
+
 
 class Signals(QObject):
     finished = Signal(object)

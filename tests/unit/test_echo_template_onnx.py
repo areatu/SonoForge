@@ -7,12 +7,6 @@ import json
 
 import numpy as np
 import pytest
-
-pytest.importorskip("torch")
-pytest.importorskip("torchvision")
-pytest.importorskip("onnx")
-pytest.importorskip("onnxruntime")
-
 from scripts.echo_template_data import load_synthetic_samples
 from scripts.echo_template_losses import atlas_bank_arrays, crossing_penalty, decode_torch_mesh
 from scripts.export_echo_template_onnx import export_bundle
@@ -23,6 +17,15 @@ from scripts.train_echo_template_multitask import parse_args, train
 from echo_personal_tool.domain.services.echo_template_contract import default_atlases
 from echo_personal_tool.infrastructure.echo_template_engine import EchoTemplateEngine
 from tests.unit.test_echo_template_core import numerical_heads
+
+
+@pytest.fixture(autouse=True)
+def _optional_ml_toolchain():
+    # Keep collection identical with/without training extras. A module-level
+    # importorskip emits a JUnit collection-skip outside the selected inventory,
+    # including in GUI shards that deselect these tests, and trips the CI gate.
+    for package in ("torch", "torchvision", "onnx", "onnxruntime"):
+        pytest.importorskip(package)
 
 
 def test_differentiable_geometry_matches_numpy_before_safety_backtracking():
