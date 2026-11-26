@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from echo_personal_tool.domain.models.view_recognition import ViewDecision
+from echo_personal_tool.domain.models.view_recognition import ViewDecision, ViewDecisionSource
 
 _SAFE_UID = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -98,6 +98,13 @@ class JsonViewDecisionStore:
 
     def save(self, decision: ViewDecision) -> None:
         decisions = self._read_decisions(decision.study_uid)
+        existing = decisions.get(decision.series_uid)
+        if (
+            decision.source is not ViewDecisionSource.MANUAL
+            and isinstance(existing, dict)
+            and existing.get("source", "manual") == ViewDecisionSource.MANUAL.value
+        ):
+            return
         decisions[decision.series_uid] = decision.to_dict()
         payload = json.dumps(
             {"schema_version": 1, "decisions": decisions},
