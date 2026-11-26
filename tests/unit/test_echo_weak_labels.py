@@ -35,14 +35,35 @@ def test_three_real_anchors_are_exact_but_interpolated_nodes_remain_weak(view, c
     np.testing.assert_allclose(target.points, other.points, atol=1e-12)
 
 
-def test_bounded_gradient_refinement_keeps_all_three_user_anchors():
+@pytest.mark.parametrize("mixed_batch_kernel", [False, True], ids=["native", "mixed-batch-kernel"])
+def test_bounded_gradient_refinement_keeps_all_three_user_anchors(monkeypatch, mixed_batch_kernel):
+    if mixed_batch_kernel:
+        original_transform = CanonicalFrame.image_to_atlas
+
+        def transform(frame, points):
+            values = np.asarray(points)
+            if len(values) > 3:
+                # Accelerate/BLAS may use a different reduction for the full
+                # contour than for its three anchors. Reproduce that rounding
+                # distinction on every platform, including Linux CI.
+                return np.einsum("ij,kj->ik", values - frame.origin, np.asarray(frame.matrix))
+            return original_transform(frame, points)
+
+        monkeypatch.setattr(CanonicalFrame, "image_to_atlas", transform)
     atlas = build_cardiac_atlas("A4C")
     points = np.asarray(fit_chamber_landmarks(atlas, "LV", *[tuple(p) for p in ANCHORS], phase="ED"))
     image = np.zeros((160, 128), np.float32)
     cv2.polylines(image, [np.rint(points).astype(np.int32)], False, 1.0, 2)
     target = reconstruct_weak_shape(atlas, "LV", ANCHORS, phase="ED", image=image)
     canonical = CanonicalFrame.from_landmarks(*[tuple(p) for p in ANCHORS])
-    np.testing.assert_allclose(target.points[list(target.anchor_indices)], canonical.image_to_atlas(ANCHORS))
+    # An absolute bound is essential at the apex's near-zero canonical X;
+    # rtol alone rejects ordinary cross-kernel roundoff (~1e-18).
+    np.testing.assert_allclose(
+        target.points[list(target.anchor_indices)], canonical.image_to_atlas(ANCHORS), rtol=0, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        canonical.atlas_to_image(target.points[list(target.anchor_indices)]), ANCHORS, rtol=0, atol=1e-10
+    )
     assert target.gradient_refined
     np.testing.assert_array_equal(target.node_weights[list(target.anchor_indices)], np.ones(3))
     flat = reconstruct_weak_shape(atlas, "LV", ANCHORS, phase="ED", image=np.zeros_like(image))
