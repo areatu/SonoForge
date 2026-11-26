@@ -61,6 +61,7 @@
     "tests/unit/test_echo_active_mining.py",
     "tests/unit/test_echo_mining_inference.py",
     "tests/unit/test_rv_segmentation_service.py",
-    "tests/unit/test_rv_auto_bench.py"
+    "tests/unit/test_rv_auto_bench.py",
+    "tests/unit/test_training_archive.py"
   ]
 }

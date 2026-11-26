@@ -605,6 +605,7 @@ def build_la_assist_contour(
             apex_landmark=blended_apex,
             points=boundary_pts,
             source="manual",
+            auto_generated=True,
             num_nodes=32,
             frame_index=frame_index,
             review_pending=False,
@@ -623,6 +624,7 @@ def build_la_assist_contour(
     return dataclasses.replace(
         fallback,
         source="manual",
+        auto_generated=True,
         frame_index=frame_index,
         review_pending=False,
     )

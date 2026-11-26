@@ -54,6 +54,12 @@ from echo_personal_tool.application.segmentation_jobs import SegmentationJobs
 from echo_personal_tool.application.server_io import OrthancCache, make_orthanc_session_cache
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+from echo_personal_tool.application.training_archive import MeasurementArchiveCapture
+from echo_personal_tool.application.training_archive_runtime import (
+    archive_state_changed,
+    bind_archive,
+    local_archive_capture,
+)
 from echo_personal_tool.application.user_preferences import (
     default_user_preferences,
     load_user_preferences,
@@ -330,6 +336,7 @@ class AppServices:
     )
     #: Persistence directory of the view-decision store.
     view_decisions_dir: Path | None = None
+    training_archive: MeasurementArchiveCapture | None = None
 
     @property
     def cache_budget(self) -> FrameCacheBudget:
@@ -343,6 +350,10 @@ _CONTROLLER_SERVICES: WeakKeyDictionary[object, AppServices] = WeakKeyDictionary
 def bind_controller_services(controller: object, services: AppServices) -> None:
     """Associate ``services`` with ``controller`` without adding instance attributes."""
     _CONTROLLER_SERVICES[controller] = services
+    capture = getattr(services, "training_archive", None)
+    bind_archive(controller, capture, lambda: services.state_manager.snapshot)
+    if capture is not None:
+        services.state_manager.state_changed.connect(lambda state: archive_state_changed(capture, state))
 
 
 def services_of(controller: object) -> AppServices | None:
@@ -662,6 +673,7 @@ def build_app_services(
         view_recognizer=view_recognizer,
         view_workflow=view_workflow,
         view_decisions_dir=view_decisions_dir,
+        training_archive=local_archive_capture(permitted=not hermetic and profile_name == PROFILE_FULL),
     )
 
 

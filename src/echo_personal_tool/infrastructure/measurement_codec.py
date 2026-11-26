@@ -250,6 +250,13 @@ def _encode(value: object) -> object:
             # scored something — a study without stress data keeps the exact
             # wire shape older schemas accept.
             fields = fields - {"stress_echo"}
+        if isinstance(value, Contour):
+            if value.geometry_kind == "trace":
+                fields = fields - {"geometry_kind"}
+            if not value.auto_edited:
+                fields = fields - {"auto_edited"}
+            if not value.auto_generated:
+                fields = fields - {"auto_generated"}
         if isinstance(value, (DopplerPeakMarker, DopplerIntervalMarker, DopplerTrace)):
             if not (value.sop_instance_uid or value.frame_index is not None):
                 # A marker measured before lineage was recorded keeps its old wire
@@ -390,6 +397,17 @@ def _validate_derived_snapshot(snapshot: object) -> None:
     return
 
 
+def _validate_contour(item: Contour) -> None:
+    if (
+        item.geometry_kind not in {"trace", "landmark_prior"}
+        or type(item.auto_edited) is not bool
+        or type(item.auto_generated) is not bool
+        or len(item.points) < 3
+        or len(item.measurement_label or "") > 256
+    ):
+        raise MeasurementStorageError("invalid")
+
+
 def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     try:
         validate_imt_storage(data.imt_measurements, sources)
@@ -462,8 +480,7 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
                     if value is not None and value <= 0:
                         raise MeasurementStorageError("invalid")
     for item in data.contours:
-        if len(item.points) < 3 or len(item.measurement_label or "") > 256:
-            raise MeasurementStorageError("invalid")
+        _validate_contour(item)
     for item in data.linear_measurements:
         if len(item.label) > 256 or item.pixel_length < 0 or type(item.submillimeter) is not bool:
             raise MeasurementStorageError("invalid")

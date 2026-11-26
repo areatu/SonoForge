@@ -128,3 +128,7 @@ rag-code-mcp.yaml
 assets/sonoforge_preview.gif
 assets/presenter_demo.gif
 src/echo_personal_tool/resources/references/Standard_echo_RUS.pdf
+
+# Opt-in LOCAL measurement training archive (pixels may contain PHI)
+measurement-training.sqlite3*
+measurement-training-archive/

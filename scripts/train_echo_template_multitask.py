@@ -18,7 +18,13 @@ for entry in (ROOT, ROOT / "src"):
         sys.path.insert(0, str(entry))
 
 import numpy as np  # noqa: E402
-from scripts.echo_template_data import TemplateDataset, assign_group_splits, load_gold_samples, load_synthetic_samples  # noqa: E402
+from scripts.echo_template_data import (
+    TemplateDataset,
+    assign_group_splits,
+    load_gold_samples,
+    load_measurement_corpus,
+    load_synthetic_samples,
+)  # noqa: E402
 from scripts.echo_template_losses import atlas_bank_arrays, multitask_loss  # noqa: E402
 from scripts.echo_template_network import build_template_network  # noqa: E402
 from scripts.generate_synthetic_echo_corpus import load_atlases, validate_output  # noqa: E402
@@ -93,6 +99,8 @@ def train(args) -> Path:
         model.load_state_dict(checkpoint["state_dict"], strict=True)
     samples = load_synthetic_samples(args.synthetic_manifest) if args.synthetic_manifest else []
     samples += load_gold_samples(args.gold)
+    for path in getattr(args, "measurement_corpus", []):
+        samples += load_measurement_corpus(path)
     if not samples:
         raise ValueError("no local training samples")
     assign_group_splits(samples, seed=args.seed)
@@ -175,6 +183,13 @@ def parse_args(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--synthetic-manifest", type=Path)
     parser.add_argument("--gold", type=Path, action="append", default=[])
+    parser.add_argument(
+        "--measurement-corpus",
+        type=Path,
+        action="append",
+        default=[],
+        help="Explicit reviewed LOCAL archive manifest; pixels may contain PHI",
+    )
     parser.add_argument("--atlas", type=Path, action="append", default=[])
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--imagenet", action="store_true")

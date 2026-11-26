@@ -34,6 +34,13 @@ class Contour:
     #: Content revision, incremented on each edit (QH-1b.1).
     revision: int = 0
 
+    #: Trace vs atlas reconstruction from sparse clicks; never silently gold.
+    geometry_kind: str = "trace"
+    #: User edited an automatic contour; acceptance must not erase its origin.
+    auto_edited: bool = False
+    #: AI assistance may retain a clinical source id; keep its origin separately.
+    auto_generated: bool = False
+
     @property
     def is_open_arc(self) -> bool:
         return self.mitral_annulus is not None

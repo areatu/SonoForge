@@ -58,6 +58,7 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_SERVER,
     TabSessionManager,
 )
+from echo_personal_tool.application.training_archive_runtime import complete_archive, confirm_archive
 from echo_personal_tool.application.user_preferences import (
     SESSION_SOURCE_FOLDER,
     SESSION_SOURCE_SERVER,
@@ -750,6 +751,7 @@ class MainWindow(QMainWindow):
             return
         if self._viewer.finish_contour():
             return
+        confirm_archive(self._controller)
         # Manual protocol advance: Enter confirms the pending next step (the
         # auto timer is off by default — 2026-10-25, «ждать подтверждение»).
         self.protocol.advance_pending()
@@ -6235,6 +6237,7 @@ class MainWindow(QMainWindow):
     def _on_contour_completed(self, contour: object) -> None:
         if not isinstance(contour, Contour):
             return
+        complete_archive(self._controller, self._viewer.contours())
         chamber = contour.chamber.upper()
         if chamber not in {"LV", "LA", "RA", "RV", "AREA", "VOL"}:
             return
