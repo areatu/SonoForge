@@ -217,12 +217,12 @@ def test_current_revision_curation_invalidates_on_edit_and_does_not_change_clini
     assert "BLOCKED" in text
 
 
-def test_quota_pause_counts_and_explicit_opt_in(tmp_path, monkeypatch):
+def test_quota_pause_counts_and_default_collection(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
     monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", raising=False)
     monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", raising=False)
-    assert local_archive_capture(permitted=True) is None
+    assert local_archive_capture(permitted=True) is not None
     configure_collection(enabled=True, directory=tmp_path / "collection", quota_bytes=16 * 1024**2)
     capture = local_archive_capture(permitted=True)
     assert capture is not None
@@ -326,3 +326,51 @@ def test_symlink_import_root_cannot_escape_workspace(pair, tmp_path):
     with pytest.raises(ValueError):
         debian.import_material(tmp_path / "package")
     assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_saved_collection_choice_survives_environment_and_reload(tmp_path, monkeypatch, enabled):
+    from echo_personal_tool.application.ml_workbench import collection_settings
+    from echo_personal_tool.infrastructure.local_ml_storage import load_settings
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
+    monkeypatch.setenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", "0" if enabled else "1")
+    monkeypatch.setenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", str(tmp_path / "env"))
+    directory = tmp_path / "saved"
+    configure_collection(enabled=enabled, directory=directory, quota_bytes=32 * 1024**2)
+    for _ in range(2):
+        assert (
+            collection_settings()
+            == load_settings()
+            == {
+                "enabled": enabled,
+                "directory": str(directory),
+                "quota_bytes": 32 * 1024**2,
+            }
+        )
+    monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE")
+    capture = local_archive_capture(permitted=True)
+    assert (capture is not None) is enabled
+    if capture is not None:
+        assert capture.archive.path == directory / "measurement-training.sqlite3"
+    assert not directory.exists()  # opening settings/capture does not archive anything
+
+
+def test_collection_defaults_are_complete_and_savable(tmp_path, monkeypatch):
+    from echo_personal_tool.application.ml_workbench import collection_settings
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
+    monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", raising=False)
+    monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", raising=False)
+    settings = collection_settings()
+    assert settings["enabled"] is True
+    assert Path(settings["directory"]).is_absolute()
+    configure_collection(
+        enabled=settings["enabled"],
+        directory=Path(settings["directory"]),
+        quota_bytes=settings["quota_bytes"],
+    )
+    assert collection_settings() == settings
+    assert not Path(settings["directory"]).exists()

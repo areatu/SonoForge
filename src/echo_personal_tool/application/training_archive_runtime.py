@@ -1,4 +1,4 @@
-"""Composition and thin runtime bridge for the opt-in local archive."""
+"""Composition and thin runtime bridge for the local archive."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _binding(controller: object) -> tuple[MeasurementArchiveCapture, Callable[[]
 
 
 def local_archive_capture(*, permitted: bool) -> MeasurementArchiveCapture | None:
-    """uv run alone is NOT consent. Require explicit UI opt-in or env settings.
+    """Collection defaults on in permitted source builds; explicit opt-out wins.
 
     An absolute external directory is mandatory: never put patient pixels in
     source trees, release assets, diagnostic logs or the disposable app cache.

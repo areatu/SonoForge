@@ -20,6 +20,7 @@ from echo_personal_tool.infrastructure.local_ml_storage import (
     external_path,
     load_settings,
     save_settings,
+    settings_path,
 )
 from echo_personal_tool.infrastructure.ml_archive_transfer import (
     archive_identity,
@@ -36,9 +37,9 @@ from echo_personal_tool.infrastructure.training_archive import SqliteMeasurement
 def collection_settings() -> dict[str, Any]:
     """Return a detached configuration snapshot; UI never owns a storage adapter."""
     settings = dict(load_settings())
-    if "SONOFORGE_LOCAL_TRAINING_ARCHIVE" in os.environ:
+    if not settings_path().is_file() and "SONOFORGE_LOCAL_TRAINING_ARCHIVE" in os.environ:
         settings["enabled"] = os.environ["SONOFORGE_LOCAL_TRAINING_ARCHIVE"] == "1"
-        settings["directory"] = os.environ.get("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", "")
+        settings["directory"] = os.environ.get("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", settings["directory"])
     return settings
 
 

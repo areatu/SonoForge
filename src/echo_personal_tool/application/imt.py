@@ -10,15 +10,29 @@ from __future__ import annotations
 import numpy as np
 
 from echo_personal_tool.domain.models.imt import Boundary, ImtDraft, ImtPolicy, ImtRefusal, ImtSource
-from echo_personal_tool.domain.services.imt_detection import BoundaryHint, detect_boundaries, edge_evidence
+from echo_personal_tool.domain.services.imt_detection import (
+    BoundaryHint,
+    automatic_hints,
+    detect_boundaries,
+    edge_evidence,
+)
 from echo_personal_tool.domain.services.imt_geometry import measure_boundaries
 
 
 def propose_imt(
-    image: np.ndarray, source: ImtSource, policy: ImtPolicy, *, lumen_y: BoundaryHint, adventitia_y: BoundaryHint
+    image: np.ndarray,
+    source: ImtSource,
+    policy: ImtPolicy,
+    *,
+    lumen_y: BoundaryHint | None = None,
+    adventitia_y: BoundaryHint | None = None,
 ) -> ImtDraft:
     """Propose two boundaries in the bounded ROI; output is always a draft."""
     evidence = edge_evidence(image, source)
+    if lumen_y is None and adventitia_y is None:
+        lumen_y, adventitia_y = automatic_hints(evidence, source, policy)
+    if lumen_y is None or adventitia_y is None:
+        raise ImtRefusal("both_boundary_hints_required")
     li, ma = detect_boundaries(evidence, source, policy, lumen_y=lumen_y, adventitia_y=adventitia_y)
     return measure_boundaries(source, policy, li, ma, evidence)
 
