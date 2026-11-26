@@ -269,6 +269,7 @@ def fit_contour_from_landmarks(
         points=resampled,
         source="model",
         geometry_kind="landmark_prior",
+        auto_generated=True,
         num_nodes=node_count,
     )
 

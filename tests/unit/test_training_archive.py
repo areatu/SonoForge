@@ -322,7 +322,14 @@ def test_actual_three_landmark_fitter_marks_prior_not_strong_and_assist_keeps_ai
     from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from_landmarks
 
     prior = fit_contour_from_landmarks(septal=(20.0, 90.0), lateral=(90.0, 90.0), apex=(45.0, 15.0), phase="ED")
-    assert prior.geometry_kind == "landmark_prior"
+    assert prior.geometry_kind == "landmark_prior" and prior.auto_generated
+    accepted = make_archive_sample(
+        replace(prior, source="manual", frame_index=2),
+        np.zeros((128, 160)),
+        ArchiveContext("p", "s", "series", "sop", "0.4.2"),
+        "id",
+    )
+    assert accepted.metadata["origin"] == "AUTO_ACCEPTED"
     y, x = np.mgrid[:128, :128]
     mask = (((x - 60) / 30) ** 2 + ((y - 60) / 40) ** 2 < 1).astype(np.uint8)
     assisted = build_la_assist_contour(
