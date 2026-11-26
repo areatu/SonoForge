@@ -109,6 +109,9 @@ from PySide6.QtWidgets import QApplication
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.composition import AppServices, build_app_services
 from echo_personal_tool.application.profile_settings import ProfileName
+from echo_personal_tool.application.view_recognition_coordinator import (
+    ViewRecognitionCoordinator,
+)
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.profile import display_name
 from echo_personal_tool.infrastructure.profile import profile as get_profile
@@ -430,10 +433,20 @@ def _run_application(app: QApplication, services: AppServices) -> int:
             getattr(preferences, "measurement_persistence_enabled", capabilities.measurement_storage_default)
         )
     controller = AppController(services)
+    view_coordinator = ViewRecognitionCoordinator(
+        services.view_workflow,
+        controller._thread_pool,  # noqa: SLF001 - composition-owned wiring
+        controller._resolve_study_uid,  # noqa: SLF001
+        lambda: controller._current_instance,  # noqa: SLF001
+        services.frame_cache,
+        lambda: controller._current_frame_pixels,  # noqa: SLF001
+    )
+    controller.frame_loaded.connect(view_coordinator.on_frame_loaded)
     window = MainWindow(
         controller=controller,
         user_preferences=preferences,
         services=services,
+        view_coordinator=view_coordinator,
     )
     scheduled = _schedule_last_session(window, preferences)
     if scheduled != "none":

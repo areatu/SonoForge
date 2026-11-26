@@ -46,6 +46,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 MANIFEST_PATH = MODELS_DIR / "model_manifest.json"
 DEFAULT_WEIGHTS = MODELS_DIR / "deeplabv3_resnet50_random.pt"
 DEFAULT_OUTPUT = MODELS_DIR / "echonet_seg_resnet50_finetuned.onnx"
+DEFAULT_A2C_OUTPUT = MODELS_DIR / "echonet_a2c_resnet50.onnx"
 INPUT_SIZE = 112
 MODEL_ID = "echonet_seg_resnet50_finetuned"
 BACKBONE_INIT_CHOICES = ("manifest", "imagenet_torchvision", "random")
@@ -55,6 +56,7 @@ def _require_torch() -> None:
     if torch is None or nn is None or F is None or torchvision is None:
         msg = "torch and torchvision are required to run LV segmentation training"
         raise RuntimeError(msg)
+A2C_MODEL_ID = "echonet_a2c_resnet50"
 
 
 def rasterize_polygon(
@@ -131,6 +133,88 @@ def load_lv_samples(manifest_path: Path) -> list[dict[str, Any]]:
                     "points": points,
                 }
             )
+def load_lv_samples(
+    manifest_path: Path,
+    *,
+    view: str = "A4C",
+    gold_dir: Path | None = None,
+) -> list[dict]:
+    """Load LV gold samples from manifest + gold directory, filtered by view."""
+    view_norm = (view or "A4C").strip().upper()
+    resolved_gold_dir = gold_dir if gold_dir is not None else (manifest_path.parent / "gold")
+    samples: list[dict] = []
+
+    if manifest_path.is_file():
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        for study in manifest.get("studies", []):
+            study_id = study["study_id"]
+            instance_path = study["instance_path"]
+            gold_path = resolved_gold_dir / f"lv_{study_id}.json"
+            if not gold_path.is_file():
+                continue
+
+            with open(gold_path, encoding="utf-8") as f:
+                gold = json.load(f)
+
+            for phase_key, frame_key in [("ED", "ed_frame"), ("ES", "es_frame")]:
+                frame_index = study.get(frame_key)
+                if frame_index is None:
+                    continue
+
+                gold_frame = None
+                for gf in gold.get("frames", []):
+                    gf_view = str(gf.get("view", "A4C")).upper()
+                    if view_norm != "ALL" and gf_view != view_norm:
+                        continue
+                    if gf.get("phase") == phase_key and gf.get("frame_index") == frame_index:
+                        gold_frame = gf
+                        break
+                if gold_frame is None:
+                    continue
+
+                points = gold_frame.get("points", [])
+                if len(points) < 3:
+                    continue
+
+                samples.append(
+                    {
+                        "instance_path": gold_frame.get("instance_path") or instance_path,
+                        "frame_index": frame_index,
+                        "phase": phase_key,
+                        "view": str(gold_frame.get("view", "A4C")).upper(),
+                        "points": points,
+                    }
+                )
+        return samples
+
+    if resolved_gold_dir.is_dir():
+        for gold_path in sorted(resolved_gold_dir.glob("lv_*.json")):
+            with open(gold_path, encoding="utf-8") as f:
+                gold = json.load(f)
+            default_inst = gold.get("instance_path", "")
+            for gf in gold.get("frames", []):
+                gf_view = str(gf.get("view", "A4C")).upper()
+                if view_norm != "ALL" and gf_view != view_norm:
+                    continue
+                phase_key = str(gf.get("phase", "")).upper()
+                if phase_key not in {"ED", "ES"}:
+                    continue
+                points = gf.get("points", [])
+                inst_path = gf.get("instance_path") or default_inst
+                frame_idx = gf.get("frame_index")
+                if len(points) < 3 or not inst_path or frame_idx is None:
+                    continue
+                samples.append(
+                    {
+                        "instance_path": inst_path,
+                        "frame_index": int(frame_idx),
+                        "phase": phase_key,
+                        "view": gf_view,
+                        "points": points,
+                    }
+                )
 
     return samples
 
@@ -172,6 +256,11 @@ class LVGoldDataset:
         self._fixed_std = fixed_std
         self._rng = np.random.default_rng(seed)
         self._cache: list[tuple[np.ndarray, np.ndarray, tuple[float, float, float, float] | None]] = []
+        self._cache: list[tuple[np.ndarray, np.ndarray]] = []
+
+        from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
+        from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
+        from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 
         for s in samples:
             frame = _resolve_frame(str(s["instance_path"]), int(s["frame_index"]))
@@ -412,13 +501,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--backbone-init", choices=BACKBONE_INIT_CHOICES, default="manifest")
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
+def update_model_manifest(onnx_path: Path, model_id: str, manifest_path: Path = MANIFEST_PATH) -> None:
+    if not manifest_path.is_file() or not onnx_path.is_file():
+        return
+    digest = hashlib.sha256(onnx_path.read_bytes()).hexdigest()
+    size = onnx_path.stat().st_size
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    models = data.setdefault("models", {})
+    entry = models.setdefault(model_id, {"id": model_id, "filename": onnx_path.name})
+    entry["filename"] = onnx_path.name
+    entry["status"] = "exported"
+    entry["sha256"] = digest
+    entry["file_size_bytes"] = size
+    manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print(f"Manifest updated for {model_id}: sha256={digest[:16]}… ({size:,} bytes)")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder (A4C / A2C)")
+    parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "manifest.json")
+    parser.add_argument("--gold-dir", type=Path, default=None)
+    parser.add_argument("--view", choices=("A4C", "A2C", "ALL"), default="A4C")
+    parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--update-manifest", action="store_true")
     parser.add_argument("--device", default="cpu")
     return parser.parse_args(argv)
 
+    output_path = args.output
+    if output_path is None:
+        output_path = DEFAULT_A2C_OUTPUT if args.view == "A2C" else DEFAULT_OUTPUT
+    model_id = A2C_MODEL_ID if args.view == "A2C" else MODEL_ID
+
+    print(f"Loading LV gold ({args.view}) from {args.manifest} ...")
+    samples = load_lv_samples(args.manifest, view=args.view, gold_dir=args.gold_dir)
+    print(f"Found {len(samples)} LV samples (ED+ES, view={args.view})")
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
@@ -462,9 +582,14 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
     )
     export_onnx(model, args.output, input_size=INPUT_SIZE)
+    model = build_model()
+    train_model(model, dataset, epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device=args.device)
+    export_onnx(model, output_path, input_size=INPUT_SIZE)
 
     if args.verify:
-        verify_onnx(args.output, input_size=INPUT_SIZE)
+        verify_onnx(output_path, input_size=INPUT_SIZE)
+    if args.update_manifest:
+        update_model_manifest(output_path, model_id=model_id)
 
     print("Done.")  # noqa: T201
     return 0

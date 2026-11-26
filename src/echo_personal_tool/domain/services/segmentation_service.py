@@ -1074,13 +1074,16 @@ def open_arc_from_cavity_mask(
                     y_max=y_max,
                 )
             except ValueError:
+                if view != "A4C":
+                    msg = "cavity annulus fallback unavailable for non-A4C view"
+                    raise ValueError(msg) from None
                 frame_h, frame_w = original_shape or binary.shape[:2]
                 septal, lateral, apex = _ma_onnx_fallback(
                     component_mask,
                     (frame_h, frame_w),
                 )
 
-    if view == "A4C" and annulus_end == "auto":
+    if view in ("A4C", "A2C") and annulus_end == "auto":
         annulus_mid_y = (septal[1] + lateral[1]) / 2.0
         if annulus_mid_y < apex[1]:
             try:
@@ -1097,12 +1100,13 @@ def open_arc_from_cavity_mask(
 
     raw_shape = original_shape or binary.shape[:2]
     frame_shape = (int(raw_shape[0]), int(raw_shape[1]))
-    septal, lateral = _try_refine_annulus_with_onnx(
-        septal,
-        lateral,
-        component_mask,
-        frame_shape,
-    )
+    if view == "A4C":
+        septal, lateral = _try_refine_annulus_with_onnx(
+            septal,
+            lateral,
+            component_mask,
+            frame_shape,
+        )
 
     boundary = mask_to_contour(component_mask, frame_shape)
     if len(boundary) < 4:

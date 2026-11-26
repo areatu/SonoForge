@@ -134,8 +134,11 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.lv_auto",
         (
+            _btn("menu.auto_ef_biplane", MeasurementAction.AUTO_EF, view="A4C", phase="ED"),
             _btn("menu.simpson_ed_kdo", MeasurementAction.MBS_SIMPSON, view="A4C", phase="ED"),
             _btn("menu.simpson_es_kso", MeasurementAction.MBS_SIMPSON, view="A4C", phase="ES"),
+            _btn("menu.simpson_a2c_ed_auto", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ED"),
+            _btn("menu.simpson_a2c_es_auto", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ES"),
         ),
     ),
     (
@@ -259,6 +262,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.strain_pos_a2c", MeasurementAction.STE_VIEW_A2C),
             _btn("menu.strain_pos_a3c", MeasurementAction.STE_VIEW_A3C),
             _btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
+            _btn("menu.la_strain_trace", MeasurementAction.LA_STRAIN, view="A4C"),
+            _btn("menu.rv_free_wall", MeasurementAction.RV_FREE_WALL, view="A4C"),
         ),
     ),
     (
@@ -293,6 +298,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.imt_right", caliper_label="IMT-R"),
             _btn("menu.imt_left", caliper_label="IMT-L"),
+            _btn("menu.imt_semiauto", MeasurementAction.IMT_SEMIAUTO),
             _btn("menu.vessel_bct", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="BCT"),
             _btn("menu.vessel_cca_right", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-R"),
             _btn("menu.vessel_cca_left", MeasurementAction.VESSEL_PSV_EDV, vessel=True, caliper_label="CCA-L"),
@@ -387,6 +393,7 @@ _EXPERIMENTAL_BUTTONS: dict[str, str] = {
 # whole "menu.lv_auto" section would be dead weight.
 _AI_ONNX_ACTIONS = frozenset(
     {
+        str(MeasurementAction.AUTO_EF),
         str(MeasurementAction.LAV_4C_AI_PLUS),
         str(MeasurementAction.LAV_4C_AUTO),
         str(MeasurementAction.MBS_SIMPSON),

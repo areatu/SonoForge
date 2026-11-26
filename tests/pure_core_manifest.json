@@ -1,6 +1,7 @@
 {
   "modules": [
     "tests/unit/test_analysis_jobs.py",
+    "tests/unit/test_auto_ef_pipeline.py",
     "tests/unit/test_burned_ecg_mask.py",
     "tests/unit/test_chamber_simpson.py",
     "tests/unit/test_ctmr_slice_requests.py",

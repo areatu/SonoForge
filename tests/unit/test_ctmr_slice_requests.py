@@ -21,9 +21,15 @@ pytest_plugins = ("tests.unit.test_ctmr_stacks",)
 
 
 def _pixels(path, value):
+    import os
+
+    before_mtime = path.stat().st_mtime_ns
     ds = pydicom.dcmread(path)
     ds.PixelData = np.full((16, 24), value, dtype="<i2").tobytes()
     ds.save_as(path, enforce_file_format=True)
+    st = path.stat()
+    if st.st_mtime_ns == before_mtime:
+        os.utime(path, ns=(st.st_atime_ns, before_mtime + 1_000_000))
 
 
 def _receive(service):
@@ -274,3 +280,38 @@ def test_duplicate_positions_remain_separate_exact_sops(make_file):
     assert not stack.spatial_order_verified and "duplicate_positions" in stack.warnings
     assert [frame.sop_uid for frame in stack.frames] == ["1.2.3.10", "1.2.3.20"]
     assert [int(read_ctmr_slice(frame)[0, 0]) for frame in stack.frames] == [10, 20]
+
+
+def test_directional_prefetch_populates_cache_and_preempts_for_foreground(make_file):
+    paths = [make_file(f"s{i}", z=i) for i in range(5)]
+    for i, p in enumerate(paths):
+        _pixels(p, i + 1)
+    stack = index_ctmr_files(paths).stacks[0]
+    ready_events = []
+    service = CtMrSliceRequests(
+        read_ctmr_slice,
+        source_is_current,
+        on_ready=lambda: ready_events.append(1),
+    )
+    try:
+        service.select_stack(stack)
+        service.prefetch([1, 2, 3])
+        deadline = monotonic() + 5
+        drained = []
+        while monotonic() < deadline and len(drained) < 3:
+            drained.extend(service.drain_prefetched())
+            sleep(0.005)
+        assert [idx for idx, _, _ in drained] == [1, 2, 3]
+        assert [int(px[0, 0]) for _, _, px in drained] == [2, 3, 4]
+        assert ready_events
+        # Foreground request after prefetch serves prefetched slice immediately when still queued
+        service.prefetch([4])
+        deadline = monotonic() + 5
+        while monotonic() < deadline and not service._prefetched:
+            sleep(0.005)
+        ticket = service.request(4)
+        result = _receive(service)
+        assert result.ticket is ticket and service.claim(result)
+        assert result.pixels is not None and int(result.pixels[0, 0]) == 5
+    finally:
+        service.close()

@@ -434,9 +434,7 @@ class ReportPreview(QWidget):
             return False
         self._document = document
         self._update_notice_banner()
-        # The release does not expose unverified growth charts, even for
-        # documents that already contain Z-score rows.
-        self._growth_button.setVisible(False)
+        self._growth_button.setVisible(_document_has_growth_rows(document))
         self._anchors = dict(rendered.anchors)
         self._pdf_bytes = rendered.pdf
         self._show_status("")

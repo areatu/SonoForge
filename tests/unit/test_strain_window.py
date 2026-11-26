@@ -1146,8 +1146,6 @@ class TestArcStrainWindow:
         w = StrainWindow()
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(self._result())
-        assert w._arc_window is None  # not exposed by the release UI
-        w._update_arc_window(self._result())  # research component remains testable
         assert w._arc_window is not None and w._arc_window.isVisible()
         arc = w._arc_window
         assert arc._values["rv_gls"].text() == "-22.0%"
@@ -1160,11 +1158,12 @@ class TestArcStrainWindow:
         w = StrainWindow()
         with patch.object(w, "_update_panel_a4c"):
             w.show_result(self._result())
-        w._update_arc_window(self._result())
         arc = w._arc_window
+        assert arc is not None
         arc.close()
         assert w._arc_window is None
-        w._update_arc_window(self._result())
+        with patch.object(w, "_update_panel_a4c"):
+            w.show_result(self._result())
         assert w._arc_window is not None and w._arc_window.isVisible()
         w.close()
 
@@ -1246,7 +1245,7 @@ class TestBurnedEcgVisibility:
         assert "ED/ES 0/5 (image), 82%" in w._meta_label.text()
 
 
-def test_strain_json_export_omits_layer_values_without_changing_study(tmp_path, monkeypatch):
+def test_strain_json_export_includes_layer_values_and_kernels(tmp_path, monkeypatch):
     import json
     from dataclasses import replace
 
@@ -1276,16 +1275,13 @@ def test_strain_json_export_omits_layer_values_without_changing_study(tmp_path, 
     window._save_json()
     exported = json.loads(path.read_text(encoding="utf-8"))
     for record in (exported["analysis"], exported["study"]["analyses"]["A4C"]):
-        assert "layer_gls" not in record["values"]
-        assert "transmural_gradient_pp" not in record["values"]
-        assert "layers" not in record["definitions"]
-    assert exported["kernel_positions_ed"] == [[1.0, 2.0]]
-    assert analysis.layer_gls["epi"] == -10.0
-    assert result.tracked_ed_positions.tolist() == [[1.0, 2.0], [3.0, 4.0]]
+        assert record["values"]["layer_gls"] == {"endo": -18.0, "epi": -10.0}
+        assert record["values"]["transmural_gradient_pp"] == 8.0
+    assert exported["kernel_positions_ed"] == [[1.0, 2.0], [3.0, 4.0]]
     window.close()
 
 
-def test_restored_layered_result_only_displays_endo_kernels():
+def test_restored_layered_result_displays_all_layer_kernels():
     from echo_personal_tool.domain.models.speckle import StrainResult
     from echo_personal_tool.ui.strain_window import StrainWindow
 
@@ -1301,7 +1297,6 @@ def test_restored_layered_result_only_displays_endo_kernels():
     window = StrainWindow()
     with patch.object(window._panel_a4c, "set_tracked_overlay") as display:
         window.show_result(result)
-    np.testing.assert_array_equal(display.call_args.args[0], positions[:, :1, :])
-    assert display.call_args.kwargs["layers"] == ["endo"]
-    assert positions.shape == (3, 2, 2)
+    np.testing.assert_array_equal(display.call_args.args[0], positions)
+    assert display.call_args.kwargs["layers"] == ["endo", "epi"]
     window.close()

@@ -144,29 +144,28 @@ def test_sync_with_ultrasound_tab_is_inactive(qtbot) -> None:
     assert controller.is_active is False
 
 
-def test_release_gate_disables_the_surface_by_default(qtbot, monkeypatch) -> None:
-    """Without the opt-in nothing mounts and nothing routes (#557 release gate)."""
+def test_surface_is_enabled_by_default(qtbot, monkeypatch) -> None:
+    """The CT/MR stack surface mounts by default without needing an env var."""
     monkeypatch.delenv("SONOFORGE_ENABLE_CTMR", raising=False)
+    controller, window = _make_controller(qtbot)
+    assert controller._viewer is not None
+    assert window._viewer_stack.count() >= 2
+
+
+def test_env_zero_disables_the_surface(qtbot, monkeypatch) -> None:
+    """Setting ``SONOFORGE_ENABLE_CTMR=0`` explicitly opts out of the surface."""
+    from echo_personal_tool.presentation import ctmr_surface_controller as module
+
+    monkeypatch.setenv("SONOFORGE_ENABLE_CTMR", "0")
     controller, window = _make_controller(qtbot)
     assert controller._viewer is None
     assert window._viewer_stack.count() == 1
-    controller.apply([_us_study()])
-    controller.sync()
-    assert controller.is_active is False
-    assert controller.apply_layout_visibility() is False
-    assert controller.create_viewer() is None
-
-
-def test_release_gate_blocks_a_truthy_index(qtbot, monkeypatch) -> None:
-    """The gate precedes routing: even a ready index never activates the surface."""
-    from echo_personal_tool.presentation import ctmr_surface_controller as module
-
-    monkeypatch.delenv("SONOFORGE_ENABLE_CTMR", raising=False)
-    controller, window = _make_controller(qtbot)
     monkeypatch.setattr(module, "build_ctmr_index", lambda studies: object())
     controller.apply([_us_study()])
     assert controller.is_active is False
     assert window._viewer_stack.currentWidget() is window._viewer
+    assert controller.apply_layout_visibility() is False
+    assert controller.create_viewer() is None
 
 
 def test_opt_in_routes_a_ready_index(qtbot, monkeypatch) -> None:

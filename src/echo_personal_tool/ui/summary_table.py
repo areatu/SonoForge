@@ -102,9 +102,6 @@ class SummaryTable(QWidget):
             row.addWidget(val)
             layout.addLayout(row)
             self._rows[key] = (lbl, val, unit)
-            if key in {"gwi", "gwe", "la_lasr", "la_lascd", "la_lasct", "rv_gls", "gls_mid", "gls_epi", "gls_grad"}:
-                lbl.hide()
-                val.hide()
 
         # ── Cuff BP input (plan А.9): the MW loop needs an amplitude, and the
         # amplitude must come from a person with a cuff, never invented. The
@@ -136,8 +133,6 @@ class SummaryTable(QWidget):
         bp_row.addWidget(self._bp_slash)
         bp_row.addWidget(self._dbp_edit)
         layout.addLayout(bp_row)
-        for widget in (bp_label, self._sbp_edit, self._bp_slash, self._dbp_edit):
-            widget.hide()
 
         layout.addStretch()
 

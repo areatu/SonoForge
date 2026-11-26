@@ -992,6 +992,21 @@ class StudyMeasurementSessionStore:
             return
         self.restore(study_uid, replace(data, derived_snapshot=snapshot))
 
+    def upsert_result_provenance(self, study_uid: str, provenance: ResultProvenance) -> None:
+        """Insert or replace one ResultProvenance entry by result_id, marking study dirty."""
+        data = self.get(study_uid)
+        kept = [item for item in data.result_provenance if item.result_id != provenance.result_id]
+        kept.append(provenance)
+        self._set(study_uid, replace(data, result_provenance=tuple(kept)))
+
+    def get_result_provenance(self, study_uid: str, result_id: str) -> ResultProvenance | None:
+        """Return stored ResultProvenance for result_id, or None."""
+        data = self.get(study_uid)
+        for item in data.result_provenance:
+            if item.result_id == result_id:
+                return item
+        return None
+
     def set_imt_measurement(self, study_uid: str, draft: ImtDraft) -> None:
         """One structured IMT record per source/frame/side/segment, dirty on save."""
         if draft.source.study_uid != study_uid:
