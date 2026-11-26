@@ -24,9 +24,10 @@ class SqliteMeasurementArchive:
     anonymisation: source pixels may include patient text. No network methods.
     """
 
-    def __init__(self, path: Path, *, read_only: bool = False) -> None:
+    def __init__(self, path: Path, *, read_only: bool = False, quota_bytes: int | None = None) -> None:
         self.path = path
         self.read_only = read_only
+        self.quota_bytes = quota_bytes
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -69,6 +70,10 @@ class SqliteMeasurementArchive:
             ).fetchone()
             if old is not None and not old[1] and old[2:] == (metadata, digest):
                 return False
+            new_frame = db.execute("SELECT 1 FROM frames WHERE hash=?", (digest,)).fetchone() is None
+            required = len(metadata.encode("utf-8")) + (len(pixels) if new_frame else 0) + 65536
+            if self.quota_bytes is not None and self.path.stat().st_size + required > self.quota_bytes:
+                raise ArchiveWriteError("local archive quota reached")
             revision = old[0] + 1 if old else 1
             db.execute("INSERT OR IGNORE INTO frames VALUES(?,?)", (digest, pixels))
             db.execute(

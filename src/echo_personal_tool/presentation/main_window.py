@@ -1647,14 +1647,12 @@ class MainWindow(QMainWindow):
         self._show_user_preferences()
 
     def _build_app_menu(self) -> QMenu:
-        """The application menu of the logo button (spec §4.1).
+        """Logo menu: settings, local tools, layout, references and help (§4.1)."""
+        from echo_personal_tool.presentation.ml_workbench_dialog import populate_local_tools_menu
 
-        Settings, layout, the reference set, help, about and quit move here from
-        the button row of the system bar; UI-1 PR-3 empties the bar further.
-        """
         menu = QMenu(self)
         menu.setObjectName("appMenu")
-        menu.addAction(tr("app_menu.settings")).triggered.connect(self._show_user_preferences)
+        populate_local_tools_menu(self, menu, self._show_user_preferences, self._profile_name, self._controller)
         populate_window_user_menu(self, menu)
         layout_menu = self._build_layout_menu(menu)
         layout_menu.setObjectName("appMenuLayout")

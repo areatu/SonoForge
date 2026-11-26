@@ -241,6 +241,7 @@ files = [
     "src/echo_personal_tool/presentation/magnifier_lens.py",
     "src/echo_personal_tool/presentation/measurement_action.py",
     "src/echo_personal_tool/presentation/mmode_scan_line.py",
+    "src/echo_personal_tool/presentation/ml_workbench_dialog.py",
     "src/echo_personal_tool/presentation/mode_caliper_actions.py",
     "src/echo_personal_tool/presentation/multiview_transport.py",
     "src/echo_personal_tool/presentation/orthanc_date_filter.py",

@@ -39,7 +39,7 @@ def _binding(controller: object) -> tuple[MeasurementArchiveCapture, Callable[[]
 
 
 def local_archive_capture(*, permitted: bool) -> MeasurementArchiveCapture | None:
-    """uv run alone is NOT consent. Require two explicit environment settings.
+    """uv run alone is NOT consent. Require explicit UI opt-in or env settings.
 
     An absolute external directory is mandatory: never put patient pixels in
     source trees, release assets, diagnostic logs or the disposable app cache.
@@ -47,9 +47,28 @@ def local_archive_capture(*, permitted: bool) -> MeasurementArchiveCapture | Non
     """
     import sys
 
-    if not permitted or getattr(sys, "frozen", False) or os.environ.get("SONOFORGE_LOCAL_TRAINING_ARCHIVE") != "1":
+    if not permitted or getattr(sys, "frozen", False):
         return None
-    value = os.environ.get("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", "")
+    from echo_personal_tool.infrastructure.local_ml_storage import load_settings
+
+    quota = None
+    # Explicit environment configuration takes precedence over persisted UI opt-in.
+    if "SONOFORGE_LOCAL_TRAINING_ARCHIVE" in os.environ:
+        if os.environ["SONOFORGE_LOCAL_TRAINING_ARCHIVE"] != "1":
+            return None
+        value = os.environ.get("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", "")
+    else:
+        try:
+            settings = load_settings()
+            if not settings["enabled"]:
+                return None
+            value = settings["directory"]
+            quota = settings["quota_bytes"]
+            if type(quota) is not int or not 16 * 1024**2 <= quota <= 1024**4:
+                return None
+        except (OSError, ValueError, KeyError, TypeError):
+            logging.getLogger(__name__).warning("Local training archive disabled: invalid local settings")
+            return None
     configured = Path(value)
     try:
         path = configured.resolve()
@@ -62,7 +81,7 @@ def local_archive_capture(*, permitted: bool) -> MeasurementArchiveCapture | Non
     from echo_personal_tool.infrastructure.training_archive import SqliteMeasurementArchive
 
     return MeasurementArchiveCapture(
-        SqliteMeasurementArchive(path / "measurement-training.sqlite3"),
+        SqliteMeasurementArchive(path / "measurement-training.sqlite3", quota_bytes=quota),
         lambda: logging.getLogger(__name__).warning("Local training archive skipped; clinical measurement unchanged"),
     )
 

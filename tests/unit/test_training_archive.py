@@ -447,3 +447,18 @@ def test_training_adapter_refuses_unsupported_labels_explicitly(setup_archive, t
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError, match=reason):
         load_measurement_corpus(path)
+
+
+def test_auto_ef_legacy_edited_source_and_lowercase_phase_are_not_lost(setup_archive):
+    archive, capture, context, image, contour, _ = setup_archive
+    edited = replace(contour, source="ai_edited", phase="ed", auto_edited=False)
+    capture.observe([edited], image, 2, context)
+    capture.confirm(context.instance_key, 2)
+    [record] = archive.records()
+    assert record["origin"] == "AUTO_EDITED"
+    assert record["phase"] == "ED"
+    assert record["phase_semantics"] == "ventricular_end_diastole"
+    # Case normalization must not create a second measurement slot.
+    capture.observe([replace(edited, phase="ED")], image, 2, context)
+    capture.confirm(context.instance_key, 2)
+    assert len(archive.records()) == 1

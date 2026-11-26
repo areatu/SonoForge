@@ -2,14 +2,18 @@
 
 Реализация [#697](https://github.com/areatu/SonoForge/issues/697). Это **локальный
 источник примеров**, не online-обучение, не автоматический gold и не активация
-новых весов. Рабочее место ML, просмотр/курирование и оркестрация остаются задачей
-[#699](https://github.com/areatu/SonoForge/issues/699).
+новых весов. Первый этап [#699](https://github.com/areatu/SonoForge/issues/699)
+добавляет dev-UI сбора/просмотра/курирования и локальный перенос между Windows и
+Debian: [руководство рабочего места ML](local_ml_workbench_ru.md). Мастер обучения,
+независимая оценка и активация остаются следующими этапами #699.
 
 ## Явное включение для разработки
 
 По умолчанию сбор **выключен**, в том числе при обычном `uv run sonoforge`.
-Нужны одновременно два параметра окружения; каталог должен быть абсолютным,
-вне любого Git checkout, отдельно от логов и исходных исследований:
+Можно явно включить сбор и квоту в меню «Локальное рабочее место ML» и
+перезапустить приложение. Альтернатива для CLI — одновременно два параметра
+окружения; каталог должен быть абсолютным, вне любого Git checkout, отдельно от
+логов и исходных исследований:
 
 ```bash
 SONOFORGE_LOCAL_TRAINING_ARCHIVE=1 \
@@ -25,7 +29,9 @@ $env:SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR = "$HOME\SonoForge-local-training"
 uv run sonoforge
 ```
 
-При удалении переменных новые примеры не собираются, уже накопленные не удаляются.
+Явная env-конфигурация приоритетна над UI; `SONOFORGE_LOCAL_TRAINING_ARCHIVE=0`
+выключает сбор. После удаления переменных применяется сохранённый UI opt-in
+(если его нет, сбор выключен). Накопленные данные не удаляются.
 Presenter, hermetic test composition и frozen-бинарники игнорируют opt-in:
 включение в публичный релиз ещё **не принято**. Само включение не создаёт файлы
 и не сканирует старые исследования. Архив появляется при работе с контурами.
@@ -89,8 +95,8 @@ composition. Он принимает законченные domain-контур�
   Zoom/pan viewer не меняют координаты; viewport-координаты вне кадра отвергаются;
 - schema/app version, phase mapping version, stable sample/measurement keys,
   revision и статус исключения;
-- локальные HMAC-связи patient/study/series/instance/measurement с отдельной
-  случайной солью архива. Исходные UIDs, PatientName, PatientID, birth date,
+- локальные HMAC-связи patient/study/series/instance/measurement со случайной
+  солью архива (в #699 её можно явно перенести на второй пустой архив до сбора). Исходные UIDs, PatientName, PatientID, birth date,
   описания исследований, пути и подписи измерений не записываются в JSON.
 
 Запись кадра и метаданных атомарна в одной SQLite-транзакции. Одинаковые кадры
@@ -205,7 +211,8 @@ RA не подменяется LA/RV и не исчезает из архива.
 Git ignore дополнительно закрывает имя БД и типовой каталог. Код не сохраняет
 пациентские кадры внутри package, поэтому build/release их не собирают.
 
-Проверки: `test_training_archive.py` (54 synthetic backend cases),
+Исторические проверки при завершении #697 (не статус всей #699):
+`test_training_archive.py` (54 synthetic backend cases),
 `test_training_archive_runtime.py` (5 real controller/viewer lifecycle tests),
 полный pure-core набор (1058 passed, 6 skipped в чистой среде без Qt/ML), strict mypy и архитектурные ратчеты. GUI-тесты в bare sandbox
 проверяются offscreen с существующим developer-only qtstub harness; это не проверка

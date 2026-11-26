@@ -127,3 +127,37 @@ def test_disabled_archive_completion_adds_no_clinical_recomputation(qapp, monkey
     complete_archive(controller, [Contour("ED")])
     assert services.training_archive is None and calls == []
     assert controller.measurement_persistence.close()
+
+
+@pytest.mark.parametrize("chamber", ["LV", "LA", "RV"])
+def test_real_viewer_ai_node_drag_stays_pending_and_archives_as_edited(live_archive, chamber):
+    from echo_personal_tool.domain.services.contour_geometry import resample_open_arc
+
+    archive, controller, viewer, _, _ = live_archive
+    points = resample_open_arc([(10.0, 45.0), (30.0, 10.0), (50.0, 45.0)], num_nodes=32)
+    contour = Contour(
+        "ES",
+        chamber=chamber,
+        source="ai",
+        review_pending=True,
+        points=points,
+        mitral_annulus=(points[0], points[-1]),
+        apex_landmark=(30.0, 10.0),
+        num_nodes=32,
+        frame_index=0,
+    )
+    controller.on_contours_changed([contour])
+    assert len(viewer.contours()) == 1
+    middle = len(points) // 2
+    x, y = points[middle]
+    viewer._drag_contour_point(0, middle, x, y)
+    viewer._finalize_contour_point_drag(0, middle, x + 1.0, y + 1.0)
+    [edited] = controller.state_manager.snapshot.contours
+    assert edited.auto_edited and edited.review_pending
+    assert edited.source == "ai"
+    confirm_archive(controller)
+    assert archive.records() == []
+    assert controller.accept_ai_contour_review("A4C", "ES")
+    [record] = archive.records()
+    assert record["origin"] == "AUTO_EDITED"
+    assert record["chamber"] == chamber

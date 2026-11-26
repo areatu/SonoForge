@@ -15,6 +15,7 @@ IDENTITY_TRANSFORM = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
 def phase_semantics(chamber: str, phase: str) -> str:
     """Existing atrial ES tools measure maximal volume, not atrial systole."""
+    phase = phase.upper()  # Auto-EF uses lowercase slots; semantics are identical.
     if phase not in {"ED", "ES"}:
         return "unspecified"
     if chamber in {"LA", "RA"}:
@@ -37,7 +38,7 @@ def atlas_phase(semantics: str) -> str:
 
 def measurement_slot(contour: Contour) -> str:
     """Same replacement identity as study session chamber contours, across frames."""
-    return "|".join((contour.chamber, contour.view, contour.phase))
+    return "|".join((contour.chamber, contour.view, contour.phase.upper()))
 
 
 def make_archive_sample(
@@ -72,7 +73,7 @@ def make_archive_sample(
         raise ValueError("incomplete contour")
     if np.any(points < 0) or np.any(points > [image.shape[1] - 1, image.shape[0] - 1]):
         raise ValueError("contour is not in the source frame grid")
-    if contour.source not in {"manual", "model", "ai", "ste_auto"}:
+    if contour.source not in {"manual", "model", "ai", "ai_edited", "ste_auto"}:
         raise ValueError("unknown contour origin")
     if contour.geometry_kind not in {"trace", "landmark_prior"}:
         raise ValueError("unknown geometry kind")
@@ -80,14 +81,14 @@ def make_archive_sample(
         if landmark is not None and not np.isfinite(np.asarray(landmark, dtype=float)).all():
             raise ValueError("invalid landmarks")
     automatic = contour.auto_generated or contour.source != "manual"
-    origin = "AUTO_EDITED" if contour.auto_edited else "AUTO_ACCEPTED"
+    origin = "AUTO_EDITED" if contour.auto_edited or contour.source == "ai_edited" else "AUTO_ACCEPTED"
     metadata: dict[str, object] = {
         **asdict(context),
         "schema_version": 1,
         "sample_id": sample_id,
         "chamber": contour.chamber,
         "view": contour.view,
-        "phase": contour.phase,
+        "phase": contour.phase.upper(),
         "phase_mapping_version": 1,
         "phase_semantics": phase_semantics(contour.chamber, contour.phase),
         "tool_id": f"chamber_{'open_arc' if contour.is_open_arc else 'polygon'}:{contour.chamber}",
