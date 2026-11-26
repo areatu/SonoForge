@@ -103,7 +103,14 @@ provenance и результаты gate (без optimizer/batches/исходны
 
 ## Проверено и чего это не доказывает
 
-- Полный Qt-free regression manifest: **965 passed**; целевые SSL-тесты: **27 passed**.
+- Полный Qt-free regression manifest с training extras: **965 passed**;
+  целевые SSL-тесты: **27 passed**.
+- Отдельная чистая среда без установки приложения, Qt и ML extras, только с
+  закреплёнными в `uv.lock` pytest, pytest-timeout, numpy, scipy, pydicom и
+  opencv-python-headless: `python scripts/run_pure_core_tests.py -q` —
+  **959 passed, 6 skipped** (только optional ML-тесты). Подпроцесс import/help
+  явно получает путь к `src`: editable-установка не должна скрывать ошибку
+  импорта, отсутствующую лишь в окружении разработчика.
 - Positive-control smoke использует синтетические raw DICOM разных групп и
   модель с одним намеренно внесённым scanner-jitter параметром. Через реальный
   цикл `train()` (EMA, NCC, optimizer, validation и checkpoint) за 4 эпохи:
