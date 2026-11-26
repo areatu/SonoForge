@@ -44,6 +44,8 @@ def export_bundle(args) -> Path:
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     if checkpoint.get("schema_version") != 1 or checkpoint["class_names"] != list(TEMPLATE_VIEWS):
         raise ValueError("unsupported checkpoint")
+    if checkpoint.get("stage") == "ssl" and checkpoint.get("ssl_acceptance", {}).get("accepted") is not True:
+        raise ValueError("SSL candidate did not pass held-out acceptance")
     atlases = {k: CoupledShapeModel.from_dict(v) for k, v in checkpoint["atlases"].items()}
     validate_atlases(atlases)
     model = build_template_network().eval()

@@ -45,14 +45,20 @@ def atlas_bank_arrays(atlases):
     return bank
 
 
-def decode_torch_mesh(outputs, view, phase, bank):
+def decode_torch_mesh(outputs, view, phase, bank, *, phase_weight=None):
     import torch
     from torch.nn import functional as f
 
     batch = torch.arange(len(view), device=view.device)
     index = view.clamp(min=0)
     pose, coefficients, offsets = outputs[4][batch, index], outputs[5][batch, index], outputs[6][batch, index]
-    mean = torch.where(phase[:, None, None] == 0, bank["ed"][index], bank["es"][index])
+    if phase_weight is None:
+        mean = torch.where(phase[:, None, None] == 0, bank["ed"][index], bank["es"][index])
+    else:
+        # ML.4 has no ED/ES labels per raw frame. Continuous weights are
+        # measured phase (or an explicitly stated detached teacher estimate).
+        weight = phase_weight[:, None, None]
+        mean = (1 - weight) * bank["ed"][index] + weight * bank["es"][index]
     mesh = mean + torch.einsum("bk,bknd->bnd", coefficients * bank["std"][index], bank["modes"][index])
     mesh = mesh + offsets[..., None] * bank["normals"][index]
     direction = f.normalize(pose[:, 2:4], dim=1, eps=1e-8)

@@ -51,6 +51,11 @@
     "tests/unit/test_synthetic_echo_output_paths.py",
     "tests/unit/test_echo_template_core.py",
     "tests/unit/test_echo_template_training.py",
+    "tests/unit/test_echo_ssl_objectives.py",
+    "tests/unit/test_echo_ssl_data.py",
+    "tests/unit/test_echo_ssl_training.py",
+    "tests/unit/test_echo_ssl_smoke.py",
+    "tests/unit/test_echo_ssl_gates.py",
     "tests/unit/test_rv_segmentation_service.py",
     "tests/unit/test_rv_auto_bench.py"
   ]
