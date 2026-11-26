@@ -56,6 +56,10 @@
     "tests/unit/test_echo_ssl_training.py",
     "tests/unit/test_echo_ssl_smoke.py",
     "tests/unit/test_echo_ssl_gates.py",
+    "tests/unit/test_study_view_resolver.py",
+    "tests/unit/test_echo_weak_labels.py",
+    "tests/unit/test_echo_active_mining.py",
+    "tests/unit/test_echo_mining_inference.py",
     "tests/unit/test_rv_segmentation_service.py",
     "tests/unit/test_rv_auto_bench.py"
   ]

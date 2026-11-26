@@ -270,6 +270,7 @@ class ViewDecisionSource(Enum):
     """Where a persisted :class:`ViewDecision` came from."""
 
     AUTO = "auto"
+    AUTO_STUDY_CONTEXT = "auto_study_context"
     MANUAL = "manual"
 
 

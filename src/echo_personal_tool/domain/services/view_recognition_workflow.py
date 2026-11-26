@@ -34,6 +34,7 @@ from echo_personal_tool.domain.models.view_recognition import (
     view_category,
 )
 from echo_personal_tool.domain.ports import IViewDecisionStore, IViewRecognizer
+from echo_personal_tool.domain.services.study_view_resolver import StudyViewClip, StudyViewCue, resolve_study_views
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,40 @@ class ViewRecognitionWorkflow:
         recognized = self._recognizer.recognize(frames)
         return self._to_suggestion_from_recognized(recognized)
 
+    def suggest_study(
+        self,
+        clips: Sequence[StudyViewClip],
+        *,
+        study_uid: str,
+        cues: Sequence[StudyViewCue] = (),
+    ) -> tuple[ViewDecision, ...]:
+        """Non-mutating study suggestions; the UI must opt in separately.
+
+        Manual decisions are restored from the port, never inferred from an
+        automatically predicted view or silently written back as manual.
+        """
+        decisions = {}
+        for clip in clips:
+            decision = self._store.load(study_uid, clip.series_uid)
+            if decision is not None:
+                if decision.study_uid != study_uid or decision.series_uid != clip.series_uid:
+                    raise ValueError("view decision identity mismatch")
+                decisions[clip.series_uid] = decision
+        resolved = resolve_study_views(clips, manual_decisions=decisions, cues=cues, threshold=self._threshold)
+        return tuple(
+            decisions[result.series_uid]
+            if result.source is ViewDecisionSource.MANUAL
+            else ViewDecision(
+                study_uid,
+                result.series_uid,
+                result.view,
+                result.source,
+                result.confidence,
+                view_profile_id(result.view),
+            )
+            for result in resolved
+        )
+
     def apply_override(
         self,
         view: str,
@@ -129,6 +164,10 @@ class ViewRecognitionWorkflow:
 
     def save_decision(self, decision: ViewDecision) -> None:
         """Persist an already-built decision through the store port."""
+        if decision.source is not ViewDecisionSource.MANUAL:
+            restored = self._store.load(decision.study_uid, decision.series_uid)
+            if restored is not None and restored.source is ViewDecisionSource.MANUAL:
+                return
         self._store.save(decision)
 
     def _to_suggestion(self, decision: ViewDecision) -> ViewSuggestion:
