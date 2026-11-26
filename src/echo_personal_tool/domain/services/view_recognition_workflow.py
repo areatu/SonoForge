@@ -25,7 +25,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from echo_personal_tool.domain.models.view_recognition import (
-    KNOWN_VIEWS,
+    ALL_RECOGNIZABLE_VIEWS,
     RECOGNITION_CONFIDENCE_THRESHOLD,
     UNKNOWN_VIEW,
     RecognizedView,
@@ -67,7 +67,7 @@ def view_profile_id(view: str) -> str | None:
     """
     from echo_personal_tool.domain.study_profiles import STUDY_PROFILE_ECHO
 
-    if view == UNKNOWN_VIEW or view not in KNOWN_VIEWS:
+    if view == UNKNOWN_VIEW or view not in ALL_RECOGNIZABLE_VIEWS:
         return None
     return STUDY_PROFILE_ECHO
 

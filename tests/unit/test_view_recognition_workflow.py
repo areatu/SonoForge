@@ -131,6 +131,8 @@ def test_view_profile_mapping() -> None:
 
     assert view_profile_id("A4C") == STUDY_PROFILE_ECHO
     assert view_profile_id("PSAX") == STUDY_PROFILE_ECHO
+    assert view_profile_id("RV_A4C") == STUDY_PROFILE_ECHO
+    assert view_profile_id("SUBCOSTAL") == STUDY_PROFILE_ECHO
     assert view_profile_id(UNKNOWN_VIEW) is None
     assert view_profile_id("not-a-view") is None
 

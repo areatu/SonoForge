@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Fine-tune EchoNet DeepLabV3-ResNet50 decoder on LV gold segmentation masks.
+"""Fine-tune DeepLabV3-ResNet50 decoder on LV gold segmentation masks (issue #687 / ML.0a).
 
-Loads gold contours from manifest + gold/lv_*.json, rasterizes to masks,
-trains a light decoder head (frozen ResNet backbone), exports to ONNX.
-
-Usage:
-    python scripts/finetune_lv_seg.py --manifest manifest.json
-    python scripts/finetune_lv_seg.py --manifest manifest.json --epochs 40 --verify
+Aligns LV fine-tuning with serve-time ``OnnxInferenceEngine``:
+1. Preserves pretrained ResNet50/ASPP weights via shape-checked state-dict filtering.
+2. Uses :func:`prepare_training_pair` (burned-ECG masking + ``center_square`` ROI
+   crop + ``prepare_tensor`` z-score/fixed normalization) so ``train == serve``.
+3. Removes horizontal mirroring and splits train/val by ``study_id`` without leakage.
 """
 
 from __future__ import annotations
@@ -14,26 +13,51 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import random
 import sys
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import torchvision
+except ImportError:  # pragma: no cover - optional heavy ML runtime
+    torch = None  # type: ignore[assignment]
+    nn = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
+    torchvision = None  # type: ignore[assignment]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+if str(PROJECT_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
+from echo_personal_tool.domain.services.segmentation_preprocess import (
+    filter_segmentation_backbone_state_dict,
+    prepare_training_pair,
+    split_samples_by_study,
+)
+from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
+
 MODELS_DIR = PROJECT_ROOT / "models"
 MANIFEST_PATH = MODELS_DIR / "model_manifest.json"
+DEFAULT_WEIGHTS = MODELS_DIR / "deeplabv3_resnet50_random.pt"
 DEFAULT_OUTPUT = MODELS_DIR / "echonet_seg_resnet50_finetuned.onnx"
 DEFAULT_A2C_OUTPUT = MODELS_DIR / "echonet_a2c_resnet50.onnx"
 INPUT_SIZE = 112
 MODEL_ID = "echonet_seg_resnet50_finetuned"
 A2C_MODEL_ID = "echonet_a2c_resnet50"
+BACKBONE_INIT_CHOICES = ("manifest", "imagenet_torchvision", "random")
+
+
+def _require_torch() -> None:
+    if torch is None or nn is None or F is None or torchvision is None:
+        msg = "torch and torchvision are required to run LV segmentation training"
+        raise RuntimeError(msg)
 
 
 def rasterize_polygon(
@@ -47,16 +71,34 @@ def rasterize_polygon(
     return mask
 
 
+def resolve_manifest_normalization(
+    manifest_path: Path = MANIFEST_PATH,
+) -> tuple[list[float] | None, list[float] | None]:
+    if not manifest_path.is_file():
+        return None, None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    preprocessing = manifest.get("preprocessing", {})
+    if not isinstance(preprocessing, dict):
+        return None, None
+    if preprocessing.get("normalization_mode", "per_frame") == "per_frame":
+        return None, None
+    fixed_mean = preprocessing.get("fixed_mean")
+    fixed_std = preprocessing.get("fixed_std")
+    if fixed_mean is None or fixed_std is None:
+        return None, None
+    return [float(v) for v in fixed_mean], [float(v) for v in fixed_std]
+
+
 def load_lv_samples(
     manifest_path: Path,
     *,
     view: str = "A4C",
     gold_dir: Path | None = None,
-) -> list[dict]:
-    """Load LV gold samples from manifest + gold directory, filtered by view."""
+) -> list[dict[str, Any]]:
+    """Load view-filtered LV samples, retaining study identifiers for leak-free splits."""
     view_norm = (view or "A4C").strip().upper()
     resolved_gold_dir = gold_dir if gold_dir is not None else (manifest_path.parent / "gold")
-    samples: list[dict] = []
+    samples: list[dict[str, Any]] = []
 
     if manifest_path.is_file():
         with open(manifest_path, encoding="utf-8") as f:
@@ -94,6 +136,8 @@ def load_lv_samples(
 
                 samples.append(
                     {
+                        "study_id": str(study_id),
+                        "study_uid": str(study.get("study_uid") or study_id),
                         "instance_path": gold_frame.get("instance_path") or instance_path,
                         "frame_index": frame_index,
                         "phase": phase_key,
@@ -108,6 +152,8 @@ def load_lv_samples(
             with open(gold_path, encoding="utf-8") as f:
                 gold = json.load(f)
             default_inst = gold.get("instance_path", "")
+            study_id = str(gold.get("study_id") or gold_path.stem.removeprefix("lv_"))
+            study_uid = str(gold.get("study_uid") or study_id)
             for gf in gold.get("frames", []):
                 gf_view = str(gf.get("view", "A4C")).upper()
                 if view_norm != "ALL" and gf_view != view_norm:
@@ -122,6 +168,8 @@ def load_lv_samples(
                     continue
                 samples.append(
                     {
+                        "study_id": study_id,
+                        "study_uid": study_uid,
                         "instance_path": inst_path,
                         "frame_index": int(frame_idx),
                         "phase": phase_key,
@@ -134,36 +182,44 @@ def load_lv_samples(
 
 
 def _resolve_frame(instance_path: str, frame_index: int) -> np.ndarray | None:
+    """Read DICOM frame preserving RGB channels when present so ECG strip masking fires."""
     try:
         from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 
         reader = DicomReaderImpl()
         frame = reader.read_pixels(Path(instance_path), frame_index)
-        if frame.ndim == 3 and frame.shape[2] == 3:
-            frame = np.mean(frame[..., :3], axis=2)
-        # Normalize to uint8 — DICOM pixels may not be in 0-255 range
-        frame = frame.astype(np.float32)
-        fmin, fmax = frame.min(), frame.max()
+        if frame.ndim == 3 and frame.shape[2] == 4:
+            frame = frame[..., :3]
+        frame_f = frame.astype(np.float32)
+        fmin, fmax = float(frame_f.min()), float(frame_f.max())
         if fmax > fmin:
-            frame = (frame - fmin) / (fmax - fmin) * 255.0
+            frame_f = (frame_f - fmin) / (fmax - fmin) * 255.0
         else:
-            frame = np.zeros_like(frame)
-        return frame.astype(np.uint8)
+            frame_f = np.zeros_like(frame_f)
+        return frame_f.astype(np.uint8)
     except Exception:
         return None
 
 
-class LVGoldDataset(torch.utils.data.Dataset):
-    def __init__(self, samples: list[dict], input_size: int = INPUT_SIZE) -> None:
+class LVGoldDataset:
+    def __init__(
+        self,
+        samples: list[dict[str, Any]],
+        *,
+        input_size: int = INPUT_SIZE,
+        augment: bool = False,
+        fixed_mean: list[float] | None = None,
+        fixed_std: list[float] | None = None,
+        seed: int = 42,
+    ) -> None:
         self._input_size = input_size
-        self._cache: list[tuple[np.ndarray, np.ndarray]] = []
-
-        from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
-        from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
-        from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
-
+        self._augment = augment
+        self._fixed_mean = fixed_mean
+        self._fixed_std = fixed_std
+        self._rng = np.random.default_rng(seed)
+        self._cache: list[tuple[np.ndarray, np.ndarray, tuple[float, float, float, float] | None]] = []
         for s in samples:
-            frame = _resolve_frame(s["instance_path"], s["frame_index"])
+            frame = _resolve_frame(str(s["instance_path"]), int(s["frame_index"]))
             if frame is None:
                 continue
             h, w = frame.shape[:2]
@@ -173,47 +229,30 @@ class LVGoldDataset(torch.utils.data.Dataset):
                 media_format="dicom",
                 panel_layout=try_parse_from_path(Path(s["instance_path"])),
             )
-            cropped_frame, transform = crop_frame_for_echonet(
-                frame,
-                roi_xyxy=roi_xyxy,
-                crop_mode="center_square",
-            )
-            cropped_mask = mask[
-                transform.crop_y0 : transform.crop_y0 + transform.crop_height,
-                transform.crop_x0 : transform.crop_x0 + transform.crop_width,
-            ]
-            self._cache.append((cropped_frame, cropped_mask))
+            self._cache.append((frame, mask, roi_xyxy))
 
     def __len__(self) -> int:
         return len(self._cache)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        frame, mask = self._cache[idx]
-        frame_r = cv2.resize(frame, (self._input_size, self._input_size), interpolation=cv2.INTER_CUBIC)
-        mask_r = cv2.resize(mask, (self._input_size, self._input_size), interpolation=cv2.INTER_NEAREST)
-        frame_t = torch.from_numpy(frame_r).float().unsqueeze(0) / 255.0
-        frame_t = frame_t.expand(3, -1, -1)
-        mask_t = torch.from_numpy(mask_r).float().unsqueeze(0)
-        return frame_t, mask_t
+    def __getitem__(self, idx: int) -> tuple[Any, Any]:
+        _require_torch()
+        frame, mask, roi_xyxy = self._cache[idx]
+        input_chw, mask_1hw = prepare_training_pair(
+            frame,
+            mask,
+            roi_xyxy=roi_xyxy,
+            crop_mode="center_square",
+            target_size=self._input_size,
+            fixed_mean=self._fixed_mean,
+            fixed_std=self._fixed_std,
+            augment=self._augment,
+            rng=self._rng,
+        )
+        return torch.from_numpy(input_chw), torch.from_numpy(mask_1hw)
 
 
-def augment_pair(
-    frame: torch.Tensor,
-    mask: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    if random.random() > 0.5:
-        frame = torch.flip(frame, dims=[2])
-        mask = torch.flip(mask, dims=[2])
-    if random.random() > 0.5:
-        gamma = random.uniform(0.7, 1.5)
-        frame = frame.clamp(min=1e-6).pow(gamma)
-    if random.random() > 0.5:
-        noise = torch.randn_like(frame) * 0.05
-        frame = (frame + noise * frame).clamp(0.0, 1.0)
-    return frame, mask
-
-
-def bce_dice_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def bce_dice_loss(logits: Any, target: Any) -> Any:
+    _require_torch()
     bce = F.binary_cross_entropy_with_logits(logits, target)
     probs = torch.sigmoid(logits)
     intersection = (probs * target).sum(dim=(1, 2, 3))
@@ -222,28 +261,56 @@ def bce_dice_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return bce + dice.mean()
 
 
-def build_model() -> nn.Module:
-    # ImageNet-pretrained backbone
+def _load_checkpoint_dict(weights_path: Path) -> dict[str, Any]:
+    _require_torch()
     try:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            weights="DEFAULT",
-        )
+        raw = torch.load(weights_path, map_location="cpu", weights_only=False)
     except TypeError:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            pretrained=True,
-        )
-    # Replace classifier: 21-class → 1-class with positive bias (encourage foreground)
+        raw = torch.load(weights_path, map_location="cpu")
+    if isinstance(raw, dict) and "state_dict" in raw and isinstance(raw["state_dict"], dict):
+        return raw["state_dict"]
+    if isinstance(raw, dict):
+        return raw
+    msg = f"Unsupported checkpoint format at {weights_path}: {type(raw)}"
+    raise ValueError(msg)
+
+
+def build_model(
+    *,
+    backbone_init: str = "manifest",
+    weights_path: Path = DEFAULT_WEIGHTS,
+) -> Any:
+    _require_torch()
+    if backbone_init not in BACKBONE_INIT_CHOICES:
+        msg = f"backbone_init must be one of {BACKBONE_INIT_CHOICES}, got {backbone_init!r}"
+        raise ValueError(msg)
+
+    use_tv_imagenet = backbone_init == "imagenet_torchvision" or (
+        backbone_init == "manifest" and not weights_path.is_file()
+    )
+    if use_tv_imagenet:
+        model = torchvision.models.segmentation.deeplabv3_resnet50(weights="DEFAULT")
+        init_source = "torchvision_imagenet"
+    else:
+        model = torchvision.models.segmentation.deeplabv3_resnet50(weights=None, aux_loss=False)
+        init_source = "random"
+
     classifier = model.classifier[-1]
     new_conv = nn.Conv2d(
         classifier.in_channels,
         1,
         kernel_size=classifier.kernel_size,
     )
-    nn.init.zeros_(new_conv.bias)
-    nn.init.constant_(new_conv.bias, 1.0)  # positive bias → sigmoid(1)≈0.73 initially
+    nn.init.constant_(new_conv.bias, 0.5)
     model.classifier[-1] = new_conv
+    model.aux_classifier = None
 
-    # Freeze backbone, train only classifier head (ASPP + new 1-class conv)
+    if backbone_init == "manifest" and weights_path.is_file():
+        ckpt_state = _load_checkpoint_dict(weights_path)
+        filtered, skipped = filter_segmentation_backbone_state_dict(ckpt_state, model.state_dict())
+        model.load_state_dict(filtered, strict=False)
+        init_source = f"manifest:{weights_path.name} ({len(filtered)} loaded, {len(skipped)} skipped)"
+
     for param in model.parameters():
         param.requires_grad = False
     for param in model.classifier.parameters():
@@ -251,21 +318,41 @@ def build_model() -> nn.Module:
 
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
-    print(f"Model: {trainable:,} trainable / {total:,} total params (classifier only)")
+    print(f"Model ({init_source}): {trainable:,} trainable / {total:,} total params")  # noqa: T201
     return model
 
 
+def _evaluate_iou(model: Any, dataset: LVGoldDataset, *, batch_size: int, device: str) -> float:
+    _require_torch()
+    if len(dataset) == 0:
+        return 0.0
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    model.eval()
+    ious: list[float] = []
+    with torch.no_grad():
+        for frames, masks in loader:
+            frames_d = frames.to(device)
+            preds = (torch.sigmoid(model(frames_d)["out"]).cpu() >= 0.5).float()
+            inter = (preds * masks).sum(dim=(1, 2, 3))
+            union = ((preds + masks) > 0).float().sum(dim=(1, 2, 3))
+            batch_iou = torch.where(union > 0, inter / union, torch.ones_like(union))
+            ious.extend(float(v) for v in batch_iou)
+    return float(np.mean(ious)) if ious else 0.0
+
+
 def train_model(
-    model: nn.Module,
+    model: Any,
     dataset: LVGoldDataset,
     *,
+    val_dataset: LVGoldDataset | None = None,
     epochs: int = 40,
     batch_size: int = 8,
     lr: float = 1e-4,
     device: str = "cpu",
-) -> None:
+) -> dict[str, float]:
+    _require_torch()
     if len(dataset) == 0:
-        print("ERROR: No training samples")
+        print("ERROR: No training samples")  # noqa: T201
         sys.exit(1)
 
     loader = torch.utils.data.DataLoader(
@@ -278,43 +365,60 @@ def train_model(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=lr,
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
 
     model.to(device)
-    model.train()
-    print(f"Training: {len(dataset)} samples, {epochs} epochs, lr={lr}")
+    best_iou = -1.0
+    best_state: dict[str, Any] | None = None
+    last_loss = 0.0
+
+    print(f"Training: {len(dataset)} samples, {epochs} epochs, lr={lr}")  # noqa: T201
     for epoch in range(1, epochs + 1):
+        model.train()
+        if hasattr(model, "backbone"):
+            model.backbone.eval()
         total_loss = 0.0
         n_batches = 0
         for frames, masks in loader:
-            frames, masks = frames.to(device), masks.to(device)
-            frames_aug, masks_aug = augment_pair(frames, masks)
+            frames_d, masks_d = frames.to(device), masks.to(device)
             optimizer.zero_grad()
-            output = model(frames_aug)["out"]
-            loss = bce_dice_loss(output, masks_aug)
+            output = model(frames_d)["out"]
+            loss = bce_dice_loss(output, masks_d)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            total_loss += float(loss.item())
             n_batches += 1
 
         scheduler.step()
-        avg = total_loss / max(n_batches, 1)
+        last_loss = total_loss / max(n_batches, 1)
+        val_iou = (
+            _evaluate_iou(model, val_dataset, batch_size=batch_size, device=device)
+            if val_dataset is not None and len(val_dataset) > 0
+            else 0.0
+        )
+        if val_dataset is not None and len(val_dataset) > 0 and val_iou >= best_iou:
+            best_iou = val_iou
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         if epoch % 5 == 0 or epoch == 1:
-            print(f"  Epoch {epoch:3d}/{epochs}: loss={avg:.4f}", flush=True)
+            print(f"  Epoch {epoch:3d}/{epochs}: loss={last_loss:.4f} val_iou={val_iou:.4f}", flush=True)  # noqa: T201
 
-    print("Training complete.")
-
-
-class _Wrapper(nn.Module):
-    def __init__(self, backbone: nn.Module) -> None:
-        super().__init__()
-        self.backbone = backbone
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.backbone(x)["out"]
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    print("Training complete.")  # noqa: T201
+    return {"final_train_loss": last_loss, "best_val_iou": max(best_iou, 0.0)}
 
 
-def export_onnx(model: nn.Module, output_path: Path, input_size: int = INPUT_SIZE) -> None:
+def export_onnx(model: Any, output_path: Path, input_size: int = INPUT_SIZE) -> None:
+    _require_torch()
+
+    class _Wrapper(nn.Module):  # type: ignore[misc]
+        def __init__(self, backbone: Any) -> None:
+            super().__init__()
+            self.backbone = backbone
+
+        def forward(self, x: Any) -> Any:
+            return self.backbone(x)["out"]
+
     model.cpu()
     model.eval()
     wrapper = _Wrapper(model)
@@ -331,7 +435,7 @@ def export_onnx(model: nn.Module, output_path: Path, input_size: int = INPUT_SIZ
         output_names=["logits"],
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
     )
-    print(f"ONNX exported: {output_path} ({output_path.stat().st_size:,} bytes)")
+    print(f"ONNX exported: {output_path} ({output_path.stat().st_size:,} bytes)")  # noqa: T201
 
 
 def verify_onnx(onnx_path: Path, input_size: int = INPUT_SIZE) -> None:
@@ -342,7 +446,27 @@ def verify_onnx(onnx_path: Path, input_size: int = INPUT_SIZE) -> None:
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     sample = np.random.randn(1, 3, input_size, input_size).astype(np.float32)
     logits = session.run(None, {"input": sample})[0]
-    print(f"Verify OK: shape={logits.shape}, range=[{logits.min():.3f}, {logits.max():.3f}]")
+    print(f"Verify OK: shape={logits.shape}, range=[{logits.min():.3f}, {logits.max():.3f}]")  # noqa: T201
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the combined ML.0a and A4C/A2C fine-tuning options."""
+    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder (A4C / A2C)")
+    parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "manifest.json")
+    parser.add_argument("--gold-dir", type=Path, default=None)
+    parser.add_argument("--view", choices=("A4C", "A2C", "ALL"), default="A4C")
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
+    parser.add_argument("--backbone-init", choices=BACKBONE_INIT_CHOICES, default="manifest")
+    parser.add_argument("--val-ratio", type=float, default=0.2)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--update-manifest", action="store_true")
+    parser.add_argument("--device", default="cpu")
+    return parser.parse_args(argv)
 
 
 def update_model_manifest(onnx_path: Path, model_id: str, manifest_path: Path = MANIFEST_PATH) -> None:
@@ -358,37 +482,54 @@ def update_model_manifest(onnx_path: Path, model_id: str, manifest_path: Path = 
     entry["sha256"] = digest
     entry["file_size_bytes"] = size
     manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"Manifest updated for {model_id}: sha256={digest[:16]}… ({size:,} bytes)")
+    print(f"Manifest updated for {model_id}: sha256={digest[:16]}… ({size:,} bytes)")  # noqa: T201
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder (A4C / A2C)")
-    parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "manifest.json")
-    parser.add_argument("--gold-dir", type=Path, default=None)
-    parser.add_argument("--view", choices=("A4C", "A2C", "ALL"), default="A4C")
-    parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--epochs", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--update-manifest", action="store_true")
-    parser.add_argument("--device", default="cpu")
-    args = parser.parse_args()
-
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     output_path = args.output
     if output_path is None:
         output_path = DEFAULT_A2C_OUTPUT if args.view == "A2C" else DEFAULT_OUTPUT
     model_id = A2C_MODEL_ID if args.view == "A2C" else MODEL_ID
 
-    print(f"Loading LV gold ({args.view}) from {args.manifest} ...")
+    print(f"Loading LV gold ({args.view}) from {args.manifest} ...")  # noqa: T201
     samples = load_lv_samples(args.manifest, view=args.view, gold_dir=args.gold_dir)
-    print(f"Found {len(samples)} LV samples (ED+ES, view={args.view})")
+    print(f"Found {len(samples)} LV samples (ED+ES, view={args.view})")  # noqa: T201
 
-    dataset = LVGoldDataset(samples, input_size=INPUT_SIZE)
-    print(f"Training samples: {len(dataset)}")
+    train_samples, val_samples = split_samples_by_study(
+        samples,
+        val_ratio=args.val_ratio,
+        seed=args.seed,
+    )
+    fixed_mean, fixed_std = resolve_manifest_normalization(MANIFEST_PATH)
+    train_ds = LVGoldDataset(
+        train_samples,
+        input_size=INPUT_SIZE,
+        augment=True,
+        fixed_mean=fixed_mean,
+        fixed_std=fixed_std,
+        seed=args.seed,
+    )
+    val_ds = LVGoldDataset(
+        val_samples,
+        input_size=INPUT_SIZE,
+        augment=False,
+        fixed_mean=fixed_mean,
+        fixed_std=fixed_std,
+        seed=args.seed,
+    )
+    print(f"Split by study_id: train={len(train_ds)}, val={len(val_ds)}")  # noqa: T201
 
-    model = build_model()
-    train_model(model, dataset, epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device=args.device)
+    model = build_model(backbone_init=args.backbone_init, weights_path=args.weights)
+    train_model(
+        model,
+        train_ds,
+        val_dataset=val_ds,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        device=args.device,
+    )
     export_onnx(model, output_path, input_size=INPUT_SIZE)
 
     if args.verify:
@@ -396,7 +537,7 @@ def main() -> int:
     if args.update_manifest:
         update_model_manifest(output_path, model_id=model_id)
 
-    print("Done.")
+    print("Done.")  # noqa: T201
     return 0
 
 

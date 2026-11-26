@@ -22,9 +22,36 @@ from typing import Any
 
 import numpy as np
 
-#: Canonic view identifiers the classifier may emit. ``UNKNOWN_VIEW`` is the
-#: fallback when the clip does not match a recognised view.
+#: Canonic view identifiers the legacy v1/v2 7-class classifier emits.
+#: ``UNKNOWN_VIEW`` is the fallback when the clip does not match a recognised view.
 KNOWN_VIEWS: tuple[str, ...] = ("A4C", "A2C", "A3C", "PLAX", "SAX", "PSAX", "TEE")
+
+#: Transthoracic standard view set including RV-focused apical 4-chamber and
+#: subcostal windows (issue #688 / ML.0b).
+TTE_STANDARD_VIEWS: tuple[str, ...] = (
+    "PLAX",
+    "PSAX",
+    "A4C",
+    "RV_A4C",
+    "A2C",
+    "A3C",
+    "SUBCOSTAL",
+)
+
+#: Full superset of canonical echocardiographic views supported across v1/v2+
+#: manifests and workflow routing.
+EXTENDED_KNOWN_VIEWS: tuple[str, ...] = (
+    "PLAX",
+    "PSAX",
+    "A4C",
+    "RV_A4C",
+    "A2C",
+    "A3C",
+    "SUBCOSTAL",
+    "SAX",
+    "TEE",
+)
+ALL_RECOGNIZABLE_VIEWS: frozenset[str] = frozenset(EXTENDED_KNOWN_VIEWS)
 UNKNOWN_VIEW: str = "UNKNOWN"
 
 #: Confidence at or above which a recognition result may be auto-applied
@@ -44,11 +71,13 @@ SPLIT_NAMES: tuple[str, ...] = ("train", "val", "test")
 #: (step 4) and by reporting. Mapped explicitly so the set stays closed.
 _VIEW_CATEGORY: dict[str, str] = {
     "A4C": "apical",
+    "RV_A4C": "apical",
     "A2C": "apical",
     "A3C": "apical",
     "PLAX": "parasternal_long",
     "SAX": "parasternal_short",
     "PSAX": "parasternal_short",
+    "SUBCOSTAL": "subcostal",
     "TEE": "tee",
     UNKNOWN_VIEW: "unknown",
 }
@@ -60,11 +89,26 @@ _VIEW_CATEGORY: dict[str, str] = {
 #: ``UNKNOWN_VIEW`` instead of silently inventing a class.
 _VIEW_ALIASES: dict[str, frozenset[str]] = {
     "A4C": frozenset({"a4c", "ap4", "4ch", "4cv", "4c", "4-chamber", "four-chamber"}),
+    "RV_A4C": frozenset(
+        {
+            "rv_a4c",
+            "rva4c",
+            "rv-a4c",
+            "rv4c",
+            "rv 4c",
+            "rv_focused",
+            "rv focused",
+            "rv-focused",
+            "rv focused a4c",
+            "apical rv",
+        }
+    ),
     "A2C": frozenset({"a2c", "ap2", "2ch", "2cv", "2c", "2-chamber", "two-chamber"}),
     "A3C": frozenset({"a3c", "ap3", "3ch", "3cv", "3c", "3-chamber", "three-chamber"}),
     "PLAX": frozenset({"plax", "psla", "psax_l", "lvot", "parasternal_long", "parasternal long axis"}),
     "SAX": frozenset({"sax", "pssax", "short_axis", "short axis", "short-axis", "sa", "mid_sax"}),
     "PSAX": frozenset({"psax", "parasternal_short", "parasternal short axis", "parasternal-short"}),
+    "SUBCOSTAL": frozenset({"subcostal", "sub-costal", "subxiphoid", "sc", "sc4c", "subcostal 4c"}),
     "TEE": frozenset({"tee", "tga", "transesophageal", "trans-esophageal"}),
 }
 
@@ -87,8 +131,9 @@ def canonicalize_view(label: str) -> str:
     cleaned = " ".join(str(label).split()).lower()
     if not cleaned:
         return UNKNOWN_VIEW
-    if cleaned in KNOWN_VIEWS:
-        return cleaned
+    upper = cleaned.upper()
+    if upper in ALL_RECOGNIZABLE_VIEWS:
+        return upper
     for canonical, aliases in _VIEW_ALIASES.items():
         if cleaned in aliases:
             return canonical

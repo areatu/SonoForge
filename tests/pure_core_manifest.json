@@ -30,11 +30,16 @@
     "tests/unit/test_pure_core_harness.py",
     "tests/unit/test_report_signature_domain.py",
     "tests/unit/test_segmentation_jobs.py",
+    "tests/unit/test_segmentation_preprocess.py",
     "tests/unit/test_user_models.py",
     "tests/unit/test_vessel_metrics.py",
     "tests/unit/test_view_decision_store.py",
     "tests/unit/test_view_recognition.py",
     "tests/unit/test_view_recognition_schema.py",
-    "tests/unit/test_view_recognition_workflow.py"
+    "tests/unit/test_view_recognition_workflow.py",
+    "tests/unit/test_view_recognition_inference.py",
+    "tests/unit/test_view_recognition_corpus.py",
+    "tests/unit/test_view_recognition_training_contract.py",
+    "tests/unit/test_finetune_lv_seg.py"
   ]
 }

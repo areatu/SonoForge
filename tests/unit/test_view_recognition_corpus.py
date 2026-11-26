@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.domain.models.view_recognition import (
+    EXTENDED_KNOWN_VIEWS,
     KNOWN_VIEWS,
     UNKNOWN_VIEW,
     ViewRecognitionSample,
@@ -175,3 +176,18 @@ def test_iter_samples_in_split_filters_in_order() -> None:
     val = iter_samples_in_split(samples, "val")
     assert [s.sample_id for s in val] == ["s0"]
     assert [s.sample_id for s in iter_samples_in_split(samples, "train")] == ["s1", "s2"]
+
+
+def test_split_and_validate_extended_views_preserve_all_samples() -> None:
+    samples = _corpus(["A4C", "RV_A4C", "RV_A4C", "SUBCOSTAL", "SUBCOSTAL", "TEE"])
+    train, val = split_corpus(samples, val_ratio=0.5, seed=11, views=EXTENDED_KNOWN_VIEWS)
+    assert len(train) + len(val) == len(samples)
+    combined = [
+        *(ViewRecognitionSample(s.sample_id, s.source_path, s.view, "train") for s in train),
+        *(ViewRecognitionSample(s.sample_id, s.source_path, s.view, "val") for s in val),
+    ]
+    assert validate_corpus(combined, class_names=EXTENDED_KNOWN_VIEWS) == []
+
+    # Even if split_corpus is called with a narrower ``views`` list, samples outside ``views`` are never dropped.
+    train_sub, val_sub = split_corpus(samples, val_ratio=0.5, seed=11, views=KNOWN_VIEWS)
+    assert len(train_sub) + len(val_sub) == len(samples)

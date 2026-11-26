@@ -10,8 +10,11 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.domain.models.view_recognition import (
+    ALL_RECOGNIZABLE_VIEWS,
+    EXTENDED_KNOWN_VIEWS,
     KNOWN_VIEWS,
     MANIFEST_SCHEMA_VERSION,
+    TTE_STANDARD_VIEWS,
     UNKNOWN_VIEW,
     ViewDecision,
     ViewDecisionSource,
@@ -46,6 +49,13 @@ class TestCanonicalizeView:
             ("PSSAX", "SAX"),
             ("TEE", "TEE"),
             ("Transesophageal", "TEE"),
+            ("RV_A4C", "RV_A4C"),
+            ("RV-A4C", "RV_A4C"),
+            ("RV4C", "RV_A4C"),
+            ("RV FOCUSED", "RV_A4C"),
+            ("SUBCOSTAL", "SUBCOSTAL"),
+            ("Subxiphoid", "SUBCOSTAL"),
+            ("SC4C", "SUBCOSTAL"),
         ],
     )
     def test_aliases_map_to_canonical(self, raw: str, expected: str) -> None:
@@ -56,12 +66,16 @@ class TestCanonicalizeView:
         assert canonicalize_view(raw) == UNKNOWN_VIEW
 
     def test_canonical_names_pass_through(self) -> None:
-        for view in KNOWN_VIEWS:
+        for view in EXTENDED_KNOWN_VIEWS:
             assert canonicalize_view(view) == view
+        assert set(KNOWN_VIEWS).issubset(ALL_RECOGNIZABLE_VIEWS)
+        assert set(TTE_STANDARD_VIEWS).issubset(ALL_RECOGNIZABLE_VIEWS)
 
     def test_category_covers_canonical_views(self) -> None:
-        for view in KNOWN_VIEWS:
+        for view in EXTENDED_KNOWN_VIEWS:
             assert view_category(view) != "unknown"
+        assert view_category("RV_A4C") == "apical"
+        assert view_category("SUBCOSTAL") == "subcostal"
         assert view_category(UNKNOWN_VIEW) == "unknown"
 
 

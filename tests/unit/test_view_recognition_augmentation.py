@@ -74,3 +74,39 @@ def test_augmented_dataset_only_duplicates_requested_views() -> None:
         2,
         2,
     ]
+
+
+def test_prototype_head_matches_scaled_cosine_and_has_gradients() -> None:
+    torch = pytest.importorskip("torch")
+    from scripts.train_view_recognition import build_prototype_head
+
+    torch.manual_seed(42)
+    head = build_prototype_head(16, 9)
+    features = torch.randn(4, 16, requires_grad=True)
+    logits = head(features)
+    expected = head.current_scale * (
+        torch.nn.functional.normalize(features, dim=-1) @ torch.nn.functional.normalize(head.prototypes, dim=-1).T
+    )
+    torch.testing.assert_close(logits, expected)
+    torch.testing.assert_close(head(features * 3), logits)
+    assert logits.shape == (4, 9)
+    torch.nn.functional.cross_entropy(logits, torch.tensor([0, 1, 7, 8])).backward()
+    assert head.prototypes.grad is not None
+    assert features.grad is not None
+
+
+def test_training_tensor_matches_shared_serving_tensor() -> None:
+    torch = pytest.importorskip("torch")
+    from scripts.train_view_recognition import _to_logits_batch
+
+    from echo_personal_tool.domain.services.view_recognition_inference import (
+        ViewInferenceConfig,
+        prepare_clip_for_view_model,
+    )
+
+    rng = np.random.default_rng(42)
+    clip = rng.integers(0, 255, (5, 32, 32, 3), dtype=np.uint8)
+    config = ViewInferenceConfig.ml0b_default(input_size=32)
+    training_tensor = _to_logits_batch([clip], config=config)
+    expected = prepare_clip_for_view_model(list(clip), config=config)
+    torch.testing.assert_close(training_tensor, torch.from_numpy(expected))

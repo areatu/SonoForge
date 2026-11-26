@@ -40,7 +40,9 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from echo_personal_tool.domain.models.view_recognition import (  # noqa: E402
+    EXTENDED_KNOWN_VIEWS,
     KNOWN_VIEWS,
+    TTE_STANDARD_VIEWS,
     UNKNOWN_VIEW,
     ViewRecognitionSample,
     ViewSampleMetadata,
@@ -180,7 +182,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--val-ratio", type=float, default=0.2, help="Validation ratio (default 0.2)")
     parser.add_argument("--seed", type=int, default=42, help="Split seed (default 42)")
+    parser.add_argument(
+        "--class-preset",
+        choices=("auto", "legacy7", "tte7", "extended9"),
+        default="auto",
+        help="Target view taxonomy (default auto: legacy7 unless RV_A4C/SUBCOSTAL present)",
+    )
     return parser.parse_args(argv)
+
+
+def _resolve_active_views(
+    samples: list[ViewRecognitionSample],
+    preset: str,
+) -> tuple[str, ...]:
+    if preset == "legacy7":
+        return KNOWN_VIEWS
+    if preset == "tte7":
+        return TTE_STANDARD_VIEWS
+    if preset == "extended9":
+        return EXTENDED_KNOWN_VIEWS
+    seen = {s.view for s in samples if s.view != UNKNOWN_VIEW}
+    if seen - set(KNOWN_VIEWS):
+        return EXTENDED_KNOWN_VIEWS
+    return KNOWN_VIEWS
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -197,11 +221,17 @@ def main(argv: list[str] | None = None) -> int:
     for diagnostic in diagnostics:
         print(f"warning: {diagnostic}", file=sys.stderr)
 
-    train_samples, val_samples = split_corpus(samples, val_ratio=args.val_ratio, seed=args.seed)
+    active_views = _resolve_active_views(samples, args.class_preset)
+    train_samples, val_samples = split_corpus(
+        samples,
+        val_ratio=args.val_ratio,
+        seed=args.seed,
+        views=active_views,
+    )
     samples = [*(replace(s, split="train") for s in train_samples), *(replace(s, split="val") for s in val_samples)]
 
-    manifest = build_manifest(samples, class_names=KNOWN_VIEWS)
-    problems = validate_corpus(samples, class_names=KNOWN_VIEWS)
+    manifest = build_manifest(samples, class_names=active_views)
+    problems = validate_corpus(samples, class_names=active_views)
     if problems:
         print(f"error: corpus validation failed ({len(problems)} problems):", file=sys.stderr)
         for problem in problems:
@@ -213,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    summary = summarize_corpus(samples, class_names=KNOWN_VIEWS)
+    summary = summarize_corpus(samples, class_names=active_views)
     print(f"manifest written: {args.output}")
     print(f"samples: {len(samples)} (train={len(train_samples)}, val={len(val_samples)})")
     for view, counts in summary.items():

@@ -79,14 +79,15 @@ def evaluate(
         msg = f"ONNX view-recognition model is not available in {models_dir}"
         raise RuntimeError(msg)
     manifest = load_manifest(manifest_path)
-    dataset = ViewRecognitionDataset(manifest, clip_provider, split=split)
+    active_views = manifest.class_names or KNOWN_VIEWS
+    dataset = ViewRecognitionDataset(manifest, clip_provider, split=split, views=active_views, normalize=False)
     gold: list[str] = []
     predicted: list[str] = []
     for clip, label_index in dataset.clips():
         recognized = recognizer.recognize(list(clip))
-        gold.append(KNOWN_VIEWS[label_index] if label_index >= 0 else "UNKNOWN")
+        gold.append(active_views[label_index] if 0 <= label_index < len(active_views) else "UNKNOWN")
         predicted.append(recognized.view)
-    report = accuracy_summary(gold, predicted, KNOWN_VIEWS)
+    report = accuracy_summary(gold, predicted, active_views)
     return report
 
 
