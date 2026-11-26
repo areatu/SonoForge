@@ -100,11 +100,17 @@ def test_repeated_generation_has_identical_dicom_and_truth(tmp_path: Path) -> No
     assert synthetic_uid("one") == synthetic_uid("one") != synthetic_uid("two")
 
 
-def test_output_must_be_new_and_external_or_ignored(tmp_path: Path, corpus: Path) -> None:
+@pytest.mark.parametrize("forbidden", ["repository", "git", "tracked", "existing"])
+def test_output_must_be_new_and_external_or_ignored(tmp_path: Path, corpus: Path, forbidden: str) -> None:
     root = Path(__file__).resolve().parents[2]
-    for bad in (root, root / ".git" / "phantoms", root / "tracked-phantom-output", corpus):
-        with pytest.raises(ValueError):
-            validate_output(bad)
+    bad = {
+        "repository": root,
+        "git": root / ".git" / "phantoms",
+        "tracked": root / "tracked-phantom-output",
+        "existing": corpus,
+    }[forbidden]
+    with pytest.raises(ValueError):
+        validate_output(bad)
     assert validate_output(root / ".cache" / "phantom-output-new") == root / ".cache" / "phantom-output-new"
     assert main(["--output", str(corpus), "--size", "48"]) == 2
     bad_output = tmp_path / "bad"

@@ -171,7 +171,10 @@ def validate_output(path: Path) -> Path:
     if resolved.exists():
         raise ValueError("output already exists; use a new directory (no overwriting)")
     if ROOT in resolved.parents:
-        result = subprocess.run(["git", "check-ignore", "-q", str(resolved) + "/"], cwd=ROOT, check=False)
+        # Git pathspecs use forward slashes on every platform. Do not pass an
+        # absolute Windows drive/backslash path to Git for Windows.
+        relative = resolved.relative_to(ROOT).as_posix() + "/"
+        result = subprocess.run(["git", "check-ignore", "-q", "--", relative], cwd=ROOT, check=False)
         if result.returncode != 0:
             raise ValueError("output inside repository must be Git-ignored (e.g. .cache/phantom-run)")
     return resolved
