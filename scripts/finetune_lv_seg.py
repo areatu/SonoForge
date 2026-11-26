@@ -11,6 +11,7 @@ Aligns LV fine-tuning with serve-time ``OnnxInferenceEngine``:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -49,6 +50,7 @@ DEFAULT_OUTPUT = MODELS_DIR / "echonet_seg_resnet50_finetuned.onnx"
 DEFAULT_A2C_OUTPUT = MODELS_DIR / "echonet_a2c_resnet50.onnx"
 INPUT_SIZE = 112
 MODEL_ID = "echonet_seg_resnet50_finetuned"
+A2C_MODEL_ID = "echonet_a2c_resnet50"
 BACKBONE_INIT_CHOICES = ("manifest", "imagenet_torchvision", "random")
 
 
@@ -56,7 +58,6 @@ def _require_torch() -> None:
     if torch is None or nn is None or F is None or torchvision is None:
         msg = "torch and torchvision are required to run LV segmentation training"
         raise RuntimeError(msg)
-A2C_MODEL_ID = "echonet_a2c_resnet50"
 
 
 def rasterize_polygon(
@@ -88,61 +89,16 @@ def resolve_manifest_normalization(
     return [float(v) for v in fixed_mean], [float(v) for v in fixed_std]
 
 
-def load_lv_samples(manifest_path: Path) -> list[dict[str, Any]]:
-    """Load LV gold samples from manifest + gold directory preserving ``study_id``."""
-    with manifest_path.open(encoding="utf-8") as f:
-        manifest = json.load(f)
-
-    gold_dir = manifest_path.parent / "gold"
-    samples: list[dict[str, Any]] = []
-
-    for study in manifest.get("studies", []):
-        study_id = str(study["study_id"])
-        instance_path = str(study["instance_path"])
-        gold_path = gold_dir / f"lv_{study_id}.json"
-        if not gold_path.is_file():
-            continue
-
-        with gold_path.open(encoding="utf-8") as f:
-            gold = json.load(f)
-
-        for phase_key, frame_key in [("ED", "ed_frame"), ("ES", "es_frame")]:
-            frame_index = study.get(frame_key)
-            if frame_index is None:
-                continue
-
-            gold_frame = None
-            for gf in gold.get("frames", []):
-                if gf.get("phase") == phase_key and gf.get("frame_index") == frame_index:
-                    gold_frame = gf
-                    break
-            if gold_frame is None:
-                continue
-
-            points = gold_frame.get("points", [])
-            if len(points) < 3:
-                continue
-
-            samples.append(
-                {
-                    "study_id": study_id,
-                    "study_uid": str(study.get("study_uid") or study_id),
-                    "instance_path": instance_path,
-                    "frame_index": int(frame_index),
-                    "phase": phase_key,
-                    "points": points,
-                }
-            )
 def load_lv_samples(
     manifest_path: Path,
     *,
     view: str = "A4C",
     gold_dir: Path | None = None,
-) -> list[dict]:
-    """Load LV gold samples from manifest + gold directory, filtered by view."""
+) -> list[dict[str, Any]]:
+    """Load view-filtered LV samples, retaining study identifiers for leak-free splits."""
     view_norm = (view or "A4C").strip().upper()
     resolved_gold_dir = gold_dir if gold_dir is not None else (manifest_path.parent / "gold")
-    samples: list[dict] = []
+    samples: list[dict[str, Any]] = []
 
     if manifest_path.is_file():
         with open(manifest_path, encoding="utf-8") as f:
@@ -180,6 +136,8 @@ def load_lv_samples(
 
                 samples.append(
                     {
+                        "study_id": str(study_id),
+                        "study_uid": str(study.get("study_uid") or study_id),
                         "instance_path": gold_frame.get("instance_path") or instance_path,
                         "frame_index": frame_index,
                         "phase": phase_key,
@@ -194,6 +152,8 @@ def load_lv_samples(
             with open(gold_path, encoding="utf-8") as f:
                 gold = json.load(f)
             default_inst = gold.get("instance_path", "")
+            study_id = str(gold.get("study_id") or gold_path.stem.removeprefix("lv_"))
+            study_uid = str(gold.get("study_uid") or study_id)
             for gf in gold.get("frames", []):
                 gf_view = str(gf.get("view", "A4C")).upper()
                 if view_norm != "ALL" and gf_view != view_norm:
@@ -208,6 +168,8 @@ def load_lv_samples(
                     continue
                 samples.append(
                     {
+                        "study_id": study_id,
+                        "study_uid": study_uid,
                         "instance_path": inst_path,
                         "frame_index": int(frame_idx),
                         "phase": phase_key,
@@ -256,12 +218,6 @@ class LVGoldDataset:
         self._fixed_std = fixed_std
         self._rng = np.random.default_rng(seed)
         self._cache: list[tuple[np.ndarray, np.ndarray, tuple[float, float, float, float] | None]] = []
-        self._cache: list[tuple[np.ndarray, np.ndarray]] = []
-
-        from echo_personal_tool.domain.services.segment_roi import resolve_segment_roi_xyxy
-        from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
-        from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
-
         for s in samples:
             frame = _resolve_frame(str(s["instance_path"]), int(s["frame_index"]))
             if frame is None:
@@ -494,13 +450,25 @@ def verify_onnx(onnx_path: Path, input_size: int = INPUT_SIZE) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder")
+    """Parse the combined ML.0a and A4C/A2C fine-tuning options."""
+    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder (A4C / A2C)")
     parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "manifest.json")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--gold-dir", type=Path, default=None)
+    parser.add_argument("--view", choices=("A4C", "A2C", "ALL"), default="A4C")
+    parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--backbone-init", choices=BACKBONE_INIT_CHOICES, default="manifest")
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--update-manifest", action="store_true")
+    parser.add_argument("--device", default="cpu")
+    return parser.parse_args(argv)
+
+
 def update_model_manifest(onnx_path: Path, model_id: str, manifest_path: Path = MANIFEST_PATH) -> None:
     if not manifest_path.is_file() or not onnx_path.is_file():
         return
@@ -514,38 +482,19 @@ def update_model_manifest(onnx_path: Path, model_id: str, manifest_path: Path = 
     entry["sha256"] = digest
     entry["file_size_bytes"] = size
     manifest_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"Manifest updated for {model_id}: sha256={digest[:16]}… ({size:,} bytes)")
+    print(f"Manifest updated for {model_id}: sha256={digest[:16]}… ({size:,} bytes)")  # noqa: T201
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Fine-tune LV segmentation decoder (A4C / A2C)")
-    parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "manifest.json")
-    parser.add_argument("--gold-dir", type=Path, default=None)
-    parser.add_argument("--view", choices=("A4C", "A2C", "ALL"), default="A4C")
-    parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--epochs", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--verify", action="store_true")
-    parser.add_argument("--update-manifest", action="store_true")
-    parser.add_argument("--device", default="cpu")
-    return parser.parse_args(argv)
-
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     output_path = args.output
     if output_path is None:
         output_path = DEFAULT_A2C_OUTPUT if args.view == "A2C" else DEFAULT_OUTPUT
     model_id = A2C_MODEL_ID if args.view == "A2C" else MODEL_ID
 
-    print(f"Loading LV gold ({args.view}) from {args.manifest} ...")
+    print(f"Loading LV gold ({args.view}) from {args.manifest} ...")  # noqa: T201
     samples = load_lv_samples(args.manifest, view=args.view, gold_dir=args.gold_dir)
-    print(f"Found {len(samples)} LV samples (ED+ES, view={args.view})")
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-
-    print(f"Loading LV gold from {args.manifest} ...")  # noqa: T201
-    samples = load_lv_samples(args.manifest)
-    print(f"Found {len(samples)} LV samples (ED+ES)")  # noqa: T201
+    print(f"Found {len(samples)} LV samples (ED+ES, view={args.view})")  # noqa: T201
 
     train_samples, val_samples = split_samples_by_study(
         samples,
@@ -581,9 +530,6 @@ def main(argv: list[str] | None = None) -> int:
         lr=args.lr,
         device=args.device,
     )
-    export_onnx(model, args.output, input_size=INPUT_SIZE)
-    model = build_model()
-    train_model(model, dataset, epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device=args.device)
     export_onnx(model, output_path, input_size=INPUT_SIZE)
 
     if args.verify:
