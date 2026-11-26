@@ -109,8 +109,24 @@ def test_output_must_be_new_and_external_or_ignored(tmp_path: Path, corpus: Path
         "tracked": root / "tracked-phantom-output",
         "existing": corpus,
     }[forbidden]
-    with pytest.raises(ValueError):
+    try:
         validate_output(bad)
+    except ValueError:
+        pass  # Expected safety rejection, checked separately for each path class.
+    else:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "check-ignore", "--verbose", "--", bad.name + "/"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        pytest.fail(
+            f"unsafe output accepted: {forbidden}; root={root}; resolved={bad.resolve()}; "
+            f"git_exit={result.returncode}; git_rule={result.stdout!r}; git_error={result.stderr!r}"
+        )
     assert validate_output(root / ".cache" / "phantom-output-new") == root / ".cache" / "phantom-output-new"
     assert main(["--output", str(corpus), "--size", "48"]) == 2
     bad_output = tmp_path / "bad"

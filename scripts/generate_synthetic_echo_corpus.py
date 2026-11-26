@@ -174,9 +174,33 @@ def validate_output(path: Path) -> Path:
         # Git pathspecs use forward slashes on every platform. Do not pass an
         # absolute Windows drive/backslash path to Git for Windows.
         relative = resolved.relative_to(ROOT).as_posix() + "/"
-        result = subprocess.run(["git", "check-ignore", "-q", "--", relative], cwd=ROOT, check=False)
-        if result.returncode != 0:
-            raise ValueError("output inside repository must be Git-ignored (e.g. .cache/phantom-run)")
+        result = subprocess.run(
+            ["git", "check-ignore", "--verbose", "-z", "--stdin"],
+            input=relative.encode("utf-8") + b"\0",
+            capture_output=True,
+            cwd=ROOT,
+            check=False,
+        )
+        # Require positive, machine-readable evidence from a project .gitignore,
+        # not only an exit code or a workstation-wide excludesFile rule.
+        fields = result.stdout.split(b"\0")
+        ignored = False
+        if result.returncode == 0 and len(fields) == 5 and fields[-1] == b"":
+            source, line, pattern, matched = (part.decode("utf-8", errors="surrogateescape") for part in fields[:4])
+            rule = Path(source)
+            rule = (ROOT / rule).resolve() if not rule.is_absolute() else rule.resolve()
+            ignored = (
+                matched == relative
+                and line.isdigit()
+                and bool(pattern)
+                and not pattern.startswith("!")
+                and rule.name == ".gitignore"
+                and ROOT in rule.parents
+            )
+        if not ignored:
+            raise ValueError(
+                "output inside repository must be Git-ignored by a project .gitignore (e.g. .cache/phantom-run)"
+            )
     return resolved
 
 
