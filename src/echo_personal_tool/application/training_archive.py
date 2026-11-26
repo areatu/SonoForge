@@ -27,9 +27,21 @@ class MeasurementArchiveCapture:
 
     def __init__(self, archive: MeasurementArchive, skipped: Callable[[], None]) -> None:
         self.archive = archive
-        self.skipped = skipped
+        self._skipped = skipped
+        self.saved_count = 0
+        self.skipped_count = 0
+        self.paused = False
         self.pending: dict[str, ArchiveSample] = {}
         self.location: tuple[str, int] | None = None
+
+    def skipped(self) -> None:
+        self.skipped_count += 1
+        self._skipped()
+
+    def set_paused(self, paused: bool) -> None:
+        self.paused = paused
+        if paused:
+            self.pending.clear()
 
     def observe(
         self,
@@ -40,6 +52,8 @@ class MeasurementArchiveCapture:
         *,
         spacing_for: Callable[[Contour], tuple[float, float] | None] | None = None,
     ) -> None:
+        if self.paused:
+            return
         try:
             instance = self.archive.token("instance", context.instance_key)
             retained: set[str] = set()
@@ -85,11 +99,13 @@ class MeasurementArchiveCapture:
         )
 
     def confirm(self, instance_key: str, frame_index: int) -> None:
+        if self.paused:
+            return
         try:
             instance = self.archive.token("instance", instance_key)
             for sid, sample in list(self.pending.items()):
                 if sample.metadata["instance_key"] == instance and sample.metadata["frame_index"] == frame_index:
-                    self.archive.save(sample)
+                    self.saved_count += int(self.archive.save(sample))
                     del self.pending[sid]
         except (ArchiveWriteError, MemoryError):
             self.skipped()

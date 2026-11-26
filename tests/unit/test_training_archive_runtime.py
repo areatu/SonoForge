@@ -4,8 +4,10 @@ from dataclasses import replace
 
 import numpy as np
 import pydicom
+import pyqtgraph as pg
 import pytest
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QPointF, Qt, QThreadPool
+from PySide6.QtWidgets import QStackedWidget
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.application.composition import in_memory_app_services
@@ -127,3 +129,52 @@ def test_disabled_archive_completion_adds_no_clinical_recomputation(qapp, monkey
     complete_archive(controller, [Contour("ED")])
     assert services.training_archive is None and calls == []
     assert controller.measurement_persistence.close()
+
+
+@pytest.mark.parametrize("chamber", ["LV", "LA", "RV"])
+def test_real_viewer_ai_node_drag_stays_pending_and_archives_as_edited(live_archive, chamber, qtbot):
+    from echo_personal_tool.domain.services.contour_geometry import resample_open_arc
+
+    archive, controller, viewer, _, _ = live_archive
+    points = resample_open_arc([(10.0, 45.0), (30.0, 10.0), (50.0, 45.0)], num_nodes=32)
+    contour = Contour(
+        "ES",
+        chamber=chamber,
+        source="ai",
+        review_pending=True,
+        points=points,
+        mitral_annulus=(points[0], points[-1]),
+        apex_landmark=(30.0, 10.0),
+        num_nodes=32,
+        frame_index=0,
+    )
+    controller.on_contours_changed([contour])
+    assert len(viewer.contours()) == 1
+    original_points = tuple(viewer.contours()[0].points)
+    middle = len(points) // 2
+    x, y = points[middle]
+    # Drive the real input route via public Qt/pyqtgraph APIs rather than
+    # pinning the test to the viewer's private drag implementation.
+    stack = viewer.parentWidget()
+    assert isinstance(stack, QStackedWidget)
+    stack.setCurrentWidget(viewer)
+    viewer.window().show()
+    graphics = viewer.findChild(pg.GraphicsLayoutWidget)
+    assert graphics is not None
+    view_box = graphics.getItem(0, 0)
+    qtbot.waitUntil(lambda: graphics.viewport().isVisible())
+    start = graphics.mapFromScene(view_box.mapViewToScene(QPointF(x, y)))
+    end = graphics.mapFromScene(view_box.mapViewToScene(QPointF(x + 1.0, y + 1.0)))
+    qtbot.mousePress(graphics.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    qtbot.mouseMove(graphics.viewport(), pos=end)
+    qtbot.mouseRelease(graphics.viewport(), Qt.MouseButton.LeftButton, pos=end)
+    [edited] = controller.state_manager.snapshot.contours
+    assert edited.auto_edited and edited.review_pending
+    assert tuple(edited.points) != original_points
+    assert edited.source == "ai"
+    confirm_archive(controller)
+    assert archive.records() == []
+    assert controller.accept_ai_contour_review("A4C", "ES")
+    [record] = archive.records()
+    assert record["origin"] == "AUTO_EDITED"
+    assert record["chamber"] == chamber
