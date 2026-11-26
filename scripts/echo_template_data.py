@@ -126,6 +126,61 @@ def load_gold_samples(paths: list[Path]) -> list[TemplateSample]:
     return list(merged.values())
 
 
+def load_measurement_corpus(path: Path) -> list[TemplateSample]:
+    """Explicit reviewed LOCAL export; no implicit gold promotion or DICOM reads.
+
+    The archived split_group is already unioned by patient/study/pixels. Never
+    recalculate it by clip. RA stays archived but this adapter rejects it
+    explicitly until a reviewed RA training contract is supplied.
+    """
+    from echo_personal_tool.domain.services.training_archive import atlas_phase
+
+    manifest = json.loads(path.read_text())
+    if manifest.get("format") != "local_measurement_segmentation_corpus" or manifest.get("schema_version") != 1:
+        raise ValueError("unsupported measurement corpus")
+    samples = []
+    for record in manifest["records"]:
+        if (
+            not record["reviewed"]
+            or not record["strong_label"]
+            or record["geometry_kind"] != "trace"
+            or record.get("excluded")
+        ):
+            continue
+        if record["chamber"] == "RA":
+            raise ValueError("RA archive supported; training adapter not yet supported")
+        if record["view"] not in TEMPLATE_VIEWS or record["split"] not in {"train", "val", "test"}:
+            raise ValueError("unsupported corpus view/split")
+        source = (path.parent / record["image"]).resolve()
+        if source.parent != path.parent.resolve() or source.suffix != ".npy" or not source.is_file():
+            raise ValueError("invalid local corpus frame")
+        sample = TemplateSample(
+            source,
+            0,
+            record["view"],
+            atlas_phase(record["phase_semantics"]),
+            record["split_group"],
+            "gold",
+            record["split"],
+            {record["chamber"]: np.asarray(record["points"], dtype=float)},
+        )
+        annulus, apex = record["mitral_annulus"], record["apex_landmark"]
+        if annulus is None or apex is None:
+            raise ValueError(
+                "node training requires reviewed open arcs and landmarks; polygon remains in segmentation corpus"
+            )
+        prefix = "TV" if record["chamber"] == "RV" else "MV"
+        if annulus is not None:
+            sample.landmarks[f"{prefix}_septal"], sample.landmarks[f"{prefix}_lateral"] = np.asarray(
+                annulus, dtype=float
+            )
+        if apex is not None:
+            name = "LA_roof" if record["chamber"] == "LA" else f"{record['chamber']}_apex"
+            sample.landmarks[name] = np.asarray(apex, dtype=float)
+        samples.append(sample)
+    return samples
+
+
 def assign_group_splits(samples: list[TemplateSample], *, seed: int = 0) -> None:
     groups: dict[str, str] = {}
     # Explicit assignments take precedence for the ENTIRE group, across data sources.
@@ -200,9 +255,16 @@ class TemplateDataset:
 
     def __getitem__(self, index):
         sample = self.samples[index]
-        ds = pydicom.dcmread(sample.path)
-        pixels = ds.pixel_array
-        if int(getattr(ds, "NumberOfFrames", 1)) > 1:
+        if sample.path.suffix == ".npy":
+            pixels = np.load(sample.path, allow_pickle=False)
+            if pixels.ndim not in {2, 3} or pixels.dtype.kind not in "uif" or pixels.nbytes > 128 * 1024**2:
+                raise ValueError("invalid local corpus frame")
+            total_frames = 1
+        else:
+            ds = pydicom.dcmread(sample.path)
+            pixels = ds.pixel_array
+            total_frames = int(getattr(ds, "NumberOfFrames", 1))
+        if total_frames > 1:
             if not 0 <= sample.frame_index < len(pixels):
                 raise ValueError("gold frame outside cine")
             frame = pixels[sample.frame_index]

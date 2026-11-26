@@ -3973,6 +3973,9 @@ class ViewerWidget(QWidget):
                 contour,
                 display_levels=self.display.effective_levels(),
             )
+            refined = replace(
+                refined, auto_edited=contour.auto_edited or contour.auto_generated or contour.source != "manual"
+            )
             self.contour_state.visible[contour_index] = refined
             self.contour_state.upsert(refined)
             self._render_contours_for_current_frame()
@@ -4364,9 +4367,6 @@ class ViewerWidget(QWidget):
         self.set_contour_from_domain(contour)
         if not unassisted and contour.is_open_arc:
             self._auto_snap_new_contour(contour)
-        self.contour_completed.emit(contour)
-        return True
-
         self.contour_completed.emit(contour)
         return True
 
@@ -5971,7 +5971,12 @@ class ViewerWidget(QWidget):
         )
         contour = self.contour_state.visible[contour_index]
         locked_tier = self._drag_session[4] if self._drag_session is not None else 1
-        contour = replace(contour, refine_step=0, refine_locked_indices=())
+        contour = replace(
+            contour,
+            refine_step=0,
+            refine_locked_indices=(),
+            auto_edited=contour.auto_edited or contour.auto_generated or contour.source != "manual",
+        )
         if contour.is_open_arc:
             num_nodes = contour.num_nodes or DEFAULT_NODE_COUNT
             if contour.mitral_annulus is not None and len(contour.points) >= 2:

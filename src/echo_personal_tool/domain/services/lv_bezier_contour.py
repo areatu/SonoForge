@@ -227,6 +227,7 @@ def fit_lv_bezier_contour(
         apex_landmark=apex,
         points=resampled,
         source="model",
+        geometry_kind="landmark_prior",
         num_nodes=num_nodes,
     )
 

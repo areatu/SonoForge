@@ -268,6 +268,7 @@ def fit_contour_from_landmarks(
         apex_landmark=apex,
         points=resampled,
         source="model",
+        geometry_kind="landmark_prior",
         num_nodes=node_count,
     )
 

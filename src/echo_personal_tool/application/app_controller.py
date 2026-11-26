@@ -18,6 +18,7 @@ import numpy as np
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application import training_archive_runtime
 from echo_personal_tool.application.analysis_jobs import AnalysisBasis, analysis_basis, tracking_failure
 from echo_personal_tool.application.calculator_inputs import (
     HeartRateCandidate,
@@ -1090,6 +1091,7 @@ class AppController(QObject):
             return False
         self._clear_fusion_state()
         self.on_contours_changed(updated_contours)
+        training_archive_runtime.confirm_archive(self)
         self.status_message.emit(tr("app.contour_accepted", target_view=target_view, target_phase=target_phase))
         return True
 
@@ -1478,6 +1480,9 @@ class AppController(QObject):
             else:
                 tagged.append(contour)
         contour_tuple = tuple(tagged)
+        training_archive_runtime.observe_archive(
+            self, contour_tuple, self._current_frame_pixels, self._loaded_frame_index, self._resolve_study_uid()
+        )
         self._state_manager.set_contours(contour_tuple, emit=False)
         segmentation_jobs_of(self).observe_state(
             self._state_manager.snapshot,
@@ -1674,6 +1679,7 @@ class AppController(QObject):
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self.measurement_persistence.barrier(study_uid)
         self._measurement_session.reset_measurements(study_uid)
+        training_archive_runtime.reset_archive(self, study_uid)
         self._strain_studies.pop(study_uid, None)
         self._calculator_inputs.clear_study(study_uid)
         self._state_manager.reset_measurement_inputs()
