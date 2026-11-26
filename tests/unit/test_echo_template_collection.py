@@ -14,8 +14,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.parametrize("selection,selected,skipped", [("gui", 1, 0), ("not gui", 2, 2)])
-def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, selection, selected, skipped):
+@pytest.mark.parametrize("selection,selected,skipped", [("gui", 1, 0), ("not gui", 2, 2)], ids=["gui", "logic"])
+def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, monkeypatch, selection, selected, skipped):
     # A fresh interpreter emulates CI without torch even on an ML workstation.
     # Do not uninstall packages or loosen check_pytest_counts.py's equality gate.
     (tmp_path / "no_training_extras.py").write_text(
@@ -30,7 +30,13 @@ def test_ml_extras_absence_preserves_selected_junit_inventory(tmp_path, selectio
     probe = tmp_path / "test_gui_probe.py"
     probe.write_text("import pytest\n@pytest.mark.gui\ndef test_probe():\n    assert True\n")
     junit, metrics = tmp_path / "junit.xml", tmp_path / "metrics.json"
+    # Exercise isolation even in a serial local run. Nested pytest is its own
+    # controller, not the parent's gw1; inheriting this identity suppresses the
+    # metrics writer because only gw0 publishes a distributed inventory.
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
     env = os.environ.copy()
+    for key in ("PYTEST_XDIST_WORKER", "PYTEST_XDIST_WORKER_COUNT", "PYTEST_XDIST_TESTRUNUID"):
+        env.pop(key, None)
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     env.pop("PYTEST_ADDOPTS", None)
     env.pop("PYTEST_PLUGINS", None)
