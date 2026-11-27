@@ -147,6 +147,11 @@ class ImtDraft:
     method: str = "research_imt_dp_v1"
 
     @property
+    def min_mm(self) -> float:
+        """Minimum of the same quality-accepted normal samples as mean/max."""
+        return min(self.distances_mm)
+
+    @property
     def coverage(self) -> float:
         return len(self.distances_mm) / self.attempted_samples
 
@@ -177,6 +182,7 @@ class ImtDraft:
             "calibration": self.source.calibration.signature(),
             "lumen_intima": self.lumen_intima,
             "media_adventitia": self.media_adventitia,
+            "min_mm": self.min_mm,
             "mean_mm": self.mean_mm,
             "max_mm": self.max_mm,
             "sd_mm": self.sd_mm,

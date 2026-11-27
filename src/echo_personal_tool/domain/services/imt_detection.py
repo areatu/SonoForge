@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from scipy.signal import find_peaks
 
 from echo_personal_tool.domain.models.imt import Boundary, ImtPolicy, ImtRefusal, ImtSource
 
@@ -100,3 +101,27 @@ def detect_boundaries(
         tuple((float(x), float(y + y0)) for x, y in zip(xs, first, strict=True)),
         tuple((float(x), float(y + y0)) for x, y in zip(xs, second, strict=True)),
     )
+
+
+def automatic_hints(evidence: np.ndarray, source: ImtSource, policy: ImtPolicy) -> tuple[float, float]:
+    """Seed the two strongest compatible positive edges inside a selected wall ROI.
+
+    This is not vessel/plaque recognition. Existing tracing and normal-distance
+    QC remain authoritative and may refuse the proposed pair.
+    """
+    profile = np.mean(evidence, axis=1)
+    peaks, _ = find_peaks(profile, height=policy.min_edge_contrast)
+    row_mm = source.calibration.spacing[0]
+    candidates = [
+        (float(profile[a] + profile[b]), int(a), int(b))
+        for a in peaks
+        for b in peaks
+        if a < b
+        and max(policy.min_thickness_mm, policy.min_axial_samples * row_mm)
+        <= (b - a) * row_mm
+        <= policy.max_thickness_mm
+    ]
+    if not candidates:
+        raise ImtRefusal("two_wall_edges_not_found")
+    _, first, second = max(candidates)
+    return float(source.roi[1] + first), float(source.roi[1] + second)

@@ -342,3 +342,31 @@ def test_impossible_guide_jump_refuses_instead_of_returning_an_inf_cost_path(sou
             lumen_y=(10.0, 200.0),
             adventitia_y=(20.0, 220.0),
         )
+
+
+def test_rectangle_only_detection_and_minimum(source, policy):
+    draft = propose_imt(_frame(), source, policy)
+    assert draft.mean_mm == pytest.approx(0.8, abs=0.03)
+    assert draft.min_mm == min(draft.distances_mm)
+    assert draft.min_mm <= draft.mean_mm <= draft.max_mm
+    assert not draft.confirmed
+    assert draft.confirm(source).report_record(source)["min_mm"] == draft.min_mm
+
+
+def test_rectangle_only_search_uses_roi_offset(source, policy):
+    source = replace(source, roi=(4, 10, 90, 40))
+    draft = propose_imt(_frame(), source, policy)
+    assert draft.mean_mm == pytest.approx(0.8, abs=0.03)
+    assert min(y for _, y in draft.lumen_intima) > 18
+
+
+def test_rectangle_only_search_refuses_missing_second_edge(source, policy):
+    image = np.zeros((64, 96))
+    image[28:] = 255
+    with pytest.raises(ImtRefusal, match="two_wall_edges_not_found"):
+        propose_imt(image, source, policy)
+
+
+def test_rectangle_only_search_refuses_flat_image(source, policy):
+    with pytest.raises(ImtRefusal, match="flat_roi"):
+        propose_imt(np.zeros((64, 96)), source, policy)

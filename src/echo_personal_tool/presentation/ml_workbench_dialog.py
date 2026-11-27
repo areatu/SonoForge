@@ -99,7 +99,7 @@ class MLWorkbenchDialog(QDialog):
         try:
             settings = collection_settings()
         except (OSError, ValueError):
-            settings = {"enabled": False}
+            settings = {"enabled": True}
         self._enabled = QCheckBox(tr("ml.enable"))
         self._enabled.setChecked(settings["enabled"])
         self._directory = QLineEdit(str(settings.get("directory", "")))

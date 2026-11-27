@@ -64,7 +64,7 @@ def test_refresh_preview_filter_curation_and_report(qtbot, dialog):
 def test_settings_are_explicit_and_survive_restart(dialog, monkeypatch):
     from echo_personal_tool.application.training_archive_runtime import local_archive_capture
 
-    assert not dialog._enabled.isChecked()
+    assert dialog._enabled.isChecked()
     dialog._enabled.setChecked(True)
     dialog._quota.setValue(32)
     dialog._save_settings()
@@ -168,3 +168,36 @@ def test_frozen_build_has_no_ml_workbench_menu(qtbot, monkeypatch):
     menu = QMenu(parent)
     populate_local_tools_menu(parent, menu, lambda: None, "full", object())
     assert not any(action.objectName() == "localMLWorkbench" for action in menu.actions())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_saved_checkbox_wins_in_dialog_and_survives_reopen(qtbot, dialog, monkeypatch, enabled):
+    from echo_personal_tool.application.training_archive_runtime import local_archive_capture
+
+    # An inherited env override used to make successful UI writes look lost.
+    monkeypatch.setenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", "0" if enabled else "1")
+    dialog._enabled.setChecked(enabled)
+    dialog._save_settings()
+    expected_directory = dialog._directory.text()
+    dialog.close()
+    reopened = MLWorkbenchDialog()
+    qtbot.addWidget(reopened)
+    assert reopened._enabled.isChecked() is enabled
+    assert reopened._directory.text() == expected_directory
+    monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE")
+    assert (local_archive_capture(permitted=True) is not None) is enabled
+
+
+def test_default_directory_can_be_saved_without_browsing(qtbot, tmp_path, monkeypatch):
+    from echo_personal_tool.application.ml_workbench import collection_settings
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "settings"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "settings"))
+    monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", raising=False)
+    result = MLWorkbenchDialog()
+    qtbot.addWidget(result)
+    assert result._enabled.isChecked()
+    assert Path(result._directory.text()).is_absolute()
+    result._save_settings()
+    assert collection_settings()["enabled"] is True
+    assert collection_settings()["directory"] == result._directory.text()

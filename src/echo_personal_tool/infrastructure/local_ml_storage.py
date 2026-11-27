@@ -41,7 +41,11 @@ def settings_path() -> Path:
 def load_settings() -> dict[str, Any]:
     path = external_path(settings_path())
     if not path.is_file():
-        return {"enabled": False}
+        return {
+            "enabled": True,
+            "directory": str(external_path(settings_path().parent / "measurement-training")),
+            "quota_bytes": 4096 * 1024**2,
+        }
     if path.stat().st_size > 8192:
         raise ValueError("invalid_ml_settings")
     data = json.loads(path.read_text(encoding="utf-8"))

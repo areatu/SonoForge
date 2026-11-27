@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `fix(ui)`: сохранение флажка ML и авто-КИМ по области на кадре. ([полностью](changelog.d/004-fix-ui-ml-imt.md))
+
 - `feat(ml)`: #699 — локальный сбор, просмотр и перенос Windows ↔ Debian, этап 1. ([полностью](changelog.d/003-feat-ml-699.md))
 - `feat(arch)`: #552 — publication ownership для temporal fusion и LA-assist: одноразовые тикеты публикации, late-callbacks отменённого прогона не публикуют, supersede и ревокация освобождают промежуточные маски; починен мёртвый dict-контракт LA-assist (ndarray), neighbor/assist workers — `.copy()` и retain/release. ([полностью](changelog.d/002-feat-arch-552.md))
 - `fix(arch)`: #553 — закрывающий срез приёмки очередей decode/prefetch: интерактивная латентность scrub-цели «submit → published» в живом отчёте `ECHO_PLAYBACK_DIAG=1` (avg/p95/max, заменённые цели не считаются), метрика отделена от prefetch batch round trip; чек-лист критериев сведён в `docs/reviews/2026-11-25-553-queue-closeout-ru.md`. ([полностью](changelog.d/001-fix-arch-553.md))

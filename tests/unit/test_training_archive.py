@@ -338,14 +338,16 @@ def test_actual_three_landmark_fitter_marks_prior_not_strong_and_assist_keeps_ai
     assert assisted is not None and assisted.auto_generated and assisted.source == "manual"
 
 
-def test_local_collection_requires_explicit_two_part_opt_in(monkeypatch, tmp_path):
+def test_local_collection_defaults_on_but_explicit_env_requires_external_directory(monkeypatch, tmp_path):
     import sys
 
     from echo_personal_tool.application.training_archive_runtime import local_archive_capture
 
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
     monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", raising=False)
     monkeypatch.delenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", raising=False)
-    assert local_archive_capture(permitted=True) is None
+    assert local_archive_capture(permitted=True) is not None
     monkeypatch.setenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE", "1")
     assert local_archive_capture(permitted=True) is None
     monkeypatch.setenv("SONOFORGE_LOCAL_TRAINING_ARCHIVE_DIR", str(tmp_path))
