@@ -32,7 +32,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 from echo_personal_tool.application.diagnostics import log_boundary_failure, safe_error_category
 from echo_personal_tool.application.localization import get_language, tr
@@ -173,8 +173,8 @@ def _parse_weeks(raw: object) -> float | None:
 class ReportCoordinator(QObject):
     """Owns the report page of the window and every reaction of the report mode."""
 
-    #: The two header fields the coordinator parses into mmHg floats itself
-    #: (plan А.9) instead of applying them as raw strings like the rest.
+    patient_context_changed = Signal()
+
     _BP_FIELD_NAMES = ("systolic_bp_mmhg", "diastolic_bp_mmhg")
 
     def __init__(self, controller: AppController, port: ReportWindowPort, parent: QObject | None = None) -> None:
@@ -481,6 +481,7 @@ class ReportCoordinator(QObject):
         tab = self._active_tab()
         report = tab is not None and tab.report_mode
         self._port.mirror_report_mode(report)
+        self.patient_context_changed.emit()
         if not report or tab is None:
             self._shown_tab_id = ""
             return None
@@ -569,6 +570,8 @@ class ReportCoordinator(QObject):
         ):
             return
         tab.report_patient_fields[name] = value
+        if name == "sex":
+            self.patient_context_changed.emit()
         if self._page is not None:
             self._page.preview.request_refresh()
 

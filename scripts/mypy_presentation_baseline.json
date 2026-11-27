@@ -3,7 +3,7 @@
   "origin_issue": 476,
   "python_version": "3.11",
   "total_files": 61,
-  "total_errors": 787,
+  "total_errors": 782,
   "files": {
     "src/echo_personal_tool/presentation/ase_reference_dialog.py": {
       "no-untyped-def": 7,
@@ -228,8 +228,7 @@
       "assignment": 3,
       "attr-defined": 23,
       "no-any-return": 1,
-      "no-untyped-def": 11,
-      "union-attr": 5
+      "no-untyped-def": 11
     },
     "src/echo_personal_tool/presentation/tool_panel_v2/chip.py": {
       "no-untyped-def": 1

@@ -980,3 +980,23 @@ def test_vessels_override_enables_only_spatial_stenosis_without_spectral_calibra
     v2.reset_context_override()  # Existing per-clip override contract.
     assert v2.context() == "doppler"
     assert contexts[-1] == "doppler"
+
+
+def test_remounting_same_patient_editors_does_not_delete_them(qtbot):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QHBoxLayout, QWidget
+
+    panel = _make_panel(qtbot, v2=True)
+    host = QWidget()
+    qtbot.addWidget(host)
+    QHBoxLayout(host)
+    panel.set_patient_metrics_host(host)
+    panel.set_patient_metrics(180, 80)
+    fields = panel.measure._footer.metrics_widget
+    for _ in range(3):
+        panel.set_patient_metrics_host(host)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert fields.parentWidget() is host
+        assert panel.measure._footer._height_spin.value() == 180
+        assert panel.measure._footer._weight_spin.value() == 80
+    assert host.layout().count() == 1

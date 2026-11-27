@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QSignalBlocker, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -174,6 +174,7 @@ class SystemBar(CaptionDragMixin, QWidget):
     #: chosen profile.  One button with a menu, not four buttons: the row is
     #: already full at 1366 px.
     study_profile_changed = Signal(str)
+    patient_sex_changed = Signal(str)
 
     def __init__(
         self, parent: QWidget | None = None, *, profile_capabilities: ProfileCapabilities | None = None
@@ -291,6 +292,7 @@ class SystemBar(CaptionDragMixin, QWidget):
 
         self._build_mode_switch()
         self._build_view_mode_switch()
+        self._build_sex_button()
 
         # Install hover lerp mixin on all buttons
         for btn in (
@@ -357,6 +359,7 @@ class SystemBar(CaptionDragMixin, QWidget):
         layout.addWidget(self._actions_widget, 0)
         layout.addWidget(self._mode_switch, 0)
         layout.addWidget(self._view_switch, 0)
+        layout.addWidget(self._btn_sex, 0)
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setStretch(2, 0)
@@ -370,6 +373,55 @@ class SystemBar(CaptionDragMixin, QWidget):
         self._actions_compact: bool | None = None
         self._capture_action_captions()
         self.update_row_height()
+        self._install_refit_timer()
+
+    def _install_refit_timer(self) -> None:
+        self._fit_timer = QTimer(self)
+        self._fit_timer.setSingleShot(True)
+        self._fit_timer.timeout.connect(self._refit_row)
+        self.installEventFilter(self)
+
+    def _build_sex_button(self) -> None:
+        self._btn_sex = QPushButton(self)
+        self._btn_sex.setObjectName("patientSexButton")
+        self._btn_sex.setCheckable(True)
+        self._btn_sex.setChecked(True)
+        self._btn_sex.toggled.connect(self._sex_toggled)
+        self._render_sex_button()
+
+    def patient_sex(self) -> str:
+        return "M" if self._btn_sex.isChecked() else "F"
+
+    def set_patient_sex(self, sex: str, *, enabled: bool = True) -> None:
+        with QSignalBlocker(self._btn_sex):
+            self._btn_sex.setChecked(sex != "F")
+        self._btn_sex.setEnabled(enabled)
+        self._render_sex_button()
+
+    def _sex_toggled(self, checked: bool) -> None:
+        self._render_sex_button()
+        self.patient_sex_changed.emit("M" if checked else "F")
+
+    def _render_sex_button(self) -> None:
+        from echo_personal_tool.application.localization import tr
+
+        male = self._btn_sex.isChecked()
+        self._btn_sex.setText(tr("system_bar.sex_male_short" if male else "system_bar.sex_female_short"))
+        self._btn_sex.setToolTip(tr("system_bar.sex_tooltip"))
+        self._btn_sex.setAccessibleName(tr("report.sex_male" if male else "report.sex_female"))
+
+    def _refit_row(self) -> None:
+        self._fit_action_captions()
+        self._fit_action_separators()
+        self._fit_patient_metrics()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # Windows can relayout on a report round-trip without resizing this
+        # row. Refit after the layout settles, not with transient geometry.
+        if watched is self and event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.Show):
+            if hasattr(self, "_fit_timer") and not self._fit_timer.isActive():
+                self._fit_timer.start(0)
+        return super().eventFilter(watched, event)
 
     def _build_study_profile_button(self) -> None:
         """«Эхокардиография ▾» — the study-profile switch (item 11).
@@ -609,7 +661,9 @@ class SystemBar(CaptionDragMixin, QWidget):
         """
         profile = getattr(self, "_btn_study_profile", None)
         return (
-            self._mode_switch.sizeHint().width()
+            self._btn_sex.width()
+            + 8
+            + self._mode_switch.sizeHint().width()
             + self._view_switch.sizeHint().width()
             + (profile.sizeHint().width() if profile is not None else 0)
         )
@@ -758,8 +812,8 @@ class SystemBar(CaptionDragMixin, QWidget):
         # The status text elides away by design; the badge, the progress slot
         # and the heart-rate button keep their natural width.
         beside = (
-            self._calibration_label.sizeHint().width()
-            + self._progress_bar.minimumSizeHint().width()
+            (self._calibration_label.sizeHint().width() if not self._calibration_label.isHidden() else 0)
+            + (self._progress_bar.minimumSizeHint().width() if not self._progress_bar.isHidden() else 0)
             + (self._btn_heart_rate.sizeHint().width() if self._btn_heart_rate.isVisibleTo(self) else 0)
         )
         fits = self.width() >= actions + overhead + study + beside + host.sizeHint().width()
@@ -770,6 +824,15 @@ class SystemBar(CaptionDragMixin, QWidget):
         """Keep the row at 42 px, and taller only when the font needs it (spec §4.1, Э4)."""
         height = max(PATIENT_LINE_HEIGHT_PX, line_height(self) + _PATIENT_LINE_PADDING_PX)
         self.setFixedHeight(height)
+        side = height - 12
+        # QSS dimensions describe the content box; keep its 1 px border inside
+        # the square and override the ordinary system-bar button height/padding.
+        content = side - 2
+        self._btn_sex.setStyleSheet(
+            f"padding: 0px; min-width: {content}px; max-width: {content}px; "
+            f"min-height: {content}px; max-height: {content}px;"
+        )
+        self._btn_sex.setFixedSize(side, side)
 
     def set_references_visible(self, visible: bool) -> None:
         """Hide «Справочник» (Presenter builds have no reference UI)."""
@@ -786,6 +849,7 @@ class SystemBar(CaptionDragMixin, QWidget):
 
     def set_report_mode(self, report: bool) -> None:
         """Mirror the active tab's mode on the switch, without emitting it."""
+        self._fit_timer.start(0)
         if self.report_mode() == bool(report):
             return
         with QSignalBlocker(self._btn_mode_report):
@@ -909,6 +973,7 @@ class SystemBar(CaptionDragMixin, QWidget):
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip", shortcut=shortcut_label("presenter_toggle")))
         self._render_study_label()
+        self._render_sex_button()
         self._render_calibration()
         for button in self._action_captions:
             if isinstance(button, QToolButton):

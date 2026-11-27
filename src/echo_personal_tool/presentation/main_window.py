@@ -357,9 +357,6 @@ class MainWindow(QMainWindow):
         self._alt_focus_widget: QWidget | None = None
         # the cached handbook window (None until the first opening).
         self._reference_window: QWidget | None = None
-        # the sex for the S2 card, re-read once per open study.
-        self._row_sex_token: object = None
-        self._row_sex_value = ""
         self._tool_doppler_mode: str | None = None
         self._rail_panels_pinned = False
         self._user_maximized = False
@@ -2934,22 +2931,10 @@ class MainWindow(QMainWindow):
         save_user_preferences(self._user_preferences)
 
     def _row_reference_sex(self) -> str:
-        """Sex of the patient for the S2 cards of the panel rows (UI-5).
+        """Current study's sex selector; evaluated when a norm card opens."""
+        from echo_personal_tool.presentation.study_header_controls import reference_sex
 
-        Cached per open study: the hover card appears after 400 ms and must
-        not re-read the DICOM header on every row.
-        """
-        instance = self._controller.state_manager.snapshot.instance
-        token = (getattr(instance, "path", None), getattr(instance, "media_format", None))
-        if token != self._row_sex_token:
-            self._row_sex_token = token
-            self._row_sex_value = ""
-            try:
-                patient = self.report_coordinator.patient_info(self._controller.compute_study_snapshot())
-                self._row_sex_value = _normalize_patient_sex(patient.sex)
-            except Exception as exc:  # noqa: BLE001 — a corrupt header must not block the card
-                log_boundary_failure(logger, "patient.demographics", exc, code="io", level=logging.WARNING)
-        return self._row_sex_value
+        return reference_sex(self)
 
     def _open_reference_constructor(self) -> None:
         """«Конструктор…» of the S1 footer: edit the handbook, then reload the window."""
@@ -5242,6 +5227,9 @@ class MainWindow(QMainWindow):
         return True
 
     def _wire_ui(self) -> None:
+        from echo_personal_tool.presentation.study_header_controls import install_study_header_controls
+
+        install_study_header_controls(self)
         self._viewer.fps_override_requested.connect(self._on_fps_override_requested)
         self._system_bar.open_folder_requested.connect(self._open_folder)
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)

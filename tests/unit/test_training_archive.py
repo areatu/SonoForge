@@ -464,3 +464,56 @@ def test_auto_ef_legacy_edited_source_and_lowercase_phase_are_not_lost(setup_arc
     capture.observe([replace(edited, phase="ED")], image, 2, context)
     capture.confirm(context.instance_key, 2)
     assert len(archive.records()) == 1
+
+
+def test_training_no_excludes_only_selected_material_and_survives_restart(setup_archive):
+    archive, capture, context, image, contour, skipped = setup_archive
+    offers = []
+    capture.saved = offers.append
+    capture.observe([contour], image, 2, context)
+    capture.confirm(context.instance_key, 2)
+    assert len(offers) == 1 and len(archive.records()) == 1
+    assert capture.reject(offers[0])
+    assert archive.records() == []
+    assert archive.records(include_excluded=True)[0]["excluded"]
+    # Re-observing an unchanged contour, including after restart, cannot undo No.
+    fresh = MeasurementArchiveCapture(SqliteMeasurementArchive(archive.path), lambda: skipped.append(True))
+    fresh.saved = offers.append
+    fresh.observe([contour], image, 2, context)
+    fresh.confirm(context.instance_key, 2)
+    assert archive.records() == [] and len(offers) == 1
+    # A genuinely edited contour is new material and defaults to Yes again.
+    edited = replace(contour, points=[(x + 1, y) for x, y in contour.points])
+    fresh.observe([edited], image, 2, context)
+    fresh.confirm(context.instance_key, 2)
+    assert len(archive.records()) == 1 and len(offers) == 2
+    assert not fresh.reject(offers[0])  # old prompt cannot exclude the new edit
+    assert len(archive.records()) == 1 and not skipped
+
+
+def test_training_yes_default_is_idempotent_and_receipt_has_no_pixels(setup_archive):
+    archive, capture, context, image, contour, _ = setup_archive
+    offers = []
+    capture.saved = offers.append
+    for _ in range(2):
+        capture.observe([contour], image, 2, context)
+        capture.confirm(context.instance_key, 2)
+    assert len(offers) == 1 and len(archive.records()) == 1
+    assert not hasattr(offers[0], "pixels")
+    assert context.patient_key not in repr(offers[0])
+    assert contour.points == [(20.0, 90.0), (45.0, 15.0), (70.0, 30.0), (90.0, 90.0)]
+
+
+def test_training_reject_failure_does_not_escape_or_lose_saved_material(setup_archive, monkeypatch):
+    archive, capture, context, image, contour, skipped = setup_archive
+    offers = []
+    capture.saved = offers.append
+    capture.observe([contour], image, 2, context)
+    capture.confirm(context.instance_key, 2)
+
+    def fail(_decision):
+        raise ArchiveWriteError("unavailable")
+
+    monkeypatch.setattr(archive, "reject_sample", fail)
+    assert capture.reject(offers[0]) is False
+    assert len(archive.records()) == 1 and skipped

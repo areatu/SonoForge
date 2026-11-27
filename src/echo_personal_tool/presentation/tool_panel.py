@@ -531,12 +531,25 @@ class ToolPanel(QWidget):
         if host is None:
             return
         layout = host.layout()
-        while layout.count():
-            item = layout.takeAt(0)
+        if layout is None:
+            return
+        desired = (
+            [self._measure._footer.metrics_widget]
+            if isinstance(self._measure, ToolPanelV2)
+            else [getattr(self._measure, "_patient_metrics"), getattr(self._measure, "_bsa_label")]
+        )
+        # Re-mounting the same controls must not schedule them for deletion.
+        # deleteLater() used to destroy live height/weight fields on Win32.
+        for index in reversed(range(layout.count())):
+            item = layout.itemAt(index)
+            if item is None:
+                continue
             widget = item.widget()
-            if widget is not None:
-                widget.hide()
-                widget.deleteLater()
+            if widget not in desired:
+                layout.takeAt(index)
+                if widget is not None:
+                    widget.hide()
+                    widget.deleteLater()
         if isinstance(self._measure, ToolPanelV2):
             widget = self._measure._footer.metrics_widget
             layout.addWidget(widget)

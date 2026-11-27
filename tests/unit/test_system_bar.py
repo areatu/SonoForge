@@ -504,3 +504,21 @@ def test_metrics_host_is_hidden_before_its_fields_can_overlap(qtbot) -> None:
     qtbot.wait(30)
     assert host.isVisibleTo(bar)
     assert host.width() >= host.sizeHint().width() - 1, "visible editors must never be squeezed"
+
+
+def test_report_roundtrip_restores_hidden_metrics_without_window_resize(qtbot):
+    from PySide6.QtWidgets import QLabel
+
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    host = bar.patient_metrics_host()
+    host.layout().addWidget(QLabel("Рост: 180 · Вес: 80 · ППТ: 1.99"))
+    bar.resize(2000, 42)
+    bar.show()
+    qtbot.waitUntil(lambda: host.isVisibleTo(bar))
+    bar.set_report_mode(True)
+    host.hide()  # a native layout pass can hide this host without resizing the bar
+    bar.set_report_mode(False)
+    qtbot.waitUntil(lambda: host.isVisibleTo(bar))
+    assert bar.width() == 2000
+    assert host.layout().itemAt(0).widget().text().startswith("Рост: 180")

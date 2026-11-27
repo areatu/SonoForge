@@ -33,8 +33,20 @@ class ArchiveSample:
     pixels: np.ndarray
 
 
+@dataclass(frozen=True)
+class ArchiveDecision:
+    """Pixel-free receipt identifying the exact saved material, not a live frame."""
+
+    sample_id: str
+    fingerprint: str
+    chamber: str
+    phase: str
+    frame_index: int
+
+
 class MeasurementArchive(Protocol):
     def token(self, kind: str, value: str) -> str: ...
     def save(self, sample: ArchiveSample) -> bool: ...
     def exclude_missing(self, instance_key: str, retained_ids: set[str]) -> None: ...
     def exclude_study(self, study_key: str) -> None: ...
+    def reject_sample(self, decision: ArchiveDecision) -> bool: ...

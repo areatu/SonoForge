@@ -294,7 +294,7 @@ class TestStudyRowContent:
         row = dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW)
         texts = [b.text for b in row.badges]
         assert any("84" in t for t in texts)
-        assert any("завершено" in t for t in texts)
+        assert not any("завершено" in t for t in texts)
 
 
 class TestSelectionSummary:
