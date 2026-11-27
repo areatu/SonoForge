@@ -64,3 +64,27 @@ def test_narrow_actions_remain_visible_and_restore_translated_captions(qtbot, re
     assert bar._btn_open.text()
     assert bar._btn_open.accessibleName() == bar._btn_open.text()
     assert bar._btn_pacs.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("theme", ["dark", "light", "graphite", "vscode_dark"])
+def test_sex_button_stays_square_after_polish_and_theme_font_changes(qtbot, restore_ui_state, theme):
+    from PySide6.QtWidgets import QPushButton
+
+    app = QApplication.instance()
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    button = bar.findChild(QPushButton, "patientSexButton")
+    for font_size in (12, 24, 12):
+        app.setFont(ui_font(pixel_size=font_size))
+        app.setStyleSheet(build_clinical_stylesheet(font_size, theme=theme))
+        bar.ensurePolished()
+        button.ensurePolished()
+        bar.update_row_height()
+        expected = bar.height() - 12
+        assert button.width() == button.height() == expected
+        bar.resize(1800, bar.height())
+        bar.show()
+        qtbot.waitUntil(lambda: button.width() == button.height() == expected)
+        assert button.minimumWidth() == button.maximumWidth() == expected
+        assert button.minimumHeight() == button.maximumHeight() == expected

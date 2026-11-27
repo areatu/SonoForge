@@ -824,7 +824,15 @@ class SystemBar(CaptionDragMixin, QWidget):
         """Keep the row at 42 px, and taller only when the font needs it (spec §4.1, Э4)."""
         height = max(PATIENT_LINE_HEIGHT_PX, line_height(self) + _PATIENT_LINE_PADDING_PX)
         self.setFixedHeight(height)
-        self._btn_sex.setFixedSize(height - 12, height - 12)
+        side = height - 12
+        # QSS dimensions describe the content box; keep its 1 px border inside
+        # the square and override the ordinary system-bar button height/padding.
+        content = side - 2
+        self._btn_sex.setStyleSheet(
+            f"padding: 0px; min-width: {content}px; max-width: {content}px; "
+            f"min-height: {content}px; max-height: {content}px;"
+        )
+        self._btn_sex.setFixedSize(side, side)
 
     def set_references_visible(self, visible: bool) -> None:
         """Hide «Справочник» (Presenter builds have no reference UI)."""
