@@ -1893,7 +1893,7 @@ class AppController(QObject):
         session = self._measurement_session.get(self._resolve_study_uid())
         if state.instance is None and not session.has_measurements:
             return None
-        return self._build_measurement_snapshot(
+        snapshot = self._build_measurement_snapshot(
             contours=session.contours,
             linear_measurements=session.linear_measurements,
             doppler_dto=session.all_doppler_dto,
@@ -1903,6 +1903,7 @@ class AppController(QObject):
             vessel_measurements=session.vessel_measurements,
             report_choices=report_choices,
         )
+        return dataclasses.replace(snapshot, imt_measurements=session.imt_measurements)
 
     def study_projection(
         self,

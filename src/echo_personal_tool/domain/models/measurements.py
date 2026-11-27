@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.diastology import DiastologyAssessment
 from echo_personal_tool.domain.models.doppler import DopplerIntervalMarker, DopplerPeakMarker, DopplerTrace
+from echo_personal_tool.domain.models.imt import ImtDraft
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.report_repeat import ReportRepeat
 from echo_personal_tool.domain.models.result_provenance import BsaBasis, BsaRecordStatus
@@ -408,3 +409,4 @@ class MeasurementSnapshot:
     derived_record_status: object | None = None
     #: Alternatives offered on the report only, never written to the study document.
     report_repeats: tuple[ReportRepeat, ...] = ()
+    imt_measurements: tuple[ImtDraft, ...] = ()

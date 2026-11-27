@@ -7,6 +7,7 @@ from math import isfinite
 
 from echo_personal_tool.domain.measurement_catalog import measurement_for_caliper
 from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext
+from echo_personal_tool.domain.models.imt_region import Polygon, validate_region
 
 Point = tuple[float, float]
 Boundary = tuple[Point, ...]
@@ -76,6 +77,7 @@ class ImtSource:
     roi: tuple[int, int, int, int]  # half-open x0, y0, x1, y1 in source pixels
     segment: str = "CCA_far_wall"
     clip_mode: str = "2d"
+    roi_polygon: Polygon = ()  # optional oriented rectangle, clockwise from its local top-left
 
     def __post_init__(self) -> None:
         if any(type(v) is not int for v in (self.generation, self.frame_index, self.frame_count)):
@@ -98,6 +100,10 @@ class ImtSource:
             raise ImtRefusal("invalid_roi")
         if x1 - x0 > 512 or y1 - y0 > 256:
             raise ImtRefusal("roi_too_large")
+        try:
+            validate_region(self.roi_polygon, self.roi)
+        except ValueError as exc:
+            raise ImtRefusal(str(exc)) from exc
         context = self.calibration
         if not isinstance(context, CalibrationContext):
             raise ImtRefusal("calibration_required")
@@ -179,6 +185,7 @@ class ImtDraft:
             "segment": self.source.segment,
             "phase": self.source.phase,
             "roi": self.source.roi,
+            "roi_polygon": self.source.roi_polygon,
             "calibration": self.source.calibration.signature(),
             "lumen_intima": self.lumen_intima,
             "media_adventitia": self.media_adventitia,

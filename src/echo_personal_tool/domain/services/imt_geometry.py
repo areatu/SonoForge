@@ -6,6 +6,7 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 
 from echo_personal_tool.domain.models.imt import Boundary, ImtDraft, ImtPolicy, ImtRefusal, ImtSource
+from echo_personal_tool.domain.models.imt_region import contains_points, region_axes
 
 
 def _boundary(points: Boundary, source: ImtSource) -> np.ndarray:
@@ -18,7 +19,7 @@ def _boundary(points: Boundary, source: ImtSource) -> np.ndarray:
     if not np.isfinite(values).all() or np.any(np.diff(values[:, 0]) <= 0):
         raise ImtRefusal("boundary_must_be_finite_x_monotone")
     x0, y0, x1, y1 = source.roi
-    if np.any(values < [x0, y0]) or np.any(values >= [x1, y1]):
+    if np.any(values < [x0, y0]) or np.any(values >= [x1, y1]) or not contains_points(source.roi_polygon, values):
         raise ImtRefusal("boundary_outside_roi")
     return values
 
@@ -64,11 +65,19 @@ def measure_boundaries(
     edge = np.asarray(edge_strength, dtype=float)
     if edge.shape != (y1 - y0, x1 - x0) or not np.isfinite(edge).all() or np.any(edge < 0):
         raise ImtRefusal("invalid_edge_evidence")
-    # Both named surfaces must cover the same longitudinal segment.
-    if not np.allclose(li[[0, -1], 0], ma[[0, -1], 0], rtol=0, atol=1e-6):
+    # Compare longitudinal span/order in the selected rectangle's axes.
+    # Rotated end caps are not vertical lines in source coordinates.
+    local_li, local_ma = li, ma
+    if source.roi_polygon:
+        origin, u, v, _, _ = region_axes(source.roi_polygon)
+        axes = np.column_stack((u, v))
+        local_li, local_ma = (li - origin) @ axes, (ma - origin) @ axes
+    if not np.allclose(local_li[[0, -1], 0], local_ma[[0, -1], 0], rtol=0, atol=1e-6):
         raise ImtRefusal("boundary_span_mismatch")
-    nodes = np.unique(np.concatenate((li[:, 0], ma[:, 0])))
-    if np.any(np.interp(nodes, ma[:, 0], ma[:, 1]) <= np.interp(nodes, li[:, 0], li[:, 1])):
+    if np.any(np.diff(local_li[:, 0]) <= 0) or np.any(np.diff(local_ma[:, 0]) <= 0):
+        raise ImtRefusal("boundary_must_be_finite_x_monotone")
+    nodes = np.unique(np.concatenate((local_li[:, 0], local_ma[:, 0])))
+    if np.any(np.interp(nodes, local_ma[:, 0], local_ma[:, 1]) <= np.interp(nodes, local_li[:, 0], local_li[:, 1])):
         raise ImtRefusal("boundaries_cross_or_reversed")
     row, col = source.calibration.spacing
     scale = np.array([col, row], dtype=float)
