@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
+import json
 from dataclasses import asdict
 
 import numpy as np
 
 from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.training_archive import ArchiveContext, ArchiveSample
+from echo_personal_tool.domain.models.training_archive import ArchiveContext, ArchiveDecision, ArchiveSample
 
 CHAMBERS = frozenset({"LV", "LA", "RV", "RA"})
 IDENTITY_TRANSFORM = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
@@ -107,3 +110,24 @@ def make_archive_sample(
         "privacy": "LOCAL_NOT_ANONYMISED_BURNED_IN_TEXT_POSSIBLE",
     }
     return ArchiveSample(sample_id, metadata, np.ascontiguousarray(image).copy())
+
+
+def material_fingerprint(metadata: str, frame_hash: str) -> str:
+    """Canonical metadata plus the source pixel payload identify a version."""
+    return hashlib.sha256((metadata + ":" + frame_hash).encode("utf-8")).hexdigest()
+
+
+def archive_decision(sample: ArchiveSample) -> ArchiveDecision:
+    stream = io.BytesIO()
+    np.save(stream, sample.pixels, allow_pickle=False)
+    metadata = json.dumps(sample.metadata, sort_keys=True, allow_nan=False)
+    frame_index = sample.metadata["frame_index"]
+    if not isinstance(frame_index, int):
+        raise ValueError("invalid archive frame index")
+    return ArchiveDecision(
+        sample.sample_id,
+        material_fingerprint(metadata, hashlib.sha256(stream.getvalue()).hexdigest()),
+        str(sample.metadata["chamber"]),
+        str(sample.metadata["phase"]),
+        frame_index,
+    )

@@ -14,7 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from echo_personal_tool.domain.models.training_archive import ArchiveSample, ArchiveWriteError
+from echo_personal_tool.domain.models.training_archive import ArchiveDecision, ArchiveSample, ArchiveWriteError
+from echo_personal_tool.domain.services.training_archive import material_fingerprint
 
 
 class SqliteMeasurementArchive:
@@ -42,6 +43,8 @@ class SqliteMeasurementArchive:
                 connection.execute("PRAGMA foreign_keys=ON")
                 connection.executescript("""
                     CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value BLOB NOT NULL);
+                    CREATE TABLE IF NOT EXISTS rejections(id TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                        PRIMARY KEY(id, fingerprint));
                     CREATE TABLE IF NOT EXISTS frames(hash TEXT PRIMARY KEY, pixels BLOB NOT NULL);
                     CREATE TABLE IF NOT EXISTS samples(
                         id TEXT PRIMARY KEY, instance TEXT NOT NULL, revision INTEGER NOT NULL,
@@ -65,6 +68,11 @@ class SqliteMeasurementArchive:
         digest = hashlib.sha256(pixels).hexdigest()
         metadata = json.dumps(sample.metadata, sort_keys=True, allow_nan=False)
         with self._connection() as db:
+            fingerprint = material_fingerprint(metadata, digest)
+            if db.execute(
+                "SELECT 1 FROM rejections WHERE id=? AND fingerprint=?", (sample.sample_id, fingerprint)
+            ).fetchone():
+                return False
             old = db.execute(
                 "SELECT revision,excluded,metadata,frame FROM samples WHERE id=?", (sample.sample_id,)
             ).fetchone()
@@ -94,6 +102,16 @@ class SqliteMeasurementArchive:
             for sid, metadata in db.execute("SELECT id,metadata FROM samples WHERE excluded=0").fetchall():
                 if json.loads(metadata)["study_key"] == study_key:
                     db.execute("UPDATE samples SET excluded=1,revision=revision+1 WHERE id=?", (sid,))
+
+    def reject_sample(self, decision: ArchiveDecision) -> bool:
+        """Reject only the material shown in the prompt; never a newer edit."""
+        with self._connection() as db:
+            row = db.execute("SELECT metadata,frame,excluded FROM samples WHERE id=?", (decision.sample_id,)).fetchone()
+            if row is None or material_fingerprint(row[0], row[1]) != decision.fingerprint or row[2]:
+                return False
+            db.execute("INSERT OR IGNORE INTO rejections VALUES(?,?)", (decision.sample_id, decision.fingerprint))
+            db.execute("UPDATE samples SET excluded=1,revision=revision+1 WHERE id=?", (decision.sample_id,))
+        return True
 
     def records(self, *, include_excluded: bool = False) -> list[dict[str, object]]:
         """Metadata snapshot; export keeps only the current non-excluded revision."""

@@ -1397,9 +1397,9 @@ class OrthancStudyDialog(QDialog):
             size = format_size_mb(stats.size_mb)
             if size:
                 badges.append(Badge(f"≈ {size}"))
-            if stats.is_stable is True:
-                badges.append(Badge(tr("orthanc.badge_complete"), "success"))
-            elif stats.is_stable is False:
+            # Server stability is not measurement completion; only the
+            # right-hand checkbox represents the latter.
+            if stats.is_stable is False:
                 badges.append(Badge(tr("orthanc.badge_receiving"), "warning"))
         accession = (study.accession_number or "").strip()
         if accession:

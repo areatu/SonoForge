@@ -3990,5 +3990,15 @@
   "imt.mean": "Mean IMT",
   "imt.maximum": "Max IMT",
   "imt.mm": "mm",
-  "imt.legend": "Reference scale: green ≤ 0.9 mm; yellow > 0.9 and < 1.5 mm; red ≥ 1.5 mm. CCA IMT reference thresholds (Mannheim/ESVS), not age/sex adjusted. Color does not diagnose disease or plaque."
+  "imt.legend": "Reference scale: green ≤ 0.9 mm; yellow > 0.9 and < 1.5 mm; red ≥ 1.5 mm. CCA IMT reference thresholds (Mannheim/ESVS), not age/sex adjusted. Color does not diagnose disease or plaque.",
+  "ml.contour_prompt": "Save contour for training",
+  "ml.contour_yes": "Yes",
+  "ml.contour_no": "No",
+  "ml.contour_prompt_context": "{chamber} · {phase} · frame {frame}",
+  "ml.contour_default_yes": "Already saved. No answer within 8 seconds means Yes. No excludes only this material from the training archive.",
+  "ml.contour_no_tip": "Exclude from training without changing the study measurement",
+  "ml.contour_reject_failed": "Could not exclude contour (write failure or changed version). Retry or check the ML archive.",
+  "system_bar.sex_male_short": "M",
+  "system_bar.sex_female_short": "W",
+  "system_bar.sex_tooltip": "Sex for reference ranges: pressed — male, released — female. Your choice updates this tab’s report sex. Unknown source sex defaults to male reference ranges; verify the choice."
 }

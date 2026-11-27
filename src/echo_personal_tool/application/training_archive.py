@@ -10,11 +10,17 @@ import numpy as np
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.training_archive import (
     ArchiveContext,
+    ArchiveDecision,
     ArchiveSample,
     ArchiveWriteError,
     MeasurementArchive,
 )
-from echo_personal_tool.domain.services.training_archive import CHAMBERS, make_archive_sample, measurement_slot
+from echo_personal_tool.domain.services.training_archive import (
+    CHAMBERS,
+    archive_decision,
+    make_archive_sample,
+    measurement_slot,
+)
 
 
 class MeasurementArchiveCapture:
@@ -28,6 +34,7 @@ class MeasurementArchiveCapture:
     def __init__(self, archive: MeasurementArchive, skipped: Callable[[], None]) -> None:
         self.archive = archive
         self._skipped = skipped
+        self.saved: Callable[[ArchiveDecision], None] | None = None
         self.saved_count = 0
         self.skipped_count = 0
         self.paused = False
@@ -105,10 +112,21 @@ class MeasurementArchiveCapture:
             instance = self.archive.token("instance", instance_key)
             for sid, sample in list(self.pending.items()):
                 if sample.metadata["instance_key"] == instance and sample.metadata["frame_index"] == frame_index:
-                    self.saved_count += int(self.archive.save(sample))
+                    changed = self.archive.save(sample)
+                    self.saved_count += int(changed)
                     del self.pending[sid]
+                    if changed and self.saved is not None:
+                        self.saved(archive_decision(sample))
         except (ArchiveWriteError, MemoryError):
             self.skipped()
+
+    def reject(self, decision: ArchiveDecision) -> bool:
+        """A training-only opt-out, never a clinical contour mutation."""
+        try:
+            return self.archive.reject_sample(decision)
+        except (ArchiveWriteError, MemoryError):
+            self.skipped()
+            return False
 
     def reset(self, study_uid: str) -> None:
         try:

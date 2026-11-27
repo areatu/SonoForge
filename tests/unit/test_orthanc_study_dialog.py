@@ -332,3 +332,89 @@ def test_continue_work_reenables_parent_window(make_dialog, tmp_path, qapp):
     dialog._downloading = False
     dialog.reject()
     parent.close()
+
+
+@pytest.fixture
+def server_list(make_dialog, tmp_path, qtbot):
+    """Drive the real Find/list/click path using a deterministic offline server."""
+    from datetime import date
+
+    from PySide6.QtWidgets import QPushButton, QTreeWidget
+
+    from echo_personal_tool.application.localization import tr
+    from echo_personal_tool.domain.models.orthanc import StudyInfo, StudyStatistics
+
+    def create(*, stable=True, **options):
+        client = FakeDicomWebClient()
+        client.query_studies = lambda **_: [StudyInfo("1.2.3.4", "", "", date.today().strftime("%Y%m%d"), "")]
+        client.query_series = lambda _: []
+        client.query_study_enrichments = lambda **_: {}
+        client.study_statistics = lambda _: StudyStatistics(instances=44, series=3, size_mb=442, is_stable=stable)
+        dialog = make_dialog(
+            client, OrthancSessionCache(tmp_path), server_settings=ServerSettings(use_mock=True), **options
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        find = next(button for button in dialog.findChildren(QPushButton) if button.text() == tr("orthanc.find"))
+        qtbot.mouseClick(find, Qt.MouseButton.LeftButton)
+        tree = dialog.findChild(QTreeWidget, "studyList")
+        qtbot.waitUntil(lambda: tree.topLevelItemCount() == 1)
+        return dialog, tree
+
+    return create
+
+
+@pytest.mark.parametrize("stable", [True, False, None])
+def test_study_selection_and_server_statistics_never_mark_measurements_complete(server_list, qtbot, stable):
+    from echo_personal_tool.application.localization import tr
+    from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_CHECKED, ROLE_COMPLETED, ROLE_ROW
+
+    dialog, tree = server_list(stable=stable)
+    item = tree.topLevelItem(0)
+    assert not item.data(0, ROLE_COMPLETED)
+    qtbot.mouseClick(tree.viewport(), Qt.MouseButton.LeftButton, pos=tree.visualItemRect(item).center())
+    qtbot.waitUntil(lambda: any("442" in b.text for b in item.data(0, ROLE_ROW).badges))
+    assert not item.data(0, ROLE_COMPLETED)
+    assert not item.data(0, ROLE_CHECKED)
+    badges = item.data(0, ROLE_ROW).badges
+    assert not any(b.kind == "success" for b in badges)
+    assert any(b.text == tr("orthanc.badge_receiving") for b in badges) is (stable is False)
+    dialog.reject()
+
+
+def test_measured_study_is_marked_when_list_opens_without_selecting_it(server_list):
+    from echo_personal_tool.application.saved_records import study_key_for_uid
+    from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_CHECKED, ROLE_COMPLETED
+
+    for _ in range(2):  # reopening with saved measurements is independent of row clicks
+        dialog, tree = server_list(live_measurement_keys={study_key_for_uid("1.2.3.4")})
+        item = tree.topLevelItem(0)
+        assert item.data(0, ROLE_COMPLETED)
+        assert not item.data(0, ROLE_CHECKED)
+        dialog.reject()
+
+
+def test_manual_completion_mark_is_restored_before_row_selection(server_list, qtbot, monkeypatch):
+    from types import SimpleNamespace
+
+    from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_COMPLETED, completed_checkbox_rect
+
+    values = {}
+    store = SimpleNamespace(
+        read=lambda key, default=None: values.get(key, default),
+        write=lambda key, value: values.__setitem__(key, value),
+        sync=lambda: None,
+    )
+    monkeypatch.setattr("echo_personal_tool.presentation.orthanc_study_dialog.settings_store_for", lambda *_: store)
+    for reopen in (False, True):
+        dialog, tree = server_list(completion_persistence=True)
+        item = tree.topLevelItem(0)
+        assert bool(item.data(0, ROLE_COMPLETED)) is reopen
+        if not reopen:
+            qtbot.mouseClick(
+                tree.viewport(),
+                Qt.MouseButton.LeftButton,
+                pos=completed_checkbox_rect(tree.visualItemRect(item)).center(),
+            )
+            assert item.data(0, ROLE_COMPLETED)
+        dialog.reject()
