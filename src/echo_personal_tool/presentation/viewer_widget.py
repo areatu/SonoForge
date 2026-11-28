@@ -151,6 +151,7 @@ from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
     DopplerViewerPort,
 )
+from echo_personal_tool.presentation.viewer.frame_overlay import FrameOverlayModel
 from echo_personal_tool.presentation.viewer.graphics_items import (
     ContourViewBox,
     ResultsOverlayLabel,
@@ -511,7 +512,7 @@ class ViewerWidget(QWidget):
         self._contour_pen_simpson = pg.mkPen(
             dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
         )
-        self._frame_overlay_lines: list[str] = []
+        self._frame_overlay_model = FrameOverlayModel()
         self._pending_viewer_state: ViewerState | None = None
         self._initialize_measurement_state()
         # A4: the naming popup and the caliper-label cycle live in their own
@@ -1069,9 +1070,7 @@ class ViewerWidget(QWidget):
             self._overlay_label.adjustSize()
             label_w = self._overlay_label.width()
             label_h = self._overlay_label.height()
-            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-            if calibration_banner or calibration_ok:
+            if self._frame_overlay_model.is_calibration_prompt() or self._frame_overlay_model.is_calibration_success():
                 x = geo.x() + max((geo.width() - label_w) // 2, 8)
                 y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
             else:
@@ -4471,40 +4470,34 @@ class ViewerWidget(QWidget):
         self.transport.update_timeline_indicator(viewer_state)
 
     def append_frame_overlay(self, line: str) -> None:
-        self._frame_overlay_lines.append(line)
+        self._frame_overlay_model.append(line)
         self._refresh_frame_overlay()
 
     def clear_frame_overlay(self) -> None:
-        self._frame_overlay_lines.clear()
+        self._frame_overlay_model.clear()
         self._refresh_frame_overlay()
 
     def frame_overlay_lines(self) -> tuple[str, ...]:
         """The lines of the frame overlay, in the order they were added."""
-        return tuple(self._frame_overlay_lines)
+        return self._frame_overlay_model.lines()
 
     def _clear_frame_overlay(self) -> None:
         self.clear_frame_overlay()
 
     def _refresh_frame_overlay(self) -> None:
-        if self._frame_overlay_lines:
-            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-            if calibration_banner:
-                self._overlay_label.setStyleSheet(_CALIBRATION_OVERLAY_STYLE)
-                self._overlay_label.setMinimumWidth(360)
-            elif calibration_ok:
-                self._overlay_label.setStyleSheet(_CALIBRATION_SUCCESS_STYLE)
-                self._overlay_label.setMinimumWidth(360)
-            else:
-                self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
-                self._overlay_label.setMinimumWidth(0)
-            self._overlay_label.setText("\n".join(self._frame_overlay_lines))
-            self._overlay_label.adjustSize()
-            self._overlay_label.show()
-            self._overlay_label.raise_()
-            self._position_overlay_label()
-        else:
+        """Render the overlay model into the child label (one binding block)."""
+        style, min_width = self._frame_overlay_model.style()
+        text = self._frame_overlay_model.text()
+        if not text:
             self._overlay_label.hide()
+            return
+        self._overlay_label.setStyleSheet(style)
+        self._overlay_label.setMinimumWidth(min_width)
+        self._overlay_label.setText(text)
+        self._overlay_label.adjustSize()
+        self._overlay_label.show()
+        self._overlay_label.raise_()
+        self._position_overlay_label()
 
     def _clear_linear_caliper(self) -> None:
         if self._comparison_state.kind:

@@ -159,7 +159,7 @@ def test_mbs_edv_auto_starts_model_contour(qtbot, synthetic_dicom_path) -> None:
     controller.request_auto_segment.assert_called_once()
     assert controller._auto_segment_phase == "ED"
     assert controller._auto_segment_view == "A4C"
-    assert "LV Auto" in window._viewer._frame_overlay_lines[0]
+    assert "LV Auto" in window._viewer.frame_overlay_lines()[0]
     assert not window._viewer.is_contour_mode_active
 
 
@@ -197,7 +197,7 @@ def test_frame_overlay_clears_on_frame_change(qtbot, synthetic_dicom_path) -> No
     qtbot.waitExposed(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
     viewer.append_frame_overlay("IVSd: 10.0 mm (20.0 px)")
-    assert viewer._frame_overlay_lines
+    assert viewer.frame_overlay_lines()
     assert viewer._overlay_label.isVisible()
 
     viewer.set_state(

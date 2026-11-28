@@ -63,7 +63,7 @@ def test_contour_drag_updates_numeric_overlay_on_current_frame(qtbot, synthetic_
 
     viewer._finalize_contour_point_drag(0, 16, 32.0, 8.0)
 
-    overlay = "\n".join(viewer._frame_overlay_lines)
+    overlay = "\n".join(viewer.frame_overlay_lines())
     assert "A4C ED" in overlay
     assert "Длина:" in overlay
     assert "Объём:" in overlay

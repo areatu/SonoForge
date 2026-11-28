@@ -212,7 +212,6 @@ EXPOSED_PRIVATE_NAMES = frozenset(
         "_finish_caliper_node_drag",
         "_finish_manual_contour",
         "_fps_label",
-        "_frame_overlay_lines",
         "_frame_panel_layout",
         "_frame_panels_from_dicom",
         "_freehand_open_arc",
