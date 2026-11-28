@@ -142,6 +142,11 @@ class UserPreferences:
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
     confirm_reset: bool = True
     pdf_font_size: int = DEFAULT_PDF_FONT_SIZE
+    #: Research-use banner on exported report PDFs (#331/#418): the study has
+    #: no clinical validation yet, so exported sheets carry the notice unless
+    #: the operator explicitly turns it off (a workspace decision, not a
+    #: per-document one).  Default on.
+    report_research_watermark: bool = True
     startup_mode: str = "empty"
     last_opened_folder: str = ""
     #: Where the last opened study came from: ``""`` (unknown/first run),
@@ -160,6 +165,11 @@ class UserPreferences:
     orthanc_cache_clear_on_exit: bool = True
     # Experimental until the full WP4 platform acceptance matrix has passed.
     measurement_persistence_enabled: bool = False
+    #: Encrypt saved measurements (Z2-M) with AES-256-GCM before they touch
+    #: the disk (#331).  Key: OS keychain (full build) or device-secret-wrapped
+    #: ``.vault.key`` (portable).  Applies on the next start, where records
+    #: are migrated in place; disabled means decrypted back to plaintext.
+    measurements_at_rest_encrypted: bool = False
     #: The concept palette (``docs/images/ui-redesign``, «Графит»): near-black
     #: surfaces with a teal accent.  It replaced ``vscode_dark`` as the default in
     #: 0.4.0 — the grey-blue VS Code palette was never the design, only the
@@ -351,6 +361,14 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
     )
 
 
+def _read_measurement_storage_fields(store: Any, allowed: bool) -> dict[str, bool]:
+    """The two persisted-storage toggles: autosave on/off and at-rest encryption (#331)."""
+    return {
+        "measurement_persistence_enabled": _read_measurement_persistence(store, allowed),
+        "measurements_at_rest_encrypted": _read_bool(store.value("measurements_at_rest_encrypted"), False),
+    }
+
+
 def _overlay_ratios(store: QSettings) -> tuple[float, float]:
     """The two clamped overlay positions (a helper keeps the loader readable)."""
     return (
@@ -525,7 +543,7 @@ def load_user_preferences() -> UserPreferences:
             if capabilities.continue_last_session
             else 0
         ),
-        measurement_persistence_enabled=_read_measurement_persistence(store, capabilities.measurement_storage),
+        **_read_measurement_storage_fields(store, capabilities.measurement_storage),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_theme_mode(store),
         accent_palette=_read_choice(
@@ -597,13 +615,14 @@ def _read_report_keys(raw: object, default: tuple[str, ...] = ()) -> tuple[str, 
 
 
 def _read_report_preferences(store: Any) -> dict[str, Any]:
-    """Permanent report fields (institution / equipment / physician)."""
+    """Permanent report fields (institution / equipment / physician) + the research banner (#418)."""
     return dict(
         report_value_excluded=_read_report_keys(store.value("report_value_excluded"), DEFAULT_REPORT_VALUE_EXCLUDED),
         report_value_order=_read_report_keys(store.value("report_value_order")),
         report_institution=_read_str(store.value("report_institution"), ""),
         report_equipment=_read_str(store.value("report_equipment"), ""),
         report_physician=_read_str(store.value("report_physician"), ""),
+        report_research_watermark=_read_bool(store.value("report_research_watermark"), True),
     )
 
 

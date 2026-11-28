@@ -149,12 +149,16 @@ class ReportPreview(QWidget):
         document_provider: Callable[[], ReportDocument] | None = None,
         *,
         font_size: int = 10,
+        research_banner: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("reportPreview")
         self._provider = document_provider
         self._font_size = font_size
+        # Research-use notice on the sheet (#418): the preview, the export and
+        # the signed render must agree, because the receipt hashes the bytes.
+        self._research_banner = bool(research_banner)
         self._document: ReportDocument | None = None
         self._anchors: dict[ValueId, list[PageRect]] = {}
         self._pdf_bytes: bytes = b""
@@ -360,6 +364,14 @@ class ReportPreview(QWidget):
         self._font_size = int(font_size)
         self.request_refresh()
 
+    def set_research_banner(self, enabled: bool) -> None:
+        """Research-use notice on the sheet (#418); a change schedules a rebuild."""
+        enabled = bool(enabled)
+        if enabled == self._research_banner:
+            return
+        self._research_banner = enabled
+        self.request_refresh()
+
     # ── rendering ──────────────────────────────────────────────────
 
     def request_refresh(self) -> None:
@@ -428,7 +440,12 @@ class ReportPreview(QWidget):
     def _render(self, document: ReportDocument) -> bool:
         self._hide_card()
         try:
-            rendered = render_report(document, font_size=self._font_size, template=self._template)
+            rendered = render_report(
+                document,
+                font_size=self._font_size,
+                template=self._template,
+                research_banner=self._research_banner,
+            )
         except ReportExportError:
             self._show_status("report_mode.render_failed")
             return False

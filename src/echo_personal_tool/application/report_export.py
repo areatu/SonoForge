@@ -54,15 +54,21 @@ def render_report(
     font_size: int = 10,
     template: ReportTemplate | None = None,
     stamp: SignatureStamp | None = None,
+    research_banner: bool = True,
 ) -> RenderedReport:
     """Render a report for preview without exposing the infrastructure DTO.
 
     ``template`` is the printable form of the protocol (item 12 of the
     2026-11-06 list); ``None`` keeps the full form of older builds.  ``stamp``
     (#624) draws the visual local-EP block of a signed sheet.
+    ``research_banner`` (#418) prints the research-use notice; the preview,
+    the export and the signed render must agree on it, because the signed
+    receipt hashes exactly these bytes.
     """
     try:
-        rendered = _pdf_adapter.render_report(document, font_size=font_size, template=template, stamp=stamp)
+        rendered = _pdf_adapter.render_report(
+            document, font_size=font_size, template=template, stamp=stamp, research_banner=research_banner
+        )
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
 
@@ -79,14 +85,18 @@ def export_report_document_pdf(
     *,
     font_size: int = 10,
     template: ReportTemplate | None = None,
+    research_banner: bool = True,
 ) -> Path:
     """Atomically export a study report and return its destination path.
 
     ``template`` is the printable form of the protocol (item 12 of the
     2026-11-06 list); the exported PDF is the same sheet the preview shows.
+    ``research_banner`` (#418) prints the research-use notice.
     """
     try:
-        return _pdf_adapter.export_report_document_pdf(document, output_path, font_size=font_size, template=template)
+        return _pdf_adapter.export_report_document_pdf(
+            document, output_path, font_size=font_size, template=template, research_banner=research_banner
+        )
     except _pdf_adapter.PdfExportError:
         raise ReportExportError("pdf_export_failed") from None
 

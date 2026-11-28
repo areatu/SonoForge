@@ -56,6 +56,7 @@ class ReportPdfExportJob(QObject):
         *,
         font_size: int = 10,
         template: ReportTemplate | None = None,
+        research_banner: bool = True,
         on_outcome: OutcomeCallback | None = None,
     ) -> None:
         super().__init__(parent)
@@ -76,7 +77,9 @@ class ReportPdfExportJob(QObject):
         self._dialog.setMinimumDuration(0)
         self._dialog.setValue(0)
 
-        worker = ReportExportWorker(document, self._dest_path, font_size=font_size, template=template)
+        worker = ReportExportWorker(
+            document, self._dest_path, font_size=font_size, template=template, research_banner=research_banner
+        )
         worker.signals.finished.connect(self._on_finished, Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(self._on_failed, Qt.ConnectionType.QueuedConnection)
         worker.signals.cancelled.connect(self._on_cancelled, Qt.ConnectionType.QueuedConnection)

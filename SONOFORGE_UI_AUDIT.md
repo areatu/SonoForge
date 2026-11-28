@@ -5,6 +5,11 @@
 **Область:** `src/echo_personal_tool/presentation`, `src/echo_personal_tool/ui`, `src/echo_personal_tool/constructor`  
 **Статический анализ:** `ruff` по конфигу проекта (`E, F, I, UP, S110, T201`) — все проверки пройдены, предупреждений нет.
 
+> **[RESOLVED 2026-11-27]** Все три бага раздела 1 проверены по коду `main @ 54d382a` и закрыты:
+> 1.1 — `ConstructorDialog.closeEvent` оборачивает `save()` в `try/except`, проверяет результат и держит диалог открытым при неудаче (`event.ignore()`);
+> 1.2 — `import_excel` реализован через `ReferenceModel.merge_from_dict`, `_mark_dirty()` вызывается только при фактическом слиянии;
+> 1.3 — `findChild(QWidget)` устранён (0 вхождений в `src`). Документ сохранён как исторический.
+
 ---
 
 ## 1. Найденные ошибки (баги)

@@ -101,6 +101,7 @@ class ReportSigningService:
         secret: str,
         font_size: int = 10,
         template: ReportTemplate | None = None,
+        research_banner: bool = True,
     ) -> SignReportResult:
         """Sign the shown document and publish the stamped PDF + receipt.
 
@@ -118,6 +119,7 @@ class ReportSigningService:
             secret=secret,
             font_size=font_size,
             template=template,
+            research_banner=research_banner,
             user=user,
             lifecycle=ReportLifecycle.SIGNED.value,
             revision=(int(previous["revision"]) if previous else 0) + 1,
@@ -134,6 +136,7 @@ class ReportSigningService:
         reason: str,
         font_size: int = 10,
         template: ReportTemplate | None = None,
+        research_banner: bool = True,
     ) -> SignReportResult:
         """Amend a signed protocol: new signed revision + explicit addendum.
 
@@ -166,6 +169,7 @@ class ReportSigningService:
             secret=secret,
             font_size=font_size,
             template=template,
+            research_banner=research_banner,
             user=user,
             lifecycle=ReportLifecycle.AMENDED.value,
             revision=int(previous["revision"]) + 1,
@@ -250,6 +254,7 @@ class ReportSigningService:
         secret: str,
         font_size: int,
         template: ReportTemplate | None,
+        research_banner: bool,
         user: UserProfile,
         lifecycle: str,
         revision: int,
@@ -268,7 +273,9 @@ class ReportSigningService:
             key_id=key_pub.key_id,
             document_sha256=digest,
         )
-        rendered = report_export.render_report(document, font_size=font_size, template=template, stamp=stamp)
+        rendered = report_export.render_report(
+            document, font_size=font_size, template=template, stamp=stamp, research_banner=research_banner
+        )
         receipt = build_receipt(
             user_id=user.user_id,
             key_id=key_pub.key_id,

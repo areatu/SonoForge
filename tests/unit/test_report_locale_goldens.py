@@ -94,6 +94,7 @@ PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     # the goldens used to pin the very leak that was removed.
     "ru": (
         "Протокол эхокардиографии",
+        "Исследовательский инструмент — не для клинического применения",
         "Пациент",
         "Левый желудочек",
         "Показатель",
@@ -109,6 +110,7 @@ PDF_GOLDENS: Final[dict[str, tuple[str, ...]]] = {
     ),
     "en": (
         "Echocardiography report",
+        "Research tool — not for clinical use",
         "Patient",
         "Left ventricle",
         "Parameter",

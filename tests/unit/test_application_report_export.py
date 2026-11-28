@@ -19,7 +19,7 @@ from echo_personal_tool.domain.services.report_template import COLUMNS_TWO, Repo
 def test_render_returns_application_owned_anchor_types(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter_rect = report_export._pdf_adapter.PageRect(page=1, x=10.0, y=20.0, w=30.0, h=4.0)
 
-    def render(_document: ReportDocument, *, font_size: int, template=None, stamp=None):
+    def render(_document: ReportDocument, *, font_size: int, template=None, stamp=None, research_banner=True):
         assert font_size == 12
         assert template is None  # the full form of older builds
         assert stamp is None  # unsigned preview carries no EP stamp (issue 624)
@@ -71,7 +71,7 @@ def test_export_delegates_the_document_path_and_font_size(monkeypatch: pytest.Mo
     destination = tmp_path / "study-report.pdf"
     calls = []
 
-    def export(actual_document, actual_path, *, font_size, template=None):
+    def export(actual_document, actual_path, *, font_size, template=None, research_banner=True):
         calls.append((actual_document, actual_path, font_size, template))
         return actual_path
 

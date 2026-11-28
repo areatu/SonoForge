@@ -866,6 +866,23 @@ def _portable_device_secret() -> bytes:
     return _create_device_secret(path)
 
 
+def portable_device_secret_for_wrapping() -> bytes | None:
+    """Return the portable device secret for key wrapping, or ``None``.
+
+    Public facade for the Z2-M at-rest encryption (#331): the saved
+    measurements key is wrapped with the same per-device secret that protects
+    stored PACS passwords.  The failure surfaces as ``None`` — the caller
+    (``measurements_encryption``) maps it to a stable storage error and fails
+    closed; no plaintext fallback exists.
+    """
+    try:
+        return _portable_device_secret()
+    except PortableSecretStoreError:
+        return None
+    except OSError:
+        return None
+
+
 def _portable_fernet() -> _Fernet | None:
     """Fernet instance for the portable store; raises when it is unsafe."""
     from echo_personal_tool.infrastructure.profile import portable_root

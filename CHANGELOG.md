@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(security)`: at-rest шифрование Z2-M (AES-256-GCM, keychain/обёртка) и research-каркас валидации auto-EF #418: метрики, EchoNet-адаптер, манифест, строка валидации в UI, research-баннер в PDF. ([полностью](changelog.d/007-feat-security-z2m-418.md))
+
 - `fix(pacs)`: убрана неоднозначная метка «завершено» при выборе исследования. ([полностью](changelog.d/006-fix-pacs-completion.md))
 
 - `fix(ui)`: отбор ML-контуров на изображении, выбор пола для норм и сохранность роста/веса. ([полностью](changelog.d/005-fix-ui-training-header.md))

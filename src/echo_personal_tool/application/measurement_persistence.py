@@ -42,6 +42,7 @@ from echo_personal_tool.infrastructure.measurement_codec import (
 from echo_personal_tool.infrastructure.measurement_remap import prepare_import
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
+from echo_personal_tool.infrastructure.measurements_encryption import MeasurementsCipher
 from echo_personal_tool.infrastructure.safe_diagnostics import log_boundary_failure, safe_failure_code
 
 _UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
@@ -408,6 +409,7 @@ class MeasurementPersistence(QObject):
         can_write: Callable[[], bool] | None = None,
         can_delete: Callable[[], bool] | None = None,
         audit_callback: Callable[[str, str, int], None] | None = None,
+        cipher: MeasurementsCipher | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -417,7 +419,7 @@ class MeasurementPersistence(QObject):
         self._can_write = can_write
         self._can_delete = can_delete
         self._audit_callback = audit_callback
-        self.repository = MeasurementRepository(root)
+        self.repository = MeasurementRepository(root, cipher=cipher)
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="measurement-io")
         self._pending = 0
         self._dirty: dict[str, StudyMeasurementData] = {}

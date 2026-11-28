@@ -57,6 +57,7 @@ class ReportExportWorker(QRunnable):
         *,
         font_size: int = 10,
         template: ReportTemplate | None = None,
+        research_banner: bool = True,
     ) -> None:
         super().__init__()
         self._document = document
@@ -66,6 +67,9 @@ class ReportExportWorker(QRunnable):
         # the exported PDF must be the same sheet the preview shows (item 12 of
         # the 2026-11-06 list), not the full form of older builds.
         self._template = template
+        # Research-use notice on the sheet (#418): must match the preview, the
+        # export and the signed render — the receipt hashes these bytes.
+        self._research_banner = bool(research_banner)
         self._cancel = threading.Event()
         self.signals = ReportExportSignals()
         self.setAutoDelete(True)
@@ -88,7 +92,12 @@ class ReportExportWorker(QRunnable):
             self.signals.cancelled.emit()
             return
         try:
-            rendered = render_report(self._document, font_size=self._font_size, template=self._template)
+            rendered = render_report(
+                self._document,
+                font_size=self._font_size,
+                template=self._template,
+                research_banner=self._research_banner,
+            )
         except ReportExportError as exc:
             log_boundary_failure(logger, "report.export", exc, code=exc.code, level=logging.WARNING)
             self.signals.failed.emit(REPORT_EXPORT_FAILURE_CODE)
