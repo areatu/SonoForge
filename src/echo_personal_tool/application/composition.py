@@ -439,8 +439,8 @@ def _store_holds_envelopes(root: Path) -> bool:
 
     try:
         entries = MeasurementRepository(root).entries()
-    except MeasurementStorageError:
-        return False
+    except (MeasurementStorageError, OSError):
+        return False  # absent/unreadable store: nothing to migrate, nothing locked
     for path in entries:
         try:
             with path.open("rb") as file:

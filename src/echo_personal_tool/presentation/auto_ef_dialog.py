@@ -370,7 +370,7 @@ class AutoEfResultDialog(QDialog):
         root.addLayout(footer)
 
     def _apply_validation_summary(self) -> None:
-        """Show the external validation summary (#418) or hide the line.
+        """Show the external validation summary (issue 418) or hide the line.
 
         The manifest is operator-produced (see ``application.ef_validation``);
         a missing one hides the line, a corrupt one surfaces a stable

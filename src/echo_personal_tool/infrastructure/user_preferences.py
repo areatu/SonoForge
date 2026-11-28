@@ -361,12 +361,9 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
     )
 
 
-def _read_measurement_storage_fields(store: Any, allowed: bool) -> dict[str, bool]:
-    """The two persisted-storage toggles: autosave on/off and at-rest encryption (#331)."""
-    return {
-        "measurement_persistence_enabled": _read_measurement_persistence(store, allowed),
-        "measurements_at_rest_encrypted": _read_bool(store.value("measurements_at_rest_encrypted"), False),
-    }
+def _read_measurements_at_rest_encrypted(store: Any) -> bool:
+    """Z2-M at-rest toggle (#331); the migration itself runs at composition."""
+    return _read_bool(store.value("measurements_at_rest_encrypted"), False)
 
 
 def _overlay_ratios(store: QSettings) -> tuple[float, float]:
@@ -389,12 +386,7 @@ def load_user_preferences() -> UserPreferences:
     return UserPreferences(
         tabs_enabled=_read_bool(store.value("tabs_enabled"), True) if capabilities.tabs else False,
         ui_scale_percent=normalize_ui_scale(store.value("ui_scale_percent")),
-        ui_font_size=_clamp_int(
-            store.value("ui_font_size"),
-            DEFAULT_UI_FONT_SIZE,
-            MIN_UI_FONT_SIZE,
-            MAX_UI_FONT_SIZE,
-        ),
+        ui_font_size=_clamp_int(store.value("ui_font_size"), DEFAULT_UI_FONT_SIZE, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE),
         results_overlay_x_ratio=overlay_x_ratio,
         results_overlay_y_ratio=overlay_y_ratio,
         results_overlay_custom_position=overlay_custom,
@@ -543,7 +535,8 @@ def load_user_preferences() -> UserPreferences:
             if capabilities.continue_last_session
             else 0
         ),
-        **_read_measurement_storage_fields(store, capabilities.measurement_storage),
+        measurement_persistence_enabled=_read_measurement_persistence(store, capabilities.measurement_storage),
+        measurements_at_rest_encrypted=_read_measurements_at_rest_encrypted(store),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_theme_mode(store),
         accent_palette=_read_choice(

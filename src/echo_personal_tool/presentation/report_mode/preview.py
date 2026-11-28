@@ -365,7 +365,7 @@ class ReportPreview(QWidget):
         self.request_refresh()
 
     def set_research_banner(self, enabled: bool) -> None:
-        """Research-use notice on the sheet (#418); a change schedules a rebuild."""
+        """Research-use notice on the sheet (issue 418); a change schedules a rebuild."""
         enabled = bool(enabled)
         if enabled == self._research_banner:
             return

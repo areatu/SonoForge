@@ -826,7 +826,7 @@ class UserPreferencesDialog(QDialog):
         return checkbox
 
     def _build_at_rest_encryption_row(self, form: QFormLayout, current: UserPreferences) -> None:
-        """At-rest encryption of the saved-record store (Z2-M, #331).
+        """At-rest encryption of the saved-record store (Z2-M, issue 331).
 
         Records are sealed with AES-256-GCM before they touch the disk; the
         change applies on the next start, where existing records are migrated

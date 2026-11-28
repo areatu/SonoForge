@@ -280,7 +280,7 @@ class ReportModePage(QWidget):
         self._preview.set_font_size(font_size)
 
     def set_research_banner(self, enabled: bool) -> None:
-        """Research-use notice on the sheet (#418); mirrors the preference."""
+        """Research-use notice on the sheet (issue 418); mirrors the preference."""
         self._preview.set_research_banner(enabled)
 
     def set_template(self, template) -> None:
