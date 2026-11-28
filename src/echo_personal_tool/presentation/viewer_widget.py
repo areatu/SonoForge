@@ -130,6 +130,7 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.magnifier_cursor import magnifier_cursor
+from echo_personal_tool.presentation.viewer.armed_next import ArmedNextChain
 from echo_personal_tool.presentation.viewer.compare_tools import (
     AREA_HINTS,
     DIAMETER_HINTS,
@@ -528,8 +529,8 @@ class ViewerWidget(QWidget):
         #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
         #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
         #: ED-contour frame stays a click instead of starting ES there.
-        self._armed_next: tuple | None = None
-        self._armed_next_origin: tuple[int | None, str | None] = (None, None)
+        #: State and transitions live in ``viewer.armed_next.ArmedNextChain``.
+        self._armed_next_chain = ArmedNextChain()
         self._syncing_state = False
         #: Viewport mode/factor and the loupe state live in one owner; the
         #: widget keeps only public delegate methods for callers/tests.
@@ -3831,8 +3832,11 @@ class ViewerWidget(QWidget):
         the operator scrolls to the systolic frame, and that first click is
         already the first point of LVESD — no button press in between (ТЗ п. 2).
         """
-        self._armed_next = ("caliper", str(label))
-        self._remember_armed_frame()
+        self._armed_next_chain.arm(
+            ("caliper", str(label)),
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
+        )
 
     def arm_next_contour(
         self,
@@ -3843,27 +3847,25 @@ class ViewerWidget(QWidget):
         model: bool = False,
     ) -> None:
         """Make the next click on the image start this contour (ES after ED)."""
-        self._armed_next = (
-            "contour",
-            str(chamber).upper(),
-            str(view).upper(),
-            str(phase).upper(),
-            bool(model),
+        self._armed_next_chain.arm(
+            (
+                "contour",
+                str(chamber).upper(),
+                str(view).upper(),
+                str(phase).upper(),
+                bool(model),
+            ),
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
         )
-        self._remember_armed_frame()
-
-    def _remember_armed_frame(self) -> None:
-        """Remember where the chain was armed (frame + clip), for the gate."""
-        self._armed_next_origin = (self._current_frame_index(), self.current_instance_uid())
 
     def clear_armed_next(self) -> None:
         """Forget the chained step (Esc, tool switch, another clip)."""
-        self._armed_next = None
-        self._armed_next_origin = (None, None)
+        self._armed_next_chain.clear()
 
     def armed_next(self) -> tuple | None:
         """What the next click would start, for tests and the status line."""
-        return self._armed_next
+        return self._armed_next_chain.pending()
 
     def armed_next_waits_for_another_frame(self) -> bool:
         """Whether the chain is armed but the operator is still on that frame.
@@ -3873,18 +3875,14 @@ class ViewerWidget(QWidget):
         no systole to scroll to) never blocks: there is no other frame to wait
         for, and the click keeps its old meaning.
         """
-        if self._armed_next is None:
-            return False
-        armed_frame, armed_uid = self._armed_next_origin
-        if armed_frame is None or (armed_uid is not None and self.current_instance_uid() != armed_uid):
-            return False
-        return self._current_frame_index() == armed_frame
+        return self._armed_next_chain.waits_for_another_frame(
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
+        )
 
     def hint_armed_next_needs_another_frame(self) -> None:
         """Tell the operator why the click did nothing (item 13, no silent no-op)."""
-        if self._armed_next is None:
-            return
-        phase = "ES" if self._armed_next[0] == "contour" else ""
+        phase = self._armed_next_chain.hint_phase()
         self.set_hint(tr("viewer.armed_next_scroll", phase=phase) if phase else tr("viewer.armed_next_scroll_generic"))
 
     def start_armed_next(self, *, force: bool = False) -> bool:
@@ -3895,12 +3893,12 @@ class ViewerWidget(QWidget):
         click on the image is an ambiguous one (see
         :meth:`armed_next_waits_for_another_frame`).
         """
-        pending = self._armed_next
+        pending = self._armed_next_chain.pending()
         if pending is None:
             return False
         if not force and self.armed_next_waits_for_another_frame():
             return False
-        self.clear_armed_next()
+        self._armed_next_chain.clear()
         if pending[0] == "caliper":
             return self.start_linear_caliper_for(pending[1])
         _kind, chamber, view, phase, model = pending
@@ -3913,7 +3911,7 @@ class ViewerWidget(QWidget):
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
         if self.zoom.loupe_active:
             self.set_zoom_loupe_active(False)
-        self._armed_next = None
+        self._armed_next_chain.clear()
         self.dismiss_label_picker()
         self.set_hint("")
         if self._caliper_drag_active:
