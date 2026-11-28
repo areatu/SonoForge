@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
     QPixmap,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -269,6 +270,18 @@ class AutoEfResultDialog(QDialog):
         self._build_ui()
         self._apply_validation_summary()
         self._refresh_all()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt naming
+        """Refresh the external-validation line on every show (live recompute).
+
+        The summary is recomputed from the recorded operator inputs (see
+        ``application.ef_validation.recompute_validation_summary``), so a
+        validation run that finished while the dialog object was already
+        alive still shows current numbers; a missing manifest keeps the
+        line hidden.
+        """
+        self._apply_validation_summary()
+        super().showEvent(event)
 
     @property
     def current_result(self) -> AutoEfPipelineResult:

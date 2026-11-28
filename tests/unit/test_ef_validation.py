@@ -20,7 +20,9 @@ from echo_personal_tool.application.ef_validation import (
     load_auto_ef_validation_summary,
     load_ef_reference_csv,
     load_validation_summary,
+    recompute_validation_summary,
     save_validation_manifest,
+    validate_validation_report,
 )
 from echo_personal_tool.domain.validation import metrics
 
@@ -213,3 +215,135 @@ def test_facade_loads_the_default_location(
     loaded = load_auto_ef_validation_summary()
     assert loaded is not None
     assert loaded["n"] == 4
+
+
+# ── live recomputation (audit follow-up 2026-11-28) ──────────────────────────
+
+
+def _write_operator_inputs(tmp_path: Path, measured: dict[str, float] | None = None) -> tuple[Path, Path, Path]:
+    csv_path = tmp_path / "FileList.csv"
+    csv_path.write_text(REFERENCE_CSV, encoding="utf-8")
+    measured_path = tmp_path / "measured.json"
+    measured_path.write_text(json.dumps(MEASURED if measured is None else measured), encoding="utf-8")
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_text(json.dumps(MAPPING), encoding="utf-8")
+    return csv_path, measured_path, mapping_path
+
+
+def test_manifest_records_source_paths_and_digests(tmp_path: Path, reference: dict[str, float]) -> None:
+    csv_path, measured_path, mapping_path = _write_operator_inputs(tmp_path)
+    report = build_validation_report(
+        reference,
+        MEASURED,
+        MAPPING,
+        source_paths={"reference": csv_path, "measured": measured_path, "mapping": mapping_path},
+    )
+    validate_validation_report(report)
+    import hashlib
+
+    assert report["sources"]["reference"]["path"] == str(csv_path)
+    assert report["sources"]["reference"]["sha256"] == hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    assert set(report["sources"]) == {"mapping", "measured", "reference"}
+    # Round trip keeps the sources block usable for the live recompute.
+    manifest = tmp_path / "auto_ef_manifest.json"
+    save_validation_manifest(report, path=manifest)
+    assert load_validation_summary(path=manifest)["sources"] == report["sources"]
+
+
+def test_validate_rejects_a_foreign_sources_block(tmp_path: Path, reference: dict[str, float]) -> None:
+    report = build_validation_report(reference, MEASURED, MAPPING)
+    report["sources"] = {"reference": {"path": 42, "sha256": "x"}}
+    with pytest.raises(EFValidationError) as shape:
+        validate_validation_report(report)
+    assert shape.value.code == "manifest_format"
+    report["sources"] = {"reference": {"path": "a.csv", "sha256": "short"}}
+    with pytest.raises(EFValidationError) as digest:
+        validate_validation_report(report)
+    assert digest.value.code == "manifest_format"
+
+
+def test_recompute_returns_fresh_metrics_for_unchanged_inputs(tmp_path: Path, reference: dict[str, float]) -> None:
+    csv_path, measured_path, mapping_path = _write_operator_inputs(tmp_path)
+    manifest = tmp_path / "auto_ef_manifest.json"
+    stored = build_validation_report(
+        reference,
+        MEASURED,
+        MAPPING,
+        source_paths={"reference": csv_path, "measured": measured_path, "mapping": mapping_path},
+    )
+    save_validation_manifest(stored, path=manifest)
+
+    recomputed = recompute_validation_summary(path=manifest)
+
+    assert recomputed is not None
+    assert recomputed["metrics"]["mae"] == pytest.approx(3.0)
+    assert recomputed["metrics"] == stored["metrics"]
+    assert recomputed["n"] == 4
+    # The recomputation really re-ran: a fresh timestamp, same ISO-UTC format.
+    assert recomputed["generated_at"] >= stored["generated_at"]
+
+
+def test_recompute_falls_back_to_stored_on_input_drift(tmp_path: Path, reference: dict[str, float]) -> None:
+    csv_path, measured_path, mapping_path = _write_operator_inputs(tmp_path)
+    manifest = tmp_path / "auto_ef_manifest.json"
+    stored = build_validation_report(
+        reference,
+        MEASURED,
+        MAPPING,
+        source_paths={"reference": csv_path, "measured": measured_path, "mapping": mapping_path},
+    )
+    save_validation_manifest(stored, path=manifest)
+
+    # The operator edits one measured value: the digest no longer matches.
+    measured_path.write_text(json.dumps({**MEASURED, "study-a": 21.0}), encoding="utf-8")
+    recomputed = recompute_validation_summary(path=manifest)
+
+    assert recomputed is not None
+    assert recomputed["metrics"] == stored["metrics"]
+    assert recomputed["metrics"]["mae"] == pytest.approx(3.0)
+
+
+def test_recompute_falls_back_when_a_source_file_is_missing(tmp_path: Path, reference: dict[str, float]) -> None:
+    csv_path, measured_path, mapping_path = _write_operator_inputs(tmp_path)
+    manifest = tmp_path / "auto_ef_manifest.json"
+    stored = build_validation_report(
+        reference,
+        MEASURED,
+        MAPPING,
+        source_paths={"reference": csv_path, "measured": measured_path, "mapping": mapping_path},
+    )
+    save_validation_manifest(stored, path=manifest)
+
+    csv_path.unlink()
+    recomputed = recompute_validation_summary(path=manifest)
+
+    assert recomputed is not None
+    assert recomputed == load_validation_summary(path=manifest)
+
+
+def test_recompute_passes_through_a_manifest_without_sources(tmp_path: Path, reference: dict[str, float]) -> None:
+    manifest = tmp_path / "auto_ef_manifest.json"
+    stored = build_validation_report(reference, MEASURED, MAPPING)
+    save_validation_manifest(stored, path=manifest)
+    assert recompute_validation_summary(path=manifest) == stored
+
+
+def test_facade_recomputes_live_for_the_default_location(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reference: dict[str, float]
+) -> None:
+    """The card facade recomputes: unchanged inputs give fresh metrics, not stored ones."""
+    from echo_personal_tool.infrastructure import paths as host_paths
+
+    csv_path, measured_path, mapping_path = _write_operator_inputs(tmp_path)
+    monkeypatch.setattr(host_paths, "data_dir", lambda: tmp_path)
+    stored = build_validation_report(
+        reference,
+        MEASURED,
+        MAPPING,
+        source_paths={"reference": csv_path, "measured": measured_path, "mapping": mapping_path},
+    )
+    save_validation_manifest(stored)
+    loaded = load_auto_ef_validation_summary()
+    assert loaded is not None
+    assert loaded["metrics"] == stored["metrics"]
+    assert loaded["generated_at"] >= stored["generated_at"]

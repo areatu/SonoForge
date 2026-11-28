@@ -28,6 +28,8 @@
 
 ## Unreleased
 
+- `feat(security)`: Full/Presenter parity-гейт замеров, live-пересчёт валидации auto-EF на карточке, at-rest шифрование Z2-M включено по умолчанию. ([полностью](changelog.d/008-feat-security-parity-live-recompute-default-on.md))
+
 - `feat(security)`: at-rest шифрование Z2-M (AES-256-GCM, keychain/обёртка) и research-каркас валидации auto-EF #418: метрики, EchoNet-адаптер, манифест, строка валидации в UI, research-баннер в PDF. ([полностью](changelog.d/007-feat-security-z2m-418.md))
 - `feat(imt)`: проверка КИМ на кадре, поворот области, понятная калибровка и явное принятие в отчёт. ([полностью](changelog.d/007-feat-imt-overlay-rotation.md))
 
