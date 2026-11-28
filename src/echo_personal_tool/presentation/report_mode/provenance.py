@@ -57,6 +57,7 @@ CARD_WIDTH = 320
 
 #: Method id → i18n key.  An unknown method shows its stable id, never prose.
 _METHOD_KEYS: dict[str, str] = {
+    "research_imt_dp_v1": "report.origin.method_research_imt_dp_v1",
     METHOD_LINEAR_CALIPER: "report.origin.method_linear_caliper",
     METHOD_DOPPLER_CALIPER: "report.origin.method_doppler_caliper",
     METHOD_VESSEL: "report.origin.method_vessel",

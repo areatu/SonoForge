@@ -83,6 +83,7 @@ from echo_personal_tool.domain.services.report_document import ReportDocument as
 from echo_personal_tool.domain.services.report_document import ReportGroup as ReportGroup
 from echo_personal_tool.domain.services.report_document import ReportValue as ReportValue
 from echo_personal_tool.domain.services.report_document import without_values as without_values
+from echo_personal_tool.domain.services.report_imt import imt_report_values
 from echo_personal_tool.domain.services.report_norm_lookup import (
     LABEL_TO_PARAM_ID,
     UNIT_SCALE,
@@ -1723,6 +1724,7 @@ def build_report_groups(
     _append_linear_report_values(values, snapshot, sex=sex, calibrated=calibrated, length_unit=length_unit)
     _append_derived_volume_report_values(values, snapshot)
     _append_vessel_report_values(values, snapshot)
+    values.extend(imt_report_values(snapshot.imt_measurements))
 
     # Ensure provenance notes are collected even if indexed is None (Simpson/Doppler/Derived)
     if not provenance_notes_list:

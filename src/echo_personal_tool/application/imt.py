@@ -14,6 +14,7 @@ from echo_personal_tool.domain.services.imt_detection import (
     BoundaryHint,
     automatic_hints,
     detect_boundaries,
+    detect_rotated_boundaries,
     edge_evidence,
 )
 from echo_personal_tool.domain.services.imt_geometry import measure_boundaries
@@ -29,6 +30,11 @@ def propose_imt(
 ) -> ImtDraft:
     """Propose two boundaries in the bounded ROI; output is always a draft."""
     evidence = edge_evidence(image, source)
+    if source.roi_polygon:
+        if lumen_y is not None or adventitia_y is not None:
+            raise ImtRefusal("rotated_roi_auto_guides_required")
+        li, ma = detect_rotated_boundaries(evidence, source, policy)
+        return measure_boundaries(source, policy, li, ma, evidence)
     if lumen_y is None and adventitia_y is None:
         lumen_y, adventitia_y = automatic_hints(evidence, source, policy)
     if lumen_y is None or adventitia_y is None:

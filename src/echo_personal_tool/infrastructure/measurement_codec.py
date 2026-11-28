@@ -203,6 +203,8 @@ def _encode(value: object) -> object:
         fields = FIELDS if isinstance(value, StudyMeasurementData) else {f.name for f in dataclasses.fields(value)}
         if isinstance(value, StudyMeasurementData) and not value.imt_measurements:
             fields = fields - {"imt_measurements"}
+        if isinstance(value, ImtSource) and not value.roi_polygon:
+            fields = fields - {"roi_polygon"}
         if isinstance(value, LinearMeasurement) and not value.submillimeter:
             fields = fields - {"submillimeter"}  # Keep ordinary/legacy documents unchanged.
         if isinstance(value, StrainReport) and not value.lineage_by_view:

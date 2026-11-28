@@ -230,6 +230,7 @@ files = [
     "src/echo_personal_tool/presentation/help_dialog.py",
     "src/echo_personal_tool/presentation/icon_loader.py",
     "src/echo_personal_tool/presentation/imt_editor.py",
+    "src/echo_personal_tool/presentation/imt_panel.py",
     "src/echo_personal_tool/presentation/key_images.py",
     "src/echo_personal_tool/presentation/la_strain_trace_action.py",
     "src/echo_personal_tool/presentation/label_picker.py",
