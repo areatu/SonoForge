@@ -2,17 +2,26 @@
 
 Research prototype: two positive axial edges in separate seed corridors, not
 vessel recognition. First-order dynamic programming penalises slope and limits
-per-column jumps. Plaques, rotated/vertical walls and automatic frame selection
+per-column jumps. Plaques, vertical walls and automatic frame selection
 are deliberately outside this detector's scope.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.signal import find_peaks
 
+from echo_personal_tool.domain.models.calibration import CalibrationContext
 from echo_personal_tool.domain.models.imt import Boundary, ImtPolicy, ImtRefusal, ImtSource
+from echo_personal_tool.domain.services.imt_rectification import (
+    isolate_rectangle,
+    rectify_crop,
+    sampling_grid,
+    unrectify_evidence,
+)
 
 BoundaryHint = float | tuple[float, float]
 
@@ -28,6 +37,12 @@ def edge_evidence(image: np.ndarray, source: ImtSource) -> np.ndarray:
     crop = np.array(pixels[y0:y1, x0:x1], dtype=float, copy=True)
     if not np.isfinite(crop).all():
         raise ImtRefusal("nonfinite_pixels")
+    if source.roi_polygon:
+        return unrectify_evidence(_positive_edges(rectify_crop(isolate_rectangle(crop, source), source)), source)
+    return _positive_edges(crop)
+
+
+def _positive_edges(crop: np.ndarray) -> np.ndarray:
     low, high = np.percentile(crop, [1, 99])
     if high - low <= np.finfo(float).eps * max(1.0, abs(float(high))):
         raise ImtRefusal("flat_roi")
@@ -125,3 +140,33 @@ def automatic_hints(evidence: np.ndarray, source: ImtSource, policy: ImtPolicy) 
         raise ImtRefusal("two_wall_edges_not_found")
     _, first, second = max(candidates)
     return float(source.roi[1] + first), float(source.roi[1] + second)
+
+
+def detect_rotated_boundaries(evidence: np.ndarray, source: ImtSource, policy: ImtPolicy) -> tuple[Boundary, Boundary]:
+    """Search along the selected rectangle, then return original source pixels.
+
+    Rectified spacing is only a seed/search approximation. All final normal
+    distances and QC use the original calibration and source-space geometry.
+    """
+    origin, du, dv, shape = sampling_grid(source)
+    row, col = source.calibration.spacing
+    physical_u = du * [col, row]
+    physical_v = dv * [col, row]
+    longitudinal = float(np.linalg.norm(physical_u))
+    # Perpendicular spacing, not the longer oblique distance along depth.
+    axial = abs(float(physical_u[0] * physical_v[1] - physical_u[1] * physical_v[0])) / longitudinal
+    search = replace(
+        source,
+        roi=(0, 0, shape[1], shape[0]),
+        roi_polygon=(),
+        calibration=CalibrationContext((axial, longitudinal), source="imt_search_grid"),
+    )
+    local = rectify_crop(evidence, source)
+    first, second = automatic_hints(local, search, policy)
+    li, ma = detect_boundaries(local, search, policy, lumen_y=first, adventitia_y=second)
+
+    def to_source(boundary: Boundary) -> Boundary:
+        points = (origin + x * du + y * dv for x, y in boundary)
+        return tuple((float(point[0]), float(point[1])) for point in points)
+
+    return to_source(li), to_source(ma)

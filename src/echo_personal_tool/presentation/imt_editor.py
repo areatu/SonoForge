@@ -1,6 +1,6 @@
 """Non-modal research IMT editor: two source-pixel overlays on the main viewer.
 
-No clinical caliper/report mutation. Only explicit Save writes structured data.
+Only explicit acceptance writes structured data and makes it available to the report.
 """
 
 from __future__ import annotations
@@ -12,39 +12,59 @@ from typing import Any, cast
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QPointF, Qt, QTimer, Slot
-from PySide6.QtWidgets import (
-    QComboBox,
-    QDialog,
-    QFormLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-    QVBoxLayout,
-)
+from PySide6.QtCore import QEvent, QPointF, QRect, QSignalBlocker, Qt, QTimer, Slot
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QPushButton, QScrollArea, QWidget
 
 from echo_personal_tool.application.composition import services_of
 from echo_personal_tool.application.imt import propose_imt
 from echo_personal_tool.application.imt_review import ImtReview
 from echo_personal_tool.application.localization import tr
+from echo_personal_tool.domain.models.calibration import CalibrationConfidence, CalibrationContext, select_calibration
 from echo_personal_tool.domain.models.imt import ImtPolicy, ImtRefusal, ImtSource
+from echo_personal_tool.domain.models.imt_region import Polygon
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.imt_validation import imt_key
 from echo_personal_tool.presentation.dark_theme import get_theme_tokens
+from echo_personal_tool.presentation.imt_panel import build_imt_panel
 
 
-class ImtEditor(QDialog):
+class ImtEditor(QWidget):
     """Main-image wall selection, editable boundaries and explicit acceptance."""
 
+    # Populated by the view builder; declared here for the typed controller API.
+    side: QComboBox
+    more: QCheckBox
+    fields: dict[str, QLineEdit]
+    metrics: dict[str, QLabel]
+    status: QLabel
+    calibration_status: QLabel
+    use_dicom: QPushButton
+    edit_boundaries: QCheckBox
+    accept_button: QPushButton
+    details: QScrollArea
+    viewport: QWidget
+    angle: QDoubleSpinBox
+
     def __init__(self, window: Any) -> None:
-        super().__init__(window)
+        viewport = window._viewer.overlay_view.scene().views()[0].viewport()
+        super().__init__(viewport)
+        self.viewport = viewport
+        self.setObjectName("imtReviewOverlay")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+        self.setMaximumWidth(520)
+        tokens = get_theme_tokens()
+        self.setStyleSheet(
+            f"#imtReviewOverlay {{ background: {tokens['surface.2']}; "
+            f"border: 1px solid {tokens['line.1']}; border-radius: 6px; }}"
+        )
+        self.editing = False
         self.setWindowTitle(tr("imt.open"))
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.host = window
         self.review: ImtReview | None = None
         self.overlays: list[Any] = []
+        self.roi_polygon: Polygon = ()
         self.wall_roi: pg.RectROI | None = None
         self.selection_armed = False
         self.drag_origin: QPointF | None = None
@@ -52,65 +72,9 @@ class ImtEditor(QDialog):
         self.selection_frame: tuple[object, ...] | None = None
         self.scene = self.host._viewer.overlay_view.scene()
         self.scene.installEventFilter(self)
-        self.setModal(False)
-        layout = QVBoxLayout(self)
-        warning = QLabel(tr("imt.warning"))
-        warning.setWordWrap(True)
-        layout.addWidget(warning)
-        select = QPushButton(tr("imt.select"))
-        select.clicked.connect(lambda: self.run(self.start_selection))
-        layout.addWidget(select)
-        form = QFormLayout()
-        self.side = QComboBox()
-        self.side.addItems(["R", "L"])
-        form.addRow(tr("imt.side"), self.side)
-        layout.addLayout(form)
-        advanced = QGroupBox(tr("imt.advanced"))
-        advanced.setCheckable(True)
-        advanced.setChecked(False)
-        advanced_form = QFormLayout(advanced)
-        self.fields = {}
-        for key, placeholder in (
-            ("roi", "x0,y0,x1,y1"),
-            ("guides", "LI-left,LI-right,MA-left,MA-right"),
-            ("policy", "min-mm,max-mm,coverage,contrast"),
-        ):
-            field = QLineEdit()
-            field.setPlaceholderText(placeholder)
-            self.fields[key] = field
-            advanced_form.addRow(tr(f"imt.{key}"), field)
-            label = advanced_form.labelForField(field)
-            field.setVisible(False)
-            label.setVisible(False)
-            advanced.toggled.connect(field.setVisible)
-            advanced.toggled.connect(label.setVisible)
-        self.fields["guides"].setPlaceholderText(tr("imt.auto_guides"))
-        self.fields["policy"].setText("0.2,2.0,0.7,0.03")
-        layout.addWidget(advanced)
-        metrics = QHBoxLayout()
-        self.metrics: dict[str, QLabel] = {}
-        for key in ("minimum", "mean", "maximum"):
-            label = QLabel(tr(f"imt.{key}") + ": —")
-            label.setToolTip(tr("imt.legend"))
-            metrics.addWidget(label)
-            self.metrics[key] = label
-        layout.addLayout(metrics)
-        legend = QLabel(tr("imt.legend"))
-        legend.setWordWrap(True)
-        layout.addWidget(legend)
-        self.status = QLabel(tr("imt.unreviewed"))
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        for key, callback in (
-            ("propose", self.propose),
-            ("load", self.load),
-            ("revalidate", self.revalidate),
-            ("confirm", self.confirm),
-            ("save", self.save),
-        ):
-            button = QPushButton(tr(f"imt.{key}"))
-            button.clicked.connect(lambda _checked=False, fn=callback: self.run(fn))
-            layout.addWidget(button)
+        build_imt_panel(self)
+        self.viewport.installEventFilter(self)
+        self.refresh_calibration()
         # State changes must revoke the lease synchronously: polling alone can
         # miss frame/calibration A→B→A between timer ticks.
         self.host._controller.state_manager.state_changed.connect(self.context_changed)
@@ -119,11 +83,19 @@ class ImtEditor(QDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_context)
         self.timer.start(100)
-        self.finished.connect(self.cleanup)
+
+    @property
+    def panel_widget(self) -> QWidget:
+        return self
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.cleanup()
+        event.accept()
 
     def cleanup(self, _result: int = 0) -> None:
         self.timer.stop()
         self.scene.removeEventFilter(self)
+        self.viewport.removeEventFilter(self)
         self.clear_selection()
         self.clear_overlays()
 
@@ -131,10 +103,46 @@ class ImtEditor(QDialog):
         if self.wall_roi is not None:
             self.host._viewer.overlay_view.removeItem(self.wall_roi)
         self.wall_roi = None
+        self.angle.setEnabled(False)
         self.selection_source = None
         self.selection_frame = None
         self.selection_armed = False
         self.drag_origin = None
+
+    def reposition(self) -> None:
+        """Anchor inside the viewer, not over the selected far-wall segment."""
+        self.setFixedWidth(min(520, max(1, self.viewport.width() - 16)))
+        self.setMaximumHeight(max(1, self.viewport.height() - 16))
+        self.adjustSize()
+        right = max(8, self.viewport.width() - self.width() - 8)
+        bottom = max(8, self.viewport.height() - self.height() - 8)
+        corners = [(8, bottom), (right, bottom), (8, 8), (right, 8)]
+        if self.review is not None:
+            x0, y0, x1, y1 = self.review.draft.source.roi
+            view = self.host._viewer.overlay_view
+            graphics = self.scene.views()[0]
+            first = graphics.mapFromScene(view.mapViewToScene(QPointF(x0, y0)))
+            last = graphics.mapFromScene(view.mapViewToScene(QPointF(x1, y1)))
+            selected = QRect(first, last).normalized().adjusted(-8, -8, 8, 8)
+
+            def overlap(corner: tuple[int, int]) -> int:
+                intersection = QRect(*corner, self.width(), self.height()).intersected(selected)
+                return intersection.width() * intersection.height()
+
+            corners.sort(key=overlap)
+        self.move(*corners[0])
+        self.raise_()
+
+    def reject(self) -> None:
+        """Discard the pending review, never delete an earlier accepted record."""
+        self.review = None
+        self.close()
+
+    def accept_result(self) -> None:
+        """One explicit action: validate freshness, confirm, persist, then dismiss."""
+        self.confirm()
+        self.save()
+        self.close()
 
     def start_selection(self) -> None:
         self.state()  # never draw on a playing, decoding or read-only frame
@@ -143,8 +151,12 @@ class ImtEditor(QDialog):
         if self.review is not None:
             self.review.invalidate()
             self.summary()
+        self.roi_polygon = ()
+        with QSignalBlocker(self.angle):
+            self.angle.setValue(0)
         self.fields["roi"].clear()
         self.fields["guides"].clear()
+        self.accept_button.setEnabled(False)
         self.selection_frame = self.frame_context()
         self.selection_armed = True
         self.status.setText(tr("imt.select_hint"))
@@ -163,6 +175,9 @@ class ImtEditor(QDialog):
         )
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
+        if watched is self.viewport and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            QTimer.singleShot(0, self.reposition)
+            return False
         if watched is not self.scene or not self.selection_armed:
             return False
         self.check_context()
@@ -202,6 +217,9 @@ class ImtEditor(QDialog):
         y1 = max(0, min(height, ceil(max(first.y(), last.y()))))
         if self.wall_roi is None:
             self.wall_roi = pg.RectROI((x0, y0), (x1 - x0, y1 - y0), pen=pg.mkPen("c", width=2))
+            self.wall_roi.addRotateHandle((0.5, 0), (0.5, 0.5))
+            self.wall_roi.setToolTip(tr("imt.rotate_hint"))
+            self.angle.setEnabled(True)
             self.wall_roi.setZValue(90)
             self.host._viewer.overlay_view.addItem(self.wall_roi)
         else:
@@ -212,19 +230,35 @@ class ImtEditor(QDialog):
     def rectangle_finished(self) -> None:
         if self.wall_roi is None:
             return
-        # Invalidate before setting coordinates, but do not let the context
-        # guard remove the rectangle during an intentional ROI edit.
+        # Invalidate even a programmatic rotation before resolving its new scale.
+        self.rectangle_edit_started()
+        # Do not let the guard remove the rectangle during an intentional edit.
         self.selection_source = None
-        pos, size = self.wall_roi.pos(), self.wall_roi.size()
+        size = self.wall_roi.size()
+        corners = [
+            self.wall_roi.mapToParent(QPointF(x, y))
+            for x, y in ((0, 0), (size.x(), 0), (size.x(), size.y()), (0, size.y()))
+        ]
+        angle = (self.wall_roi.angle() + 180) % 360 - 180
+        self.roi_polygon = tuple((float(p.x()), float(p.y())) for p in corners) if abs(angle) > 1e-6 else ()
+        with QSignalBlocker(self.angle):
+            self.angle.setValue(angle)
         self.fields["roi"].setText(
-            f"{floor(pos.x())},{floor(pos.y())},{ceil(pos.x() + size.x())},{ceil(pos.y() + size.y())}"
+            f"{floor(min(p.x() for p in corners))},{floor(min(p.y() for p in corners))},"
+            f"{ceil(max(p.x() for p in corners))},{ceil(max(p.y() for p in corners))}"
         )
-        self.selection_source = self.source()
         if not self.wall_roi.property("imt_connected"):
             self.wall_roi.sigRegionChangeStarted.connect(self.rectangle_edit_started)
             self.wall_roi.sigRegionChangeFinished.connect(self.rectangle_changed)
             self.wall_roi.setProperty("imt_connected", True)
+        self.selection_source = self.source()
         self.propose()
+
+    def rotate_selection(self, angle: float) -> None:
+        if self.wall_roi is None:
+            return
+        self.rectangle_edit_started()
+        self.wall_roi.setAngle(angle, center=(0.5, 0.5))
 
     def rectangle_edit_started(self) -> None:
         self.selection_source = None
@@ -240,9 +274,16 @@ class ImtEditor(QDialog):
         try:
             callback()
         except (ImtRefusal, ValueError, TypeError) as exc:
-            self.status.setText(f"{tr('imt.refused')}: {exc}")
+            self.accept_button.setEnabled(False)
+            self.status.setText(tr(refusal_message(str(exc))))
+            self.status.setToolTip(str(exc))  # diagnostics, not the operator instruction
+            self.refresh_calibration()
+            self.reposition()
 
     def state(self) -> ViewerState:
+        tabs = getattr(self.host, "_tabs", None)
+        if getattr(getattr(tabs, "active", None), "report_finished", False):
+            raise ImtRefusal("finished_report")
         if self.host._comparison.tool_blocked("imt"):
             raise ImtRefusal("readonly_pane")
         state = cast(ViewerState, self.host._controller.state_manager.snapshot)
@@ -259,7 +300,7 @@ class ImtEditor(QDialog):
         roi = (values[0], values[1], values[2], values[3])
         calibration = state.calibration_for_geometry(bbox=roi).context
         if calibration is None:
-            raise ImtRefusal("calibration_required")
+            raise ImtRefusal("calibration_scope_mismatch")
         return ImtSource(
             study_uid=self.host._controller.resolve_study_uid(state.instance),
             instance_uid=state.instance.sop_instance_uid,
@@ -271,7 +312,67 @@ class ImtEditor(QDialog):
             calibration=calibration,
             roi=roi,
             clip_mode=state.instance.clip_mode,
+            roi_polygon=self.roi_polygon,
         )
+
+    def selected_calibration(self) -> CalibrationContext | None:
+        state = self.state()
+        try:
+            values = tuple(int(v.strip()) for v in self.fields["roi"].text().split(","))
+            if len(values) == 4:
+                return state.calibration_for_geometry(bbox=values).context
+        except ValueError:
+            pass
+        return state.effective_calibration
+
+    def refresh_calibration(self) -> None:
+        try:
+            state = self.state()
+            context = self.selected_calibration()
+        except ImtRefusal:
+            self.calibration_status.setText(tr("imt.scale_required"))
+            self.use_dicom.hide()
+            return
+        self.use_dicom.setVisible(state.manual_calibration is not None or state.manual_pixel_spacing is not None)
+        available = self.dicom_calibration() is not None
+        self.use_dicom.setEnabled(available)
+        self.use_dicom.setToolTip(tr("imt.use_dicom_tip" if available else "imt.dicom_scale_unavailable"))
+        if context is None:
+            text = tr("imt.scale_required")
+        elif not verified_scale(context):
+            text = tr("imt.scale_assumed_short")
+        else:
+            row, col = context.spacing
+            text = tr("imt.scale_ready", source=context.source, row=f"{row:.4g}", col=f"{col:.4g}")
+        self.calibration_status.setText(text)
+        self.calibration_status.setToolTip(
+            tr("imt.scale_unverified") if context and not verified_scale(context) else text
+        )
+
+    def dicom_calibration(self) -> CalibrationContext | None:
+        state = self.state()
+        assert state.instance is not None
+        try:
+            values = tuple(int(v.strip()) for v in self.fields["roi"].text().split(","))
+        except ValueError:
+            return None
+        if len(values) != 4:
+            return None
+        contexts = state.instance.calibrations or ((state.instance.calibration,) if state.instance.calibration else ())
+        selection = select_calibration(contexts, frame_index=state.current_frame_index, bbox=values)
+        context = selection.context
+        return context if context is not None and verified_scale(context) else None
+
+    def restore_dicom_scale(self) -> None:
+        """Explicitly remove a manual override only if DICOM covers this ROI."""
+        if self.dicom_calibration() is None:
+            raise ImtRefusal("dicom_scale_unavailable")
+        # Clearing an override invalidates earlier measurements through the
+        # normal controller path. Never silently change or upgrade its trust.
+        roi = self.fields["roi"].text()
+        self.host._controller.clear_manual_calibration()
+        self.fields["roi"].setText(roi)
+        self.propose()
 
     def pixels(self) -> np.ndarray:
         state = self.state()
@@ -331,7 +432,9 @@ class ImtEditor(QDialog):
         ]
         if not candidates:
             raise ImtRefusal("no_saved_record")
+        self.clear_selection()
         self.review = ImtReview(candidates[-1])
+        self.roi_polygon = self.review.draft.source.roi_polygon
         policy = self.review.draft.policy
         self.fields["policy"].setText(
             ",".join(
@@ -355,6 +458,8 @@ class ImtEditor(QDialog):
         self.draw()
 
     def confirm(self) -> None:
+        if self.editing:
+            raise ImtRefusal("boundary_edit_in_progress")
         if self.review is None:
             raise ImtRefusal("draft_required")
         self.review.confirm(self.source())
@@ -371,11 +476,13 @@ class ImtEditor(QDialog):
         for overlay in self.overlays:
             self.host._viewer.overlay_view.removeItem(overlay)
         self.overlays = []
+        self.editing = False
 
     def draw(self) -> None:
         assert self.review is not None
         self.clear_overlays()
-        for boundary, color in ((self.review.draft.lumen_intima, "c"), (self.review.draft.media_adventitia, "y")):
+        color = get_theme_tokens()[imt_color_role(self.review.draft.mean_mm) if self.review.live else "text.2"]
+        for boundary in (self.review.draft.lumen_intima, self.review.draft.media_adventitia):
             overlay = pg.PolyLineROI(boundary, closed=False, movable=False, pen=pg.mkPen(color, width=2))
             overlay.setZValue(100)
             overlay.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
@@ -383,15 +490,27 @@ class ImtEditor(QDialog):
             overlay.sigRegionChangeFinished.connect(lambda _roi: self.run(self.edited))
             self.host._viewer.overlay_view.addItem(overlay)
             self.overlays.append(overlay)
+        self.set_boundary_editing(self.edit_boundaries.isChecked())
         self.summary()
 
+    def set_boundary_editing(self, enabled: bool) -> None:
+        for overlay in self.overlays:
+            overlay.setAcceptedMouseButtons(Qt.MouseButton.LeftButton if enabled else Qt.MouseButton.NoButton)
+            # Keep the computed geometry intact, but do not obscure it with hundreds of nodes.
+            handles = overlay.getHandles()
+            step = max(1, len(handles) // 12)
+            for index, handle in enumerate(handles):
+                handle.setVisible(enabled and (index % step == 0 or index == len(handles) - 1))
+
     def edit_started(self) -> None:
+        self.editing = True
         if self.review is not None:
             # An in-progress drag must never retain operator acceptance.
             self.review.draft = replace(self.review.draft, confirmed=False)
             self.summary()
 
     def edited(self) -> None:
+        self.editing = False
         if self.review is None or len(self.overlays) != 2:
             return
         boundaries = [
@@ -413,10 +532,17 @@ class ImtEditor(QDialog):
         for key, value in (("minimum", d.min_mm), ("mean", d.mean_mm), ("maximum", d.max_mm)):
             label = self.metrics[key]
             label.setText(tr(f"imt.{key}") + f": {value:.3f} " + tr("imt.mm"))
-            role = "state.ok" if value <= 0.9 else "state.warn" if value < 1.5 else "state.err"
+            role = imt_color_role(value)
             color = tokens[role if self.review.live else "text.2"]
             label.setStyleSheet(f"color: {color}; font-weight: bold")
-        self.status.setText(
+        self.accept_button.setEnabled(self.review.live and not self.editing)
+        self.status.setText(tr("imt.review_hint") if self.review.live else tr("imt.stale_hint"))
+        color = tokens[imt_color_role(d.mean_mm) if self.review.live else "text.2"]
+        for overlay in self.overlays:
+            overlay.setPen(pg.mkPen(color, width=2))
+        self.refresh_calibration()
+        self.reposition()
+        self.status.setToolTip(
             tr(
                 "imt.summary",
                 decision=decision,
@@ -435,6 +561,7 @@ class ImtEditor(QDialog):
         self.check_context()
 
     def check_context(self) -> None:
+        self.refresh_calibration()
         if self.selection_frame is not None:
             try:
                 same_frame = self.frame_context() == self.selection_frame
@@ -457,9 +584,55 @@ class ImtEditor(QDialog):
                 return
         except (ImtRefusal, ValueError, TypeError):
             pass
-        self.review.invalidate()
-        self.clear_overlays()
-        self.summary()
+        if self.review.live or self.overlays:
+            self.review.invalidate()
+            self.clear_overlays()
+            self.summary()
+
+
+def verified_scale(context: CalibrationContext) -> bool:
+    return (
+        context.confidence in (CalibrationConfidence.MEASURED, CalibrationConfidence.DERIVED)
+        and context.assumption is None
+        and not context.assumed_isotropic
+    )
+
+
+def imt_color_role(value: float) -> str:
+    return "state.ok" if value <= 0.9 else "state.warn" if value < 1.5 else "state.err"
+
+
+def refusal_message(code: str) -> str:
+    """Stable technical codes are details; the operator gets an actionable message."""
+    if code in (
+        "invalid_rotated_roi",
+        "roi_angle_limit",
+        "rotated_roi_outside_frame",
+        "rotated_roi_auto_guides_required",
+    ):
+        return "imt.rotated_roi_refused"
+    if code == "unverified_calibration":
+        return "imt.scale_unverified"
+    if code in ("calibration_required", "calibration_scope_mismatch", "numerically_unstable_scale"):
+        return "imt.scale_required"
+    if code == "dicom_scale_unavailable":
+        return "imt.dicom_scale_unavailable"
+    if code in (
+        "paused_frame_required",
+        "frame_not_resident",
+        "bmode_required",
+        "grayscale_frame_and_valid_roi_required",
+    ):
+        return "imt.frame_required"
+    if code == "finished_report":
+        return "imt.finished_report"
+    if code == "readonly_pane":
+        return "imt.readonly_pane"
+    if code in ("stale_draft", "review_required", "draft_required", "boundary_edit_in_progress"):
+        return "imt.stale_hint"
+    if code in ("two_wall_edges_not_found", "insufficient_quality_coverage", "flat_roi", "no_continuous_boundary"):
+        return "imt.search_failed"
+    return "imt.invalid_input"
 
 
 def show_imt_editor(window: Any) -> None:
@@ -472,4 +645,5 @@ def show_imt_editor(window: Any) -> None:
         return
     editor = ImtEditor(window)
     editor.show()
+    editor.reposition()
     editor.run(editor.start_selection)

@@ -98,6 +98,7 @@ def restrict_snapshot_to_profile(
         vessel_measurements=tuple(
             measurement for measurement in snapshot.vessel_measurements if allow_label(measurement.label, allowed)
         ),
+        imt_measurements=tuple(d for d in snapshot.imt_measurements if allow_label(d.source.caliper_label, allowed)),
         planimeter=tuple(result for result in snapshot.planimeter if _planimeter_belongs(result, allowed)),
     )
     if profile.cardiac:

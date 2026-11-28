@@ -361,3 +361,270 @@ def test_frame_change_while_drawing_cancels_selection(editor):
     manager.state_changed.emit(original)
     assert not dialog.selection_armed and dialog.wall_roi is None
     assert dialog.review is None
+
+
+def test_accept_button_persists_and_projects_to_report_in_one_action(editor, qtbot):
+    from PySide6.QtCore import Qt
+
+    from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+    from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+    dialog, store = editor
+    dialog.propose()
+    assert not store.get("1.2.3").imt_measurements
+    assert dialog.accept_button.isEnabled()
+    assert not dialog.isWindow() and not dialog.isModal()
+    assert dialog.parentWidget() is dialog.viewport
+    dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    dialog.host.resize(900, 700)
+    dialog.viewport.parentWidget().resize(900, 700)
+    dialog.host.show()
+    dialog.viewport.parentWidget().show()
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+    qtbot.wait(20)
+    qtbot.mouseClick(dialog.accept_button, Qt.MouseButton.LeftButton)
+    saved = store.get("1.2.3").imt_measurements
+    assert len(saved) == 1 and saved[0].confirmed
+    groups = build_report_groups(MeasurementSnapshot(imt_measurements=saved))
+    rows = [row for group in groups for row in group.values]
+    mean = next(row for row in rows if row.parameter_id == "cca.imt_right")
+    assert float(mean.value) == pytest.approx(saved[0].mean_mm, abs=0.001)
+    assert mean.unit == "mm" and mean.origin.sources[0].sop_instance_uid == "sop"
+    assert not dialog.isVisible() and not dialog.overlays and not dialog.timer.isActive()
+
+
+def test_discard_removes_only_pending_measurement_and_all_overlays(editor, qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPushButton
+
+    from echo_personal_tool.application.localization import tr
+
+    dialog, store = editor
+    dialog.propose()
+    dialog.confirm()
+    dialog.save()
+    accepted = store.get("1.2.3").imt_measurements
+    dialog.propose()
+    dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    dialog.host.resize(900, 700)
+    dialog.viewport.parentWidget().resize(900, 700)
+    dialog.host.show()
+    dialog.viewport.parentWidget().show()
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+    qtbot.wait(20)
+    button = next(b for b in dialog.findChildren(QPushButton) if b.text() == tr("imt.discard"))
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+    assert dialog.review is None and not dialog.overlays and dialog.wall_roi is None
+    assert store.get("1.2.3").imt_measurements == accepted
+    assert not dialog.isVisible() and not dialog.timer.isActive()
+
+
+def test_cannot_accept_during_boundary_drag_or_after_report_finished(editor):
+    dialog, store = editor
+    dialog.propose()
+    dialog.edit_started()
+    assert not dialog.accept_button.isEnabled()
+    with pytest.raises(ImtRefusal, match="boundary_edit_in_progress"):
+        dialog.accept_result()
+    dialog.edited()
+    assert dialog.accept_button.isEnabled()
+    dialog.host._tabs = SimpleNamespace(active=SimpleNamespace(report_finished=True))
+    with pytest.raises(ImtRefusal, match="finished_report"):
+        dialog.accept_result()
+    dialog.check_context()
+    assert not dialog.accept_button.isEnabled() and not dialog.overlays
+    assert not store.get("1.2.3").imt_measurements
+
+
+def test_assumed_scale_has_actionable_localized_refusal_without_results(editor):
+    from dataclasses import replace
+
+    from echo_personal_tool.application.localization import tr
+    from echo_personal_tool.domain.models.calibration import CalibrationConfidence
+
+    dialog, store = editor
+    manager = dialog.host._controller.state_manager
+    assumed = CalibrationContext(
+        (0.1, 0.1), source="manual", confidence=CalibrationConfidence.ASSUMED, assumed_isotropic=True
+    )
+    manager.snapshot = replace(manager.snapshot, manual_calibration=assumed)
+    dialog.run(dialog.propose)
+    assert dialog.status.text() == tr("imt.scale_unverified")
+    assert "unverified_calibration" not in dialog.status.text()
+    assert dialog.calibration_status.text() == tr("imt.scale_assumed_short")
+    assert not dialog.accept_button.isEnabled() and not dialog.overlays
+    assert not store.get("1.2.3").imt_measurements
+
+
+@pytest.mark.parametrize("dicom_available", [False, True])
+def test_restore_verified_dicom_is_explicit_and_does_not_upgrade_manual_scale(editor, dicom_available):
+    from dataclasses import replace
+
+    from echo_personal_tool.domain.models.calibration import CalibrationConfidence
+
+    dialog, store = editor
+    manager = dialog.host._controller.state_manager
+    old = manager.snapshot
+    dicom = CalibrationContext((0.1, 0.2), source="USRegion")
+    assumed = CalibrationContext(
+        (0.1, 0.1), source="manual", confidence=CalibrationConfidence.ASSUMED, assumed_isotropic=True
+    )
+    manager.snapshot = replace(
+        old,
+        instance=replace(old.instance, calibrations=(dicom,) if dicom_available else ()),
+        manual_calibration=assumed,
+    )
+    clears = []
+
+    def clear():
+        clears.append(True)
+        manager.snapshot = replace(manager.snapshot, manual_calibration=None, manual_pixel_spacing=None)
+        manager.state_changed.emit(manager.snapshot)
+
+    dialog.host._controller.clear_manual_calibration = clear
+    dialog.run(dialog.propose)
+    assert not clears  # no silent fallback
+    if dicom_available:
+        dialog.restore_dicom_scale()
+        assert clears == [True] and dialog.review.live
+        assert dialog.review.draft.source.calibration == dicom
+        assert dialog.accept_button.isEnabled()
+        assert "USRegion" in dialog.calibration_status.text()
+    else:
+        with pytest.raises(ImtRefusal, match="dicom_scale_unavailable"):
+            dialog.restore_dicom_scale()
+        assert not clears and manager.snapshot.manual_calibration == assumed
+    assert not store.get("1.2.3").imt_measurements
+
+
+def test_boundary_colors_follow_mean_and_nodes_do_not_hide_the_wall(editor):
+    from dataclasses import replace
+
+    from PySide6.QtGui import QColor
+
+    dialog, _store = editor
+    dialog.propose()
+    assert all(not h.isVisible() for overlay in dialog.overlays for h in overlay.getHandles())
+    for value, role in ((0.8, "state.ok"), (1.1, "state.warn"), (1.5, "state.err")):
+        dialog.review.draft = replace(dialog.review.draft, mean_mm=value)
+        dialog.summary()
+        assert all(overlay.pen.color() == QColor(get_theme_tokens()[role]) for overlay in dialog.overlays)
+    dialog.edit_boundaries.setChecked(True)
+    assert all(3 <= sum(h.isVisible() for h in overlay.getHandles()) <= 16 for overlay in dialog.overlays)
+
+
+def test_rotatable_rectangle_recomputes_in_source_pixels_and_persists_orientation(editor):
+    from dataclasses import replace
+
+    from PySide6.QtCore import QPointF
+
+    from tests.unit.test_imt_rotated_roi import phantom
+
+    dialog, store = editor
+    source, image, _inside = phantom(15)
+    manager = dialog.host._controller.state_manager
+    manager.snapshot = replace(manager.snapshot, manual_calibration=source.calibration)
+    dialog.host._controller.frame_access.frame = lambda *_: image
+    dialog.start_selection()
+    dialog.update_rectangle(QPointF(45, 100), QPointF(205, 140))
+    roi = dialog.wall_roi
+    assert any(handle["type"] == "r" for handle in roi.handles)
+    roi.setAngle(15)
+    dialog.rectangle_finished()
+    assert dialog.angle.value() == 15
+    assert dialog.review.live and dialog.review.draft.source.roi_polygon
+    assert len(dialog.overlays) == 2 and dialog.accept_button.isEnabled()
+    assert dialog.review.draft.mean_mm == pytest.approx(0.8, abs=0.12)
+    assert np.allclose(dialog.review.draft.source.roi_polygon, source.roi_polygon)
+    dialog.confirm()
+    dialog.save()
+    accepted = store.get("1.2.3").imt_measurements[0]
+    dialog.load()
+    assert dialog.roi_polygon == accepted.source.roi_polygon
+    dialog.revalidate()
+    assert dialog.review.live and not dialog.review.draft.confirmed
+    assert dialog.review.draft.source.roi_polygon == accepted.source.roi_polygon
+
+
+def test_angle_control_rotates_about_center_and_failed_search_revokes_acceptance(editor, monkeypatch):
+    from PySide6.QtCore import QPointF
+
+    dialog, store = editor
+    dialog.start_selection()
+    dialog.update_rectangle(QPointF(10, 10), QPointF(85, 40))
+    dialog.rectangle_finished()
+    dialog.confirm()
+    before = dialog.wall_roi.mapToParent(QPointF(37.5, 15))
+
+    def refused():
+        raise ImtRefusal("two_wall_edges_not_found")
+
+    monkeypatch.setattr(dialog, "propose", refused)
+    dialog.angle.setValue(5)
+    after = dialog.wall_roi.mapToParent(QPointF(37.5, 15))
+    assert after.x() == pytest.approx(before.x()) and after.y() == pytest.approx(before.y())
+    assert dialog.wall_roi.angle() == 5
+    assert not dialog.review.live and not dialog.accept_button.isEnabled()
+    assert not dialog.overlays and not store.get("1.2.3").imt_measurements
+
+
+def test_accepted_imt_reaches_real_controller_study_snapshot_without_calipers(editor):
+    from dataclasses import replace
+
+    from echo_personal_tool.application.app_controller import AppController
+    from echo_personal_tool.application.composition import in_memory_app_services
+    from echo_personal_tool.domain.services.report_builder import build_report_groups
+
+    dialog, _store = editor
+    dialog.propose()
+    services = in_memory_app_services()
+    controller = AppController(services)
+    instance = dialog.host._controller.state_manager.snapshot.instance
+    controller.state_manager.set_instance(instance, total_frames=10, frame_time_ms=None)
+    uid = controller.resolve_study_uid(instance)
+    draft = dialog.review.draft
+    source = replace(draft.source, study_uid=uid)
+    accepted = replace(draft, source=source).confirm(source)
+    services.measurement_store.set_imt_measurement(uid, accepted)
+    snapshot = controller.compute_study_snapshot(report_choices={})
+    assert snapshot.imt_measurements == (accepted,)
+    assert not snapshot.linear_measurements
+    rows = [v for group in build_report_groups(snapshot) for v in group.values]
+    assert next(v for v in rows if v.parameter_id == "cca.imt_right").origin.sources[0].frame_index == 2
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_in_view_controls_fit_viewport_and_avoid_roi_when_space_available(editor, qtbot, theme):
+    from PySide6.QtCore import QPointF, QRect, Qt
+    from PySide6.QtWidgets import QApplication
+
+    from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+    dialog, _store = editor
+    app = QApplication.instance()
+    original = app.styleSheet()
+    try:
+        app.setStyleSheet(build_clinical_stylesheet(12, theme=theme))
+        dialog.host.resize(900, 700)
+        dialog.viewport.parentWidget().resize(900, 700)
+        dialog.host.show()
+        dialog.viewport.parentWidget().show()
+        view = dialog.host._viewer.overlay_view
+        view.setRange(xRange=(0, 96), yRange=(0, 64), padding=0)
+        dialog.start_selection()
+        dialog.update_rectangle(QPointF(10, 10), QPointF(85, 40))
+        dialog.rectangle_finished()
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        dialog.show()
+        qtbot.wait(20)
+        dialog.reposition()
+        assert dialog.viewport.rect().contains(dialog.geometry())
+        assert dialog.rect().contains(dialog.accept_button.geometry())
+        first = dialog.viewport.parentWidget().mapFromScene(view.mapViewToScene(QPointF(10, 10)))
+        last = dialog.viewport.parentWidget().mapFromScene(view.mapViewToScene(QPointF(85, 40)))
+        assert not dialog.geometry().intersects(QRect(first, last).normalized())
+        assert dialog.accept_button.isVisible() and dialog.accept_button.isEnabled()
+    finally:
+        app.setStyleSheet(original)
