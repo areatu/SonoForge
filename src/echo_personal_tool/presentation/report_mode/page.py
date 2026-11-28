@@ -279,6 +279,10 @@ class ReportModePage(QWidget):
     def set_font_size(self, font_size: int) -> None:
         self._preview.set_font_size(font_size)
 
+    def set_research_banner(self, enabled: bool) -> None:
+        """Research-use notice on the sheet (issue 418); mirrors the preference."""
+        self._preview.set_research_banner(enabled)
+
     def set_template(self, template) -> None:
         """Adopt the printable form of the protocol (item 12 of the list)."""
         self._preview.set_template(template)

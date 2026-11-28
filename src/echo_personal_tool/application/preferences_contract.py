@@ -192,6 +192,7 @@ class SessionPreferences(Protocol):
     last_session_clip_count: int
     orthanc_cache_clear_on_exit: bool
     measurement_persistence_enabled: bool
+    measurements_at_rest_encrypted: bool
     study_profile: str
 
 
@@ -209,6 +210,7 @@ class ReportPreferences(Protocol):
 
     pdf_font_size: int
     report_show_inputs: bool
+    report_research_watermark: bool
     report_template_json: str
     report_value_excluded: tuple[str, ...]
     report_value_order: tuple[str, ...]

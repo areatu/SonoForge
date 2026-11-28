@@ -179,6 +179,7 @@ _SECTION_FIELDS: dict[str, tuple[str, ...]] = {
         "results_overlay_opacity",
         "results_overlay_custom_position",
         "measurement_persistence_enabled",
+        "measurements_at_rest_encrypted",
     ),
     "settings_section_report": (
         "show_dicom_tag_inspector",
@@ -824,11 +825,25 @@ class UserPreferencesDialog(QDialog):
         form.addRow(tr("preferences.measurement_precision_tenth_mm"), checkbox)
         return checkbox
 
+    def _build_at_rest_encryption_row(self, form: QFormLayout, current: UserPreferences) -> None:
+        """At-rest encryption of the saved-record store (Z2-M, issue 331).
+
+        Records are sealed with AES-256-GCM before they touch the disk; the
+        change applies on the next start, where existing records are migrated
+        in place (the composition root owns that migration).
+        """
+        self._at_rest_encrypted = QCheckBox()
+        self._at_rest_encrypted.setChecked(current.measurements_at_rest_encrypted)
+        self._at_rest_encrypted.setEnabled(self._profile_capabilities.measurement_storage)
+        form.addRow(tr("preferences.at_rest_encrypted"), self._at_rest_encrypted)
+        hint = QLabel(tr("preferences.at_rest_encrypted_hint"))
+        hint.setWordWrap(True)
+        form.addRow("", hint)
+
     def _build_pages(self, current: UserPreferences) -> None:
         from echo_personal_tool.application.profile_settings import get_profile_capabilities
 
         capabilities = get_profile_capabilities()
-
         # ── General ──────────────────────────────────────────────
         general_form = QFormLayout()
         self._tabs_enabled = QCheckBox(tr("preferences.tabs_enabled"))
@@ -1094,6 +1109,7 @@ class UserPreferencesDialog(QDialog):
         persistence_hint = QLabel(tr("persistence.privacy") + "\n" + tr("persistence.toggle_hint"))
         persistence_hint.setWordWrap(True)
         measurements_form.addRow("", persistence_hint)
+        self._build_at_rest_encryption_row(measurements_form, current)
         self._measurement_manage = QPushButton(tr("persistence.manage"))
         self._measurement_manage.setEnabled(
             self._profile_capabilities.measurement_storage and self._measurement_storage_action is not None
@@ -1739,6 +1755,7 @@ class UserPreferencesDialog(QDialog):
             last_opened_folder=stored.last_opened_folder,
             orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),
             measurement_persistence_enabled=self._persist_measurements.isChecked(),
+            measurements_at_rest_encrypted=self._at_rest_encrypted.isChecked(),
             theme_mode=str(self._theme_combo.currentData()),
             accent_palette=str(self._accent_palette_combo.currentData()),
             language=str(self._language_combo.currentData()),

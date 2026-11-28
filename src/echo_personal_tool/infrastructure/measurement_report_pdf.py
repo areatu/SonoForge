@@ -156,12 +156,20 @@ def _report_story(
     anchors: dict[ValueId, list[PageRect]] | None = None,
     template: ReportTemplate | None = None,
     stamp: SignatureStamp | None = None,
+    research_banner: bool = True,
 ) -> list:
     """Platypus flowables of the study protocol; value cells record their rects."""
     # Item 7 of the 2026-11-06 list: the title is part of the document, not of
     # the renderer — a generic ultrasound protocol must not be headed «Протокол
     # ЭхоКГ».  An empty title is the echocardiography default of older builds.
     story: list = [Paragraph(_xml_escape(document.title or tr("report.title")), styles["title"])]
+    if research_banner:
+        # #418: the tool has no clinical validation yet, so an exported sheet
+        # carries the research-use notice under the title by default.  The
+        # operator may turn it off per workstation (a settings decision, not a
+        # per-document one); the signed document hashes whatever was shown.
+        story.append(_research_banner_block(styles))
+        story.append(Spacer(1, 3 * mm))
     # The draft/incomplete statement lives on the status panel of the report
     # mode (the notice banner above the sheet), never on the sheet itself
     # (2026-11-16 list, item 5): protocols may legitimately be focused and
@@ -446,6 +454,7 @@ def render_report(
     font_size: int = 10,
     template: ReportTemplate | None = None,
     stamp: SignatureStamp | None = None,
+    research_banner: bool = True,
 ) -> RenderedReport:
     """Build the PDF preview and the value-cell anchors in one pass.
 
@@ -455,7 +464,10 @@ def render_report(
     locates every value cell on its page for the "where did this value come
     from" hover; markers that must not print are a separate screen layer and
     are never drawn into the PDF.  ``stamp`` (#624) draws the visual local-EP
-    block of a signed sheet.
+    block of a signed sheet.  ``research_banner`` (#418) prints the
+    research-use notice under the title; the flag must be the same for the
+    preview, the export and the signed render, because the receipt hashes
+    exactly the bytes this function produced.
 
     Failures raise :class:`PdfExportError`, the same safe error as the export.
     """
@@ -464,7 +476,7 @@ def render_report(
         size = max(8, min(16, int(font_size)))
         styles = _report_styles(font_name, size)
         anchors = _AnchorSink()
-        story = _report_story(document, styles, size, anchors, template, stamp)
+        story = _report_story(document, styles, size, anchors, template, stamp, research_banner)
         buffer = BytesIO()
         pdf = SimpleDocTemplate(
             buffer,
@@ -489,6 +501,7 @@ def export_report_document_pdf(
     font_size: int = 10,
     template: ReportTemplate | None = None,
     stamp: SignatureStamp | None = None,
+    research_banner: bool = True,
 ) -> Path:
     """Write the structured study protocol to a PDF file and return the path.
 
@@ -498,9 +511,12 @@ def export_report_document_pdf(
     The bytes come from :func:`render_report` — the same render the preview
     shows — and the file is published atomically (UI-4 PR-5): a failed export
     leaves an existing report untouched instead of truncating it.  ``stamp``
-    (#624) prints the local-EP block into the exported signed sheet.
+    (#624) prints the local-EP block into the exported signed sheet;
+    ``research_banner`` (#418) prints the research-use notice.
     """
-    rendered = render_report(document, font_size=font_size, template=template, stamp=stamp)
+    rendered = render_report(
+        document, font_size=font_size, template=template, stamp=stamp, research_banner=research_banner
+    )
     output_path.write_bytes(rendered.pdf)
     return output_path
 
@@ -735,6 +751,31 @@ def _signature_block(document: ReportDocument, styles: dict[str, ParagraphStyle]
                 ("FONTSIZE", (0, 0), (-1, -1), max(6, styles["small"].fontSize)),
                 ("LINEABOVE", (0, 0), (-1, 0), 0.5, _GRID_COLOR),
                 ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    return table
+
+
+def _research_banner_block(styles: dict[str, ParagraphStyle]) -> Table:
+    """Research-use notice printed on exported sheets (#418).
+
+    One bordered line under the title: the study has no clinical validation
+    yet, so a sheet that leaves the workstation is honestly labelled.  Styled
+    like the local-EP stamp block — a quiet, unmissable frame.
+    """
+    small = styles["small"]
+    width = A4[0] - 36 * mm
+    table = Table([[Paragraph(_xml_escape(tr("report.research_banner")), small)]], colWidths=[width])
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), small.fontName),
+                ("FONTSIZE", (0, 0), (-1, -1), max(6, small.fontSize)),
+                ("BOX", (0, 0), (-1, -1), 0.8, _GROUP_COLOR),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
             ]
         )
     )

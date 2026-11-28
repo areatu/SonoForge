@@ -20,6 +20,7 @@ This module centralises that assembly into :class:`AppServices` and
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from collections.abc import Callable, Sequence
@@ -34,6 +35,7 @@ import psutil
 from echo_personal_tool.application.analysis_jobs import AnalysisJobs
 from echo_personal_tool.application.calculator_inputs import CalculatorInputStore
 from echo_personal_tool.application.ctmr_slice_requests import CtMrSliceRequests
+from echo_personal_tool.application.diagnostics import log_boundary_failure
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.fusion_jobs import AssistJobs, FusionJobs
 from echo_personal_tool.application.key_images import KeyImageService
@@ -73,6 +75,9 @@ from echo_personal_tool.domain.ports import IOnnxSegmenter, IViewRecognizer
 from echo_personal_tool.domain.services.view_recognition_workflow import (
     ViewRecognitionWorkflow,
 )
+from echo_personal_tool.infrastructure.measurement_codec import MeasurementStorageError
+from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
+from echo_personal_tool.infrastructure.measurements_encryption import MeasurementsCipher, load_or_create_cipher
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
@@ -86,6 +91,8 @@ def make_ctmr_slice_requests() -> CtMrSliceRequests:
 
     return CtMrSliceRequests(read_ctmr_slice, source_is_current)
 
+
+logger = logging.getLogger(__name__)
 
 PROFILE_FULL = "full"
 PROFILE_PRESENTER = "presenter"
@@ -426,6 +433,56 @@ def _make_persistence_audit_hook(user_session: UserSessionService) -> Callable[[
     return _hook
 
 
+def _store_holds_envelopes(root: Path) -> bool:
+    """True when at least one on-disk record is an at-rest envelope (Z2-M)."""
+    from echo_personal_tool.infrastructure.measurements_encryption import is_encrypted_envelope
+
+    try:
+        entries = MeasurementRepository(root).entries()
+    except (MeasurementStorageError, OSError):
+        return False  # absent/unreadable store: nothing to migrate, nothing locked
+    for path in entries:
+        try:
+            with path.open("rb") as file:
+                if is_encrypted_envelope(file.read()):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _resolve_measurements_at_rest_cipher(
+    root: Path,
+    prefs: UserPreferences,
+    capabilities: ProfileCapabilities,
+) -> MeasurementsCipher | None:
+    """Apply the Z2-M at-rest preference: resolve the key and migrate records.
+
+    Runs once per start, before any measurement I/O, under the repository's
+    own writer lock.  Fail-safe, never fail-open: a key problem never turns
+    encrypted records into plaintext — either the cipher stays available (and
+    records stay readable) or loads surface a stable ``encrypted_unavailable``
+    error instead of silence.
+    """
+    if not capabilities.measurement_storage:
+        return None
+    enabled = bool(getattr(prefs, "measurements_at_rest_encrypted", False))
+    if not enabled and not _store_holds_envelopes(root):
+        return None
+    try:
+        cipher = load_or_create_cipher(root)
+    except MeasurementStorageError as exc:
+        log_boundary_failure(logger, "measurements.vault", exc, code=exc.code, level=logging.WARNING)
+        return None
+    try:
+        converted, already = MeasurementRepository(root, cipher=cipher).migrate_encryption(cipher if enabled else None)
+    except MeasurementStorageError as exc:
+        log_boundary_failure(logger, "measurements.vault", exc, code=exc.code, level=logging.WARNING)
+        return cipher if _store_holds_envelopes(root) else None
+    logger.info("measurements at-rest: %d migrated, %d already current", converted, already)
+    return cipher if enabled else None
+
+
 def normalize_profile_name(profile: str | None) -> str:
     """Normalise ``profile`` to ``'presenter'`` or ``'full'``."""
     raw = (profile or "").strip().lower()
@@ -607,6 +664,7 @@ def build_app_services(
         can_write=lambda: user_session.can(Permission.EDIT_MEASUREMENTS),
         can_delete=lambda: user_session.can(Permission.DELETE_MEASUREMENTS),
         audit_callback=_make_persistence_audit_hook(user_session),
+        cipher=_resolve_measurements_at_rest_cipher(resolved_paths.measurements_dir, resolved_prefs, capabilities),
     )
     frame_cache = FrameCache(
         evict_window=cache_budget.playback_config.evict_window,

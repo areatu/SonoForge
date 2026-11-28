@@ -63,6 +63,11 @@ def measurements_dir() -> Path:
     return data_dir() / "measurements"
 
 
+def validation_dir() -> Path:
+    """Research validation manifests (#418): aggregates only, never PHI."""
+    return data_dir() / "validation"
+
+
 def models_dir() -> Path:
     """Return the canonical directory for downloaded ONNX models."""
     return data_dir() / "models"

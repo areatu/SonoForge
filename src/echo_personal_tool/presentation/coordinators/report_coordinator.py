@@ -214,10 +214,9 @@ class ReportCoordinator(QObject):
         if page is None:  # built on first entry into «Отчёт»
             return
         page.set_font_size(preferences.pdf_font_size)
+        page.set_research_banner(preferences.report_research_watermark)
         page.apply_theme()
-        # The printable form (header fields, notes, measurement columns) lives
-        # in the preferences too; without this mirror the «колонки измерений»
-        # setting changed nothing until the mode was toggled (2026-11-16, п.6).
+        # The printable form (header fields, notes, measurement columns) mirrors the preferences (2026-11-16 п.6).
         self.refresh_template()
         # Language and the length unit change the document itself.
         page.request_refresh()
@@ -462,6 +461,7 @@ class ReportCoordinator(QObject):
             stack.addWidget(page)
             self._page = page
             page.set_checklist_profile(study_profile_id(self._port.preferences()))
+            page.set_research_banner(self._port.preferences().report_research_watermark)
         return self._page
 
     # ── Mode ────────────────────────────────────────────────────────────
@@ -994,6 +994,7 @@ class ReportCoordinator(QObject):
             Path(path),
             font_size=self._port.preferences().pdf_font_size,
             template=self.template(),
+            research_banner=self._port.preferences().report_research_watermark,
             on_outcome=_on_outcome,
         ).run()
 
@@ -1137,6 +1138,7 @@ class ReportCoordinator(QObject):
                     reason=reason,
                     font_size=self._port.preferences().pdf_font_size,
                     template=self.template(),
+                    research_banner=self._port.preferences().report_research_watermark,
                 )
                 page.set_status(tr("report.amend_done", name=Path(path).name))
             else:
@@ -1147,6 +1149,7 @@ class ReportCoordinator(QObject):
                     secret=secret,
                     font_size=self._port.preferences().pdf_font_size,
                     template=self.template(),
+                    research_banner=self._port.preferences().report_research_watermark,
                 )
                 page.set_status(tr("report.sign_done", name=Path(path).name))
         except ReportSignatureError as exc:
@@ -1572,18 +1575,15 @@ class ReportCoordinator(QObject):
         try:
             from echo_personal_tool.application import report_export
             from echo_personal_tool.application.server_io import load_server_settings, make_upload_targets
+            from echo_personal_tool.domain.models.report_signature import build_stamp
 
-            receipt = self._signed_receipt_for(study_uid)
-            stamp = None
-            if receipt is not None:
-                from echo_personal_tool.domain.models.report_signature import build_stamp
-
-                stamp = build_stamp(receipt)
+            stamp = build_stamp(receipt) if (receipt := self._signed_receipt_for(study_uid)) is not None else None
             rendered = report_export.render_report(
                 document,
                 font_size=self._port.preferences().pdf_font_size,
                 template=self.template(),
                 stamp=stamp,
+                research_banner=self._port.preferences().report_research_watermark,
             )
             settings = load_server_settings()
             protocol = "stow" if settings.query_source != "dimse" and not settings.dimse_enabled else "dimse"

@@ -21,14 +21,25 @@ from echo_personal_tool.infrastructure.measurement_codec import (
     loads,
     study_key,
 )
+from echo_personal_tool.infrastructure.measurements_encryption import (
+    MeasurementsCipher,
+    is_encrypted_envelope,
+)
 
 _UTC = timezone.utc  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
 
 
 class MeasurementRepository:
-    def __init__(self, root: Path, max_bytes: int = 1024**3):
+    def __init__(
+        self,
+        root: Path,
+        max_bytes: int = 1024**3,
+        *,
+        cipher: MeasurementsCipher | None = None,
+    ):
         self.root = Path(root)
         self.max_bytes = max_bytes
+        self._cipher = cipher
         self._lock_file: IO[bytes] | None = None
 
     def _safe(self, path: Path) -> Path:
@@ -82,9 +93,14 @@ class MeasurementRepository:
         path = self._path(uid)
         try:
             with path.open("rb") as file:
-                record = loads(file.read(MAX_DOCUMENT_BYTES + 1))
+                raw = file.read(MAX_DOCUMENT_BYTES + 1)
         except FileNotFoundError:
             return None
+        if is_encrypted_envelope(raw):
+            if self._cipher is None:
+                raise MeasurementStorageError("encrypted_unavailable")
+            raw = self._cipher.decrypt(raw, aad=study_key(uid))
+        record = loads(raw)
         if record["study_uid"] != uid:
             raise MeasurementStorageError("identity")
         return record
@@ -141,11 +157,63 @@ class MeasurementRepository:
         if signatures or addenda:
             stored["lifecycle"] = lifecycle
         payload = dumps(stored)
+        if self._cipher is not None:
+            payload = self._cipher.encrypt(payload, aad=study_key(uid))
         old_size = path.stat().st_size if path.exists() else 0
         if self.size_bytes() - old_size + len(payload) > self.max_bytes:
             raise MeasurementStorageError("quota")
         self.atomic_write(path, payload)
         return stored
+
+    def migrate_encryption(
+        self,
+        target: MeasurementsCipher | None,
+        *,
+        read_cipher: MeasurementsCipher | None = None,
+    ) -> tuple[int, int]:
+        """Rewrite every record to (or from) the at-rest envelope in place.
+
+        Phase one verifies every record is readable — a corrupt or
+        key-mismatched record aborts the migration before anything is
+        written, so a partially converted store cannot hide a failure.
+        Phase two rewrites each record with :meth:`atomic_write`; record
+        content, revision and signature history are preserved byte-for-byte,
+        only the envelope changes.  Returns ``(converted, already_current)``.
+
+        ``target=None`` decrypts back to plaintext (the disable path) and
+        needs *read_cipher* whenever this repository itself holds no cipher.
+        """
+        reader = read_cipher if read_cipher is not None else self._cipher
+        self.acquire()
+        records: dict[Path, tuple[bytes, bytes]] = {}
+        for path in self.entries():
+            with path.open("rb") as file:
+                raw = file.read(MAX_DOCUMENT_BYTES + 1)
+            if is_encrypted_envelope(raw):
+                if reader is None:
+                    raise MeasurementStorageError("encrypted_unavailable")
+                # Validate before writing anything: a record that cannot be
+                # opened must abort the migration, not be re-sealed blindly.
+                records[path] = (raw, reader.decrypt(raw, aad=path.stem))
+            else:
+                loads(raw)  # an unparsable plaintext record aborts the migration
+                records[path] = (raw, raw)
+        converted = 0
+        already = 0
+        for path, (raw, plaintext) in records.items():
+            if target is None:
+                if not is_encrypted_envelope(raw):
+                    already += 1
+                    continue
+                payload = plaintext
+            else:
+                if is_encrypted_envelope(raw) and reader is not None and reader.key_id == target.key_id:
+                    already += 1
+                    continue
+                payload = target.encrypt(plaintext, aad=path.stem)
+            self.atomic_write(path, payload)
+            converted += 1
+        return converted, already
 
     @staticmethod
     def _apply_signature_guard(

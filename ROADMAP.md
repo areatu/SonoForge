@@ -1,9 +1,10 @@
 # ROADMAP — SonoForge
 
-**Обновлено:** 2026-11-18 (аудит 2026-11-18: добавлены issues #618–#622 и четырёхэтапный план
+**Обновлено:** 2026-11-27 (аудит-проход 2026-11-27: at-rest шифрование Z2-M #331-частично и research-каркас
+валидации #418 — см. первый раздел «Ближайших трёх спринтов»; статусы #618/#620/#621 сверены со стейтами issues).
+Предыдущая правка — 2026-11-18 (аудит 2026-11-18: добавлены issues #618–#622 и четырёхэтапный план
 Interop/Auth #623–#626; реализован этап 1/4 — #623: опциональный локальный multi-user, пароль/PIN,
 роли, зашифрованные ключи Ed25519, изоляция профилей и хеш-цепочка `audit.jsonl` без PHI).
-Предыдущая правка — 2026-11-02 (аудит 2026-11-02: очередь #414–#421 и закрывающий срез #327).
 
 **Что это:** статус функций и план на три спринта вперёд.
 **Чем это не является:** спецификацией (спеки — `docs/superpowers/specs/`), списком коммитов
@@ -45,6 +46,13 @@ ratchet направлений слоёв и ratchet'ы #327 на нуле, дл
 
 ## Ближайшие три спринта
 
+### Аудит 2026-11-27 — шифрование Z2-M и каркас валидации #418 (реализовано на ветке arena/6794609f)
+
+| # | Тема | Статус |
+|---|---|---|
+| **#331 (частично)** | At-rest шифрование Z2-M (сохранённые измерения): AES-256-GCM конверт на каждую запись, ключ — OS keychain (full) / device-secret-обёртка `.vault.key` (portable), миграция на месте при старте (all-or-nothing), настройка «Шифровать измерения» + миграция обратно в plaintext при отключении | [x] реализовано (`infrastructure/measurements_encryption.py`, `MeasurementRepository(cipher=…, migrate_encryption)`, композиция в `application/composition.py`); Z3 (DICOM-кэш) и Z4 (экспорты) остаются документированным residual |
+| **#418 (каркас)** | Research-каркас внешней валидации auto-EF: чистое ядро метрик (`domain/validation` — MAE/bias/Bland–Altman/Pearson/sens-spec, fail-closed), CLI + адаптер EchoNet-Dynamic `FileList.csv` (`application/ef_validation`), версионированный манифест (aggregates-only, без PHI), строка «Внешняя валидация» в карточке Auto-EF; research-баннер «не для клинического применения» в PDF-отчёте (настраиваемый в Настройках, по умолчанию включён) | [~] каркас готов; BLOCKED-часть #418 (легальный доступ к EchoNet-Dynamic, независимые оценщики, sens/spec по каждому инструменту) остаётся внешней |
+
 ### Аудит и план Interop/Auth (2026-11-18)
 
 | # | Тема | Статус |
@@ -53,10 +61,10 @@ ratchet направлений слоёв и ratchet'ы #327 на нуле, дл
 | **#624** | [Interop/Auth 2/4] Локальная электронная подпись протоколов (Ed25519), жизненный цикл `draft`/`signed`/`amended` и защита ревизий | [x] реализовано: `SignerPort` + локальный адаптер, канонический снимок и `.sig.json`-квитанция, штамп локальной ЭП в PDF, guard в `MeasurementRepository`, офлайн «Проверить подпись…» (включая архивные ключи), аудит `report.signed`/`report.amended`/`signature.verified` |
 | **#625** | [Interop/Auth 3/4] Словарь LOINC/UCUM/SNOMED и исходящий обмен: HL7 v2 `ORU^R01` (MLLP/TLS), FHIR R4, DICOM Encapsulated PDF | [x] реализовано: `domain/terminology` (LOINC/UCUM/SNOMED + явная конвертация единиц), ORU^R01 с ACK-разбором и MLLP/MLLP+TLS, FHIR R4 Bundle по HTTPS, Encapsulated PDF в PACS, аудит `interop.exported` |
 | **#626** | [Interop/Auth 4/4] Входящий обмен и Worklist: MLLP listener (ADT/ORM), DICOM MWL/MPPS, DICOM SR (TID 5200), FHIR inbound, HL7 CDA R2 | [ ] запланировано |
-| **#618** | [Аудит 2026-11-18] P1: устранить молчаливые `except Exception` и снизить `broad_except_baseline` | [ ] в очереди |
+| **#618** | [Аудит 2026-11-18] P1: устранить молчаливые `except Exception` и снизить `broad_except_baseline` | [x] закрыт 2026-11-19 (`log_boundary_failure` в каждом broad-except, `silent`-счётчик = 0; проверено по коду 2026-11-27) |
 | **#619** | [Аудит 2026-11-18] P2: поэтапное сокращение god-классов и долга `mypy_presentation_baseline` | [~] `mypy_presentation_baseline` снижен 798 → 797 в #623 |
-| **#620** | [Аудит 2026-11-18] P2: пороги coverage для `application`/`infrastructure` и мутационное тестирование калькуляторов | [ ] в очереди |
-| **#621** | [Аудит 2026-11-18] Security: опциональный мастер-пароль (KDF) для portable-хранилища секретов | [ ] в очереди |
+| **#620** | [Аудит 2026-11-18] P2: пороги coverage для `application`/`infrastructure` и мутационное тестирование калькуляторов | [x] закрыт (проверено по стейту issue 2026-11-27) |
+| **#621** | [Аудит 2026-11-18] Security: опциональный мастер-пароль (KDF) для portable-хранилища секретов | [x] закрыт: scrypt-обёртка `device.key` → `device.key.enc`, `master.lock` (реализовано в 0.4.2; SECURITY.md §Master-password) |
 | **#622** | [Аудит 2026-11-18] Tests: устранить предупреждения `QObject: shared QObject was deleted directly` в GUI-тестах | [ ] в очереди |
 
 ### Спринт 3 аудита 2026-10-22 — закрыт (2026-11-01)

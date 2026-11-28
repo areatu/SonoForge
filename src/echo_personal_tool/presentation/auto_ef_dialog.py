@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import replace
 from typing import Any
@@ -33,6 +34,8 @@ from echo_personal_tool.application.auto_ef_coordinator import (
     AutoEfCoordinator,
     apply_auto_ef_to_controller,
 )
+from echo_personal_tool.application.diagnostics import log_boundary_failure
+from echo_personal_tool.application.ef_validation import load_auto_ef_validation_summary
 from echo_personal_tool.application.localization import tr
 from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
 from echo_personal_tool.domain.models.contour import Contour
@@ -50,6 +53,15 @@ _SLOT_KEYS: tuple[tuple[str, str], ...] = (
     ("A2C", "ed"),
     ("A2C", "es"),
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _fmt_validation_rate(value: object) -> str:
+    """A sensitivity/specificity fraction as a percent, or «—» when undefined."""
+    if not isinstance(value, (int, float)):
+        return "—"
+    return f"{float(value) * 100:.1f}%"
 
 
 def _frame_to_pixmap(frame: np.ndarray | None) -> QPixmap | None:
@@ -255,6 +267,7 @@ class AutoEfResultDialog(QDialog):
         self._active_slot: tuple[str, str] = self._first_available_slot(result)
         self._slot_buttons: dict[tuple[str, str], QPushButton] = {}
         self._build_ui()
+        self._apply_validation_summary()
         self._refresh_all()
 
     @property
@@ -303,7 +316,20 @@ class AutoEfResultDialog(QDialog):
         self._a4c_label = QLabel(card)
         self._a2c_label = QLabel(card)
         self._prov_label = QLabel(card)
-        for lbl in (self._metrics_label, self._indexed_label, self._a4c_label, self._a2c_label, self._prov_label):
+        # External validation of the tool (#418): agreement metrics against the
+        # reference standard, from the local manifest.  Shown next to every
+        # automatic estimate so the research status of the number is visible
+        # where the number is used, not only in the manual.
+        self._validation_label = QLabel(card)
+        self._validation_label.setWordWrap(True)
+        for lbl in (
+            self._metrics_label,
+            self._indexed_label,
+            self._a4c_label,
+            self._a2c_label,
+            self._prov_label,
+            self._validation_label,
+        ):
             lbl.setStyleSheet(f"color: {tokens['text.2']}; font-size: 12px;")
             card_layout.addWidget(lbl)
         root.addWidget(card)
@@ -342,6 +368,36 @@ class AutoEfResultDialog(QDialog):
         footer.addWidget(self._cancel_btn)
         footer.addWidget(self._accept_btn)
         root.addLayout(footer)
+
+    def _apply_validation_summary(self) -> None:
+        """Show the external validation summary (issue 418) or hide the line.
+
+        The manifest is operator-produced (see ``application.ef_validation``);
+        a missing one hides the line, a corrupt one surfaces a stable
+        diagnostic event and hides it — never blocks the review dialog.
+        """
+        try:
+            summary = load_auto_ef_validation_summary()
+        except (ValueError, OSError) as exc:
+            log_boundary_failure(logger, "auto_ef.validation", exc, code="manifest_invalid")
+            self._validation_label.hide()
+            return
+        if not summary:
+            self._validation_label.hide()
+            return
+        report_metrics = summary["metrics"]
+        self._validation_label.setText(
+            tr(
+                "auto_ef.validation_summary",
+                source=str(summary["source"]),
+                n=int(summary["n"]),
+                mae=_fmt_num(float(report_metrics["mae"])),
+                threshold=f"{float(summary['threshold_ef']):.0f}%",
+                sens=_fmt_validation_rate(report_metrics.get("sensitivity")),
+                spec=_fmt_validation_rate(report_metrics.get("specificity")),
+            )
+        )
+        self._validation_label.show()
 
     def select_slot(self, view: str, phase: str) -> None:
         key = (view.upper(), phase.lower())
