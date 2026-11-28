@@ -34,9 +34,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import logging
 import sys
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -127,13 +129,16 @@ def build_validation_report(
     *,
     source_label: str = RESEARCH_ONLY_LABEL,
     threshold: float = DEFAULT_THRESHOLD_EF,
+    source_paths: Mapping[str, Path | str] | None = None,
 ) -> dict[str, Any]:
     """Compute the versioned validation report from paired EF values.
 
     ``mapping`` links each *measured* key to its *reference* record.  A
     measured key without a mapping entry or a mapped reference record that
     does not exist raises ``EFValidationError`` — silently dropping pairs
-    would bias the metrics.
+    would bias the metrics.  ``source_paths`` records the operator's input
+    files (path + SHA-256) in the manifest so the result card can recompute
+    the metrics live while those files stay unchanged.
     """
     ref_series: list[float] = []
     pred_series: list[float] = []
@@ -160,7 +165,7 @@ def build_validation_report(
         tp, fp, fn, tn = metrics.confusion_counts(ref_series, pred_series, threshold=threshold)
     except ValueError as exc:
         raise EFValidationError(str(exc)) from exc
-    return {
+    report: dict[str, Any] = {
         "format": MANIFEST_FORMAT,
         "version": MANIFEST_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 - datetime.UTC migration deferred (ruff target py310)
@@ -181,6 +186,28 @@ def build_validation_report(
             "confusion": {"tp": tp, "fp": fp, "fn": fn, "tn": tn},
         },
     }
+    sources = _source_blocks(source_paths) if source_paths else None
+    if sources is not None:
+        report["sources"] = sources
+    return report
+
+
+def _file_digest(path: Path) -> str | None:
+    """SHA-256 of the file, or ``None`` when it cannot be read right now."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _source_blocks(source_paths: Mapping[str, Path | str]) -> dict[str, dict[str, str]]:
+    """The manifest ``sources`` block: path + digest per operator input file."""
+    blocks: dict[str, dict[str, str]] = {}
+    for name in sorted(source_paths):
+        path = Path(source_paths[name])
+        digest = _file_digest(path)
+        blocks[name] = {"path": str(path), "sha256": digest if digest is not None else ""}
+    return blocks
 
 
 def manifest_path(path: Path | None = None) -> Path:
@@ -216,6 +243,18 @@ def validate_validation_report(report: dict[str, Any]) -> None:
     for key in ("mae", "bias", "loa_low", "loa_high", "pearson_r"):
         if not isinstance(report["metrics"].get(key), (int, float)):
             raise EFValidationError("manifest_format")
+    sources = report.get("sources")
+    if sources is not None:
+        if not isinstance(sources, dict) or not sources:
+            raise EFValidationError("manifest_format")
+        for block in sources.values():
+            if not isinstance(block, dict):
+                raise EFValidationError("manifest_format")
+            digest = block.get("sha256")
+            if not isinstance(block.get("path"), str) or not isinstance(digest, str):
+                raise EFValidationError("manifest_format")
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise EFValidationError("manifest_format")
 
 
 def load_validation_summary(*, path: Path | None = None) -> dict[str, Any] | None:
@@ -242,12 +281,59 @@ def load_validation_summary(*, path: Path | None = None) -> dict[str, Any] | Non
 
 
 def load_auto_ef_validation_summary() -> dict[str, Any] | None:
-    """Facade for the auto-EF result card: the manifest, or ``None``.
+    """Facade for the auto-EF result card: the live summary, or ``None``.
 
     presentation imports this — and only this — symbol; the storage paths and
-    the repository helpers stay behind the application boundary.
+    the repository helpers stay behind the application boundary.  The summary
+    is recomputed from the recorded operator inputs when they are unchanged
+    (see :func:`recompute_validation_summary`), so the card never shows stale
+    aggregates while the source files still agree with them.
     """
-    return load_validation_summary()
+    return recompute_validation_summary()
+
+
+def recompute_validation_summary(*, path: Path | None = None) -> dict[str, Any] | None:
+    """Live recomputation of the card summary (audit follow-up 2026-11-28).
+
+    When the stored manifest recorded its operator input files (``sources``)
+    and every file is still there, byte-for-byte unchanged, the metrics are
+    recomputed from those files instead of parroting the stored aggregates —
+    a re-run over the same inputs always shows fresh numbers.  Any drift
+    (file moved, edited, unreadable, unparsable) falls back to the stored
+    manifest: a research-only display must not break because a CSV moved,
+    and the stored aggregates were correct for the files they summarised.
+    """
+    stored = load_validation_summary(path=path)
+    sources = stored.get("sources") if stored else None
+    if not stored or not isinstance(sources, dict):
+        return stored
+    try:
+        reference = load_ef_reference_csv(Path(sources["reference"]["path"]))
+        measured = _load_json_dict(Path(sources["measured"]["path"]))
+        mapping = _load_json_dict(Path(sources["mapping"]["path"]))
+        for name, block in sources.items():
+            digest = _file_digest(Path(block["path"]))
+            if digest != block["sha256"]:
+                raise EFValidationError("input_drift")
+        return build_validation_report(
+            reference,
+            measured,
+            mapping,
+            source_label=str(stored["source"]),
+            threshold=float(stored["threshold_ef"]),
+            source_paths={name: block["path"] for name, block in sources.items()},
+        )
+    except (EFValidationError, KeyError, TypeError, ValueError, OSError) as exc:
+        log_boundary_failure(logger, "auto_ef.validation", exc, code="recompute_stale", level=logging.DEBUG)
+        return stored
+
+
+def _load_json_dict(path: Path) -> dict[str, Any]:
+    """Read a JSON object file (measured EF values / mapping)."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise EFValidationError("non_numeric_input")
+    return payload
 
 
 def _format_percent(value: object) -> str:
@@ -286,6 +372,7 @@ def _main(argv: list[str] | None = None) -> int:
             {str(k): v for k, v in measured.items()},
             {str(k): str(v) for k, v in mapping.items()},
             threshold=float(args.threshold),
+            source_paths={"reference": args.reference, "measured": args.measured, "mapping": args.mapping},
         )
         destination = save_validation_manifest(report, path=Path(args.output) if args.output else None)
     except (EFValidationError, OSError, ValueError) as exc:

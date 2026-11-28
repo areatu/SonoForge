@@ -124,6 +124,12 @@ OVERLAY_DEFAULT_TEXT = "#f5f5f5"
 OVERLAY_DEFAULT_BORDER = "#4caf50"
 OVERLAY_RESULTS_TEXT = "#e8eef4"
 OVERLAY_RESULTS_BORDER = "#3d7cb8"
+#: The frame-overlay calibration banners (audit 2026-11-27 seam 3): the amber
+#: prompt and the cyan success notice, same values the styles carried in
+#: viewer_widget before the move.
+OVERLAY_CALIBRATION_PROMPT_BORDER = "#ffb300"
+OVERLAY_CALIBRATION_SUCCESS = "#00b4d8"
+OVERLAY_CALIBRATION_PROMPT_TEXT = "#ffffff"
 #: The Doppler spectrum and the vessel trace (UI-0 PR-7b). The values are the
 #: colours the overlay had before the move — the migration changes none of them.
 OVERLAY_PEAK = "#ff6f00"

@@ -60,7 +60,7 @@ def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot, syntheti
     _complete_manual_ed(window)
 
     panel_text = window._viewer.results_overlay_text()
-    overlay = "\n".join(window._viewer._frame_overlay_lines)
+    overlay = "\n".join(window._viewer.frame_overlay_lines())
     assert "КДО · 4-кам." in panel_text
     assert "px³" in panel_text
     assert "Длина:" in overlay
@@ -83,7 +83,7 @@ def test_default_freehand_ed_shows_panel_and_overlay(qtbot, synthetic_dicom_path
     window._viewer._freehand_points = [(10.0, 40.0), (20.0, 20.0), (30.0, 10.0), (40.0, 20.0), (50.0, 40.0)]
     assert window._viewer._finish_freehand_open_arc()
     assert "КДО · 4-кам." in window._viewer.results_overlay_text()
-    assert "Длина:" in "\n".join(window._viewer._frame_overlay_lines)
+    assert "Длина:" in "\n".join(window._viewer.frame_overlay_lines())
 
 
 def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
@@ -112,7 +112,7 @@ def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
     window._viewer._drag_contour_point(0, mid, 20.0, 3.0)
     window._viewer._finalize_contour_point_drag(0, mid, 20.0, 3.0)
     after = window._viewer.results_overlay_text()
-    overlay = "\n".join(window._viewer._frame_overlay_lines)
+    overlay = "\n".join(window._viewer.frame_overlay_lines())
 
     assert "КДО · 4-кам." in before
     assert after != before
@@ -136,13 +136,13 @@ def test_overlay_restored_after_frame_change(qtbot, synthetic_dicom_path) -> Non
     window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
 
     _complete_manual_ed(window)
-    assert window._viewer._frame_overlay_lines
+    assert window._viewer.frame_overlay_lines()
 
     controller.state_manager.set_frame(1)
-    assert not window._viewer._frame_overlay_lines
+    assert not window._viewer.frame_overlay_lines()
 
     controller.state_manager.set_frame(0)
-    overlay = "\n".join(window._viewer._frame_overlay_lines)
+    overlay = "\n".join(window._viewer.frame_overlay_lines())
     assert "A4C ED" in overlay
     assert "Длина:" in overlay
 

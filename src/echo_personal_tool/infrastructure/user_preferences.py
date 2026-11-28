@@ -169,7 +169,9 @@ class UserPreferences:
     #: the disk (#331).  Key: OS keychain (full build) or device-secret-wrapped
     #: ``.vault.key`` (portable).  Applies on the next start, where records
     #: are migrated in place; disabled means decrypted back to plaintext.
-    measurements_at_rest_encrypted: bool = False
+    #: ON by default (audit decision 2026-11-28): a fresh install seals its
+    #: records from the first start; an explicitly stored preference wins.
+    measurements_at_rest_encrypted: bool = True
     #: The concept palette (``docs/images/ui-redesign``, «Графит»): near-black
     #: surfaces with a teal accent.  It replaced ``vscode_dark`` as the default in
     #: 0.4.0 — the grey-blue VS Code palette was never the design, only the
@@ -363,7 +365,7 @@ def _read_measurement_persistence(store: Any, allowed: bool) -> bool:
 
 def _read_measurements_at_rest_encrypted(store: Any) -> bool:
     """Z2-M at-rest toggle (#331); the migration itself runs at composition."""
-    return _read_bool(store.value("measurements_at_rest_encrypted"), False)
+    return _read_bool(store.value("measurements_at_rest_encrypted"), default_measurements_at_rest_encrypted())
 
 
 def _overlay_ratios(store: QSettings) -> tuple[float, float]:
@@ -639,6 +641,21 @@ def default_measurement_persistence_enabled() -> bool:
     from echo_personal_tool.infrastructure.profile import capabilities_for
 
     return capabilities_for().measurement_storage_default
+
+
+def default_measurements_at_rest_encrypted() -> bool:
+    """Z2-M at-rest encryption is ON by default (audit decision 2026-11-28).
+
+    A fresh install seals its saved records from the first start; the change
+    applies where the records live, so an explicitly stored preference always
+    wins.  Under pytest the answer is always False for the same reason as
+    :func:`default_measurement_persistence_enabled`: composition-root tests
+    must never create vault keys in the host keychain of a developer machine
+    or CI runner.
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return True
 
 
 def measurement_persistence_notice_shown() -> bool:

@@ -299,7 +299,7 @@ class TestCaliperRepeatMode:
         assert labels == ["Dist1", "Dist2", "Dist3"]
         assert len(emitted[-1]) == 3
         # All results are visible on the frame overlay at once.
-        overlay = "\n".join(w._frame_overlay_lines)
+        overlay = w.frame_overlay_lines() and "\n".join(w.frame_overlay_lines())
         assert "Dist1" in overlay and "Dist2" in overlay and "Dist3" in overlay
 
     def test_toggle_switches_caliper_off(self, qtbot) -> None:

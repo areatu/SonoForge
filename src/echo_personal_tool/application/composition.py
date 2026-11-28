@@ -63,6 +63,7 @@ from echo_personal_tool.application.training_archive_runtime import (
     local_archive_capture,
 )
 from echo_personal_tool.application.user_preferences import (
+    default_measurements_at_rest_encrypted,
     default_user_preferences,
     load_user_preferences,
     save_user_preferences,
@@ -638,6 +639,7 @@ def build_app_services(
     elif hermetic:
         resolved_prefs = default_user_preferences()
         resolved_prefs.measurement_persistence_enabled = capabilities.measurement_storage_default
+        resolved_prefs.measurements_at_rest_encrypted = default_measurements_at_rest_encrypted()
     else:
         resolved_prefs = load_user_preferences()
 

@@ -145,9 +145,9 @@ class TestViewerIntegration:
         viewer.set_phase_timeline(_timeline())
         viewer.show()
         qtbot.waitExposed(viewer)
-        assert viewer._phase_strip is not None
-        assert viewer._phase_strip.width() == viewer.transport.timeline_slider.width()
-        bar_y = viewer._phase_strip.mapTo(viewer, viewer._phase_strip.rect().topLeft()).y()
+        assert viewer._phase_annotation.strip is not None
+        assert viewer._phase_annotation.strip.width() == viewer.transport.timeline_slider.width()
+        bar_y = viewer._phase_annotation.strip.mapTo(viewer, viewer._phase_annotation.strip.rect().topLeft()).y()
         slider_y = viewer.transport.timeline_slider.mapTo(viewer, viewer.transport.timeline_slider.rect().topLeft()).y()
         assert bar_y < slider_y
 
@@ -158,27 +158,27 @@ class TestViewerIntegration:
         qtbot.addWidget(viewer)
         viewer.resize(640, 480)
         viewer.set_phase_timeline(_timeline())
-        viewer._update_phase_label(frame=4)
-        assert viewer._phase_label.text()
-        viewer._update_phase_label(frame=20)
-        assert viewer._phase_label.text()
+        viewer._phase_annotation.update_caption(frame=4)
+        assert viewer._phase_annotation.label.text()
+        viewer._phase_annotation.update_caption(frame=20)
+        assert viewer._phase_annotation.label.text()
         viewer.set_phase_timeline(None)
-        assert viewer._phase_label.text() == ""
+        assert viewer._phase_annotation.label.text() == ""
 
     def test_viewer_hides_markers_until_a_usable_cardiac_result_exists(self, qtbot) -> None:
         from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
         viewer = ViewerWidget()
         qtbot.addWidget(viewer)
-        assert viewer._phase_strip.isHidden()
+        assert viewer._phase_annotation.strip.isHidden()
         viewer.set_phase_timeline(_timeline())
-        assert not viewer._phase_strip.isHidden()
+        assert not viewer._phase_annotation.strip.isHidden()
         viewer.set_phase_timeline(None)
-        assert viewer._phase_strip.isHidden()
-        assert viewer._phase_strip.base_timeline() is None
-        assert viewer._phase_label.text() == ""
+        assert viewer._phase_annotation.strip.isHidden()
+        assert viewer._phase_annotation.strip.base_timeline() is None
+        assert viewer._phase_annotation.label.text() == ""
         viewer._on_phase_marker_reset(0, "ed")
-        assert viewer._phase_timeline is None
+        assert viewer._phase_annotation.timeline() is None
 
     def test_unknown_result_has_no_visible_chips(self, qtbot) -> None:
         from echo_personal_tool.presentation.viewer_widget import ViewerWidget
@@ -187,8 +187,8 @@ class TestViewerIntegration:
         qtbot.addWidget(viewer)
         timeline = build_phase_timeline(n_frames=30, frame_time_ms=33.3)
         viewer.set_phase_timeline(timeline)
-        assert viewer._phase_strip.isHidden()
-        assert viewer._phase_strip._marker_at(100, 5) is None
+        assert viewer._phase_annotation.strip.isHidden()
+        assert viewer._phase_annotation.strip._marker_at(100, 5) is None
 
 
 def test_ui_strip_paints_with_palette_fallback_when_no_shell_theme_registered(qtbot) -> None:

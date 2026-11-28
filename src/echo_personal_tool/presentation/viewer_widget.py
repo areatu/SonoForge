@@ -6,9 +6,8 @@ import logging
 import math
 import os
 import time
-import weakref
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -16,7 +15,7 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor, QKeyEvent, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsView,
@@ -43,7 +42,6 @@ from echo_personal_tool.application.dicom_io import (
 from echo_personal_tool.application.localization import tr, tr_plural
 from echo_personal_tool.application.measurement_undo_redo import UndoEntry, UndoRedoManager
 from echo_personal_tool.application.user_preferences import (
-    DEFAULT_RESULTS_OVERLAY_Y_RATIO,
     UserPreferences,
     resolve_wl_values,
 )
@@ -76,8 +74,6 @@ from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import
     try_auto_doppler_velocity_calibration,
 )
 from echo_personal_tool.domain.services.cine_phase_timeline import (
-    PHASE_DIASTOLE,
-    PHASE_SYSTOLE,
     PhaseTimeline,
 )
 from echo_personal_tool.domain.services.contour_edge_snap import (
@@ -127,11 +123,11 @@ from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_t
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
-from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
 from echo_personal_tool.presentation.magnifier_cursor import magnifier_cursor
+from echo_personal_tool.presentation.viewer.armed_next import ArmedNextChain
 from echo_personal_tool.presentation.viewer.compare_tools import (
     AREA_HINTS,
     DIAMETER_HINTS,
@@ -152,6 +148,15 @@ from echo_personal_tool.presentation.viewer.doppler_controller import (
     DopplerController,
     DopplerViewerPort,
 )
+from echo_personal_tool.presentation.viewer.frame_overlay import FrameOverlayModel
+from echo_personal_tool.presentation.viewer.graphics_items import (
+    ContourViewBox,
+    ResultsOverlayLabel,
+    _CaliperNodeItem,
+    _ComparisonState,
+    _ContourNodeItem,
+    _LoupeKeyRelay,
+)
 from echo_personal_tool.presentation.viewer.label_picker_owner import ViewerLabelPicker
 from echo_personal_tool.presentation.viewer.magnifier_controller import MagnifierController
 from echo_personal_tool.presentation.viewer.mmode_controller import (
@@ -163,6 +168,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
 )
+from echo_personal_tool.presentation.viewer.phase_annotation import PhaseAnnotationController
 from echo_personal_tool.presentation.viewer.point_label_menu import (
     offer_caliper,
     offer_point,
@@ -318,558 +324,6 @@ def _force_png_suffix(path: str) -> str:
     if suffix == ".png":
         return path
     return f"{path}.png"
-
-
-class ContourViewBox(pg.ViewBox):
-    """ViewBox: clicks for tools; wheel steps frames; no pan/zoom drag."""
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._viewer_widget: ViewerWidget | None = None
-        self._prepared_draw_tool = None  # speaker-only visual teaching tool
-        self.setMenuEnabled(False)
-        self.setMouseEnabled(x=False, y=False)
-
-    def set_viewer_widget(self, viewer_widget: ViewerWidget) -> None:
-        self._viewer_widget = viewer_widget
-
-    @property
-    def viewer_widget(self) -> ViewerWidget | None:
-        """The viewer this ViewBox forwards tool events to (issue 327 public seam)."""
-        return self._viewer_widget
-
-    @viewer_widget.setter
-    def viewer_widget(self, viewer_widget: ViewerWidget | None) -> None:
-        self._viewer_widget = viewer_widget
-
-    def mouseClickEvent(self, ev) -> None:
-        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
-            if ev.button() == Qt.MouseButton.RightButton:
-                self._prepared_draw_tool.cancel()
-            ev.accept()
-            return
-        if ev.button() == Qt.MouseButton.RightButton:
-            # While a contour is open, right-click removes the last point.
-            if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
-                return
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_mouse_click(ev):
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
-            return
-        ev.accept()
-
-    @_prof
-    def mousePressEvent(self, ev) -> None:
-        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
-            if ev.button() == Qt.MouseButton.LeftButton:
-                self._prepared_draw_tool.handle_press(ev.scenePos())
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.is_label_picker_visible():
-            self._viewer_widget.dismiss_label_picker()
-        if ev.button() == Qt.MouseButton.RightButton:
-            # A right-click is «undo», never the start of a chained tool.
-            if self._viewer_widget is not None:
-                self._viewer_widget.clear_armed_next()
-            ev.accept()
-            return
-        # The armed second half of a paired tool starts here and places its first
-        # point. A click on an existing node keeps dragging instead. The frame,
-        # not the anatomy, is the gate: anywhere on the ED frame edits the ED
-        # contour rather than starting ES (which used to eat the pair).
-        if ev.button() == Qt.MouseButton.LeftButton and self._viewer_widget is not None:
-            if self._viewer_widget.armed_next() is not None:
-                if self._viewer_widget._handle_contour_zone_press(ev):
-                    ev.accept()
-                    return
-                if self._viewer_widget.armed_next_waits_for_another_frame():
-                    self._viewer_widget.hint_armed_next_needs_another_frame()
-                    ev.accept()
-                    return
-                self._viewer_widget.start_armed_next()
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_calibration_click(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.mmode.handle_calibration_click(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_calibration_mouse_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_linear_caliper_mouse_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_trace_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_peak_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_vessel_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_contour_zone_press(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.mmode.handle_line_click_from_event(ev):
-            ev.accept()
-            return
-        super().mousePressEvent(ev)
-
-    @_prof
-    def mouseMoveEvent(self, ev) -> None:
-        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
-            self._prepared_draw_tool.handle_move(ev.scenePos())
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_peak_drag(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_contour_hover(ev):
-            ev.accept()
-            return
-        super().mouseMoveEvent(ev)
-
-    def mouseDragEvent(self, ev) -> None:
-        if self._prepared_draw_tool is not None and self._prepared_draw_tool.drag(ev):
-            return
-        if ev.button() == Qt.MouseButton.RightButton:
-            ev.accept()
-            return
-        viewer = self._viewer_widget
-        if viewer is not None and viewer._handle_contour_zone_drag(ev):
-            ev.accept()
-            return
-        if viewer is not None and viewer.doppler.handle_trace_drag(ev):
-            ev.accept()
-            return
-        if viewer is not None and viewer.doppler.handle_peak_drag(ev):
-            ev.accept()
-            return
-        if viewer is not None and viewer.doppler.handle_vessel_drag(ev):
-            ev.accept()
-            return
-        if viewer is not None and viewer._drag_session is not None:
-            ev.accept()
-            return
-        ev.ignore()
-
-    def mouseReleaseEvent(self, ev) -> None:
-        if self._prepared_draw_tool is not None and self._prepared_draw_tool.structure is not None:
-            if ev.button() == Qt.MouseButton.LeftButton:
-                self._prepared_draw_tool.handle_release()
-            ev.accept()
-            return
-        if (
-            self._viewer_widget is not None
-            and self._viewer_widget._freehand_recording
-            and not self._viewer_widget._freehand_open_arc
-            and self._viewer_widget._contour_mode_active
-            and ev.button() == Qt.MouseButton.LeftButton
-            and len(self._viewer_widget._freehand_points) >= 3
-        ):
-            self._viewer_widget._finish_active_freehand_contour()
-            super().mouseReleaseEvent(ev)
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_caliper_drag_release(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_trace_release(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_peak_release(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget.doppler.handle_vessel_release(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_contour_drag_release(ev):
-            ev.accept()
-            return
-        if self._viewer_widget is not None and self._viewer_widget._handle_contour_zone_release(ev):
-            ev.accept()
-            return
-        super().mouseReleaseEvent(ev)
-
-    def leaveEvent(self, ev) -> None:
-        if self._viewer_widget is not None:
-            self._viewer_widget._clear_contour_hover()
-            if self._viewer_widget._caliper_drag_active:
-                self._viewer_widget._finish_caliper_node_drag(cancel=True)
-        super().leaveEvent(ev)
-
-    @_prof
-    def wheelEvent(self, ev, axis=None) -> None:
-        ev.ignore()
-
-
-@dataclass
-class _ContourGraphics:
-    contour: Contour
-    line_item: pg.PlotDataItem
-    node_items: list[_ContourNodeItem]
-
-
-class _ContourNodeItem(pg.ScatterPlotItem):
-    """Single draggable contour node."""
-
-    def __init__(
-        self,
-        viewer_widget: ViewerWidget,
-        contour_index: int,
-        point_index: int,
-        position: tuple[float, float],
-        pen: pg.functions.mkPen,
-    ) -> None:
-        super().__init__(
-            symbol="o",
-            size=10,
-            pen=pen,
-            brush=pg.mkBrush(pen.color()),
-        )
-        self._viewer_widget = viewer_widget
-        self._contour_index = contour_index
-        self._point_index = point_index
-        self._base_pen = pen
-        self.setZValue(30)
-        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
-        self.setAcceptHoverEvents(True)
-        self.setData([position[0]], [position[1]])
-
-    def set_indices(self, contour_index: int, point_index: int) -> None:
-        self._contour_index = contour_index
-        self._point_index = point_index
-
-    def set_rbf_highlight(
-        self, *, active: bool, color: str = dark_theme.get_theme_tokens()["overlay.contour.model"]
-    ) -> None:
-        if active:
-            highlight = pg.mkPen(color, width=2)
-            self.setPen(highlight)
-            self.setBrush(pg.mkBrush(color))
-            self.setSize(12)
-        else:
-            self.setPen(self._base_pen)
-            self.setBrush(pg.mkBrush(self._base_pen.color()))
-            self.setSize(10)
-
-    @_prof
-    def mousePressEvent(self, ev) -> None:
-        if ev.button() != Qt.MouseButton.LeftButton:
-            super().mousePressEvent(ev)
-            return
-        ev.accept()
-        view_box = self.getViewBox() or self._viewer_widget._view
-        point = view_box.mapSceneToView(ev.scenePos())
-        self._viewer_widget._begin_contour_node_drag(
-            self._contour_index,
-            self._point_index,
-            float(point.x()),
-            float(point.y()),
-        )
-
-    def mouseDragEvent(self, ev) -> None:
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return
-        ev.accept()
-        return
-
-
-class _CaliperNodeItem(pg.ScatterPlotItem):
-    """Single draggable caliper endpoint node."""
-
-    _SYMBOL_DEFAULT = "+"
-    _SYMBOL_HOVER = "o"
-
-    def __init__(
-        self,
-        viewer_widget: ViewerWidget,
-        caliper_key: tuple[str, int],
-        endpoint_index: int,
-        position: tuple[float, float],
-        pen: pg.functions.mkPen,
-    ) -> None:
-        super().__init__(
-            symbol=self._SYMBOL_DEFAULT,
-            size=12,
-            pen=pen,
-            brush=pg.mkBrush(pen.color()),
-        )
-        self._viewer_widget = viewer_widget
-        self._caliper_key = caliper_key
-        self._endpoint_index = endpoint_index
-        self._base_pen = pen
-        self._base_size = 12
-        self.setZValue(30)
-        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
-        self.setAcceptHoverEvents(True)
-        self.setData([position[0]], [position[1]])
-
-    def hoverEvent(self, ev) -> None:
-        if ev.isEnter():
-            self.setSymbol(self._SYMBOL_HOVER)
-            self.setSize(14)
-            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
-            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
-        elif ev.isExit():
-            if self._viewer_widget._selected_caliper_key != self._caliper_key:
-                self.setSymbol(self._SYMBOL_DEFAULT)
-                self.setSize(self._base_size)
-                self.setPen(self._base_pen)
-                self.setBrush(pg.mkBrush(self._base_pen.color()))
-
-    @_prof
-    def mousePressEvent(self, ev) -> None:
-        if ev.button() != Qt.MouseButton.LeftButton:
-            super().mousePressEvent(ev)
-            return
-        if not self._viewer_widget._caliper_node_edit_allowed():
-            ev.ignore()
-            return
-        ev.accept()
-        view_box = self.getViewBox() or self._viewer_widget._view
-        point = view_box.mapSceneToView(ev.scenePos())
-        self._viewer_widget._select_caliper(self._caliper_key)
-        self._viewer_widget._begin_caliper_node_drag(
-            self._caliper_key,
-            self._endpoint_index,
-            float(point.x()),
-            float(point.y()),
-        )
-
-    def mouseDragEvent(self, ev) -> None:
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return
-        ev.accept()
-        view_box = self.getViewBox() or self._viewer_widget._view
-        point = view_box.mapSceneToView(ev.scenePos())
-        self._viewer_widget._apply_caliper_node_drag(float(point.x()), float(point.y()))
-
-    def mouseReleaseEvent(self, ev) -> None:
-        if ev.button() != Qt.MouseButton.LeftButton:
-            super().mouseReleaseEvent(ev)
-            return
-        ev.accept()
-        self._viewer_widget._finish_caliper_node_drag()
-
-    def set_selected(self, selected: bool) -> None:
-        if selected:
-            self.setSymbol(self._SYMBOL_HOVER)
-            self.setSize(14)
-            self.setPen(pg.mkPen(dark_theme.get_theme_tokens()["overlay.caliper"], width=2))
-            self.setBrush(pg.mkBrush(dark_theme.get_theme_tokens()["overlay.caliper"]))
-        else:
-            self.setSymbol(self._SYMBOL_DEFAULT)
-            self.setSize(self._base_size)
-            self.setPen(self._base_pen)
-            self.setBrush(pg.mkBrush(self._base_pen.color()))
-
-
-class ResultsOverlayLabel(QLabel):
-    """Draggable measurement summary overlay on the viewer."""
-
-    position_changed = Signal(float, float)
-    clear_requested = Signal()
-    reset_position_requested = Signal()
-    pin_toggled = Signal(bool)
-    parameter_clicked = Signal(str)  # param_id when a link is clicked
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent)
-        self.setTextFormat(Qt.TextFormat.RichText)
-        self.setOpenExternalLinks(False)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        self.linkActivated.connect(self.on_link_activated)
-        self._x_ratio = 1.0
-        self._y_ratio = DEFAULT_RESULTS_OVERLAY_Y_RATIO
-        self._dragging = False
-        self._drag_offset_x = 0.0
-        self._drag_offset_y = 0.0
-        self._pinned = False
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.setToolTip(tr("viewer.results_drag_tip"))
-
-    def set_position_ratios(self, x_ratio: float, y_ratio: float) -> None:
-        self._x_ratio = max(0.0, min(1.0, x_ratio))
-        self._y_ratio = max(0.0, min(1.0, y_ratio))
-
-    def position_ratios(self) -> tuple[float, float]:
-        return self._x_ratio, self._y_ratio
-
-    def _link_at(self, pos) -> str | None:
-        """Return href of the <a> tag under *pos*, or None."""
-        from PySide6.QtGui import QTextCursor, QTextDocument
-
-        doc = self.findChild(QTextDocument)
-        if doc is None:
-            return None
-        layout = doc.documentLayout()
-        if layout is None:
-            return None
-        offset = layout.hitTest(pos, Qt.HitTestAccuracy.ExactHit)
-        if offset < 0:
-            return None
-        cursor = QTextCursor(doc)
-        cursor.setPosition(offset)
-        char_fmt = cursor.charFormat()
-        href = char_fmt.anchorHref()
-        return href if href else None
-
-    @_prof
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Check if clicking on a link — if so, let TextBrowserInteraction handle it
-            if self._link_at(event.position().toPoint()):
-                super().mousePressEvent(event)
-                return
-            self._dragging = True
-            viewer = self.parent()
-            if isinstance(viewer, ViewerWidget):
-                viewer._mark_results_overlay_custom_position()
-            self._drag_offset_x = event.position().x()
-            self._drag_offset_y = event.position().y()
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    @property
-    def pinned(self) -> bool:
-        """Whether the overlay keeps its custom position (issue 327 public seam)."""
-        return self._pinned
-
-    @pinned.setter
-    def pinned(self, value: bool) -> None:
-        self._pinned = bool(value)
-
-    @property
-    def on_link_activated(self):
-        """Link-activation handler as a public slot (issue 327 public seam)."""
-        return self._on_link_activated
-
-    def _on_link_activated(self, href: str) -> None:
-        if href:
-            self.parameter_clicked.emit(href)
-
-    @_prof
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if not self._dragging:
-            super().mouseMoveEvent(event)
-            return
-        viewer = self.parent()
-        if not isinstance(viewer, ViewerWidget):
-            return
-        geo = viewer._graphics_content_geometry()
-        local = viewer.mapFromGlobal(event.globalPosition().toPoint())
-        x = int(local.x() - self._drag_offset_x)
-        y = int(local.y() - self._drag_offset_y)
-        rw = self.width()
-        rh = self.height()
-        x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
-        y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
-        self.move(x, y)
-        self._x_ratio = (x - geo.x()) / max(geo.width(), 1)
-        self._y_ratio = (y - geo.y()) / max(geo.height(), 1)
-        self.position_changed.emit(self._x_ratio, self._y_ratio)
-        event.accept()
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
-            self._dragging = False
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def contextMenuEvent(self, event) -> None:
-        from PySide6.QtWidgets import QMenu
-
-        menu = QMenu(self)
-        clear_action = menu.addAction(tr("viewer.overlay_clear"))
-        reset_action = menu.addAction(tr("viewer.overlay_reset_position"))
-        pin_action = menu.addAction(tr("viewer.overlay_unpin") if self._pinned else tr("viewer.overlay_pin"))
-        action = menu.exec(event.globalPos())
-        if action == clear_action:
-            self.clear_requested.emit()
-        elif action == reset_action:
-            self.reset_position_requested.emit()
-        elif action == pin_action:
-            self._pinned = not self._pinned
-            self.pin_toggled.emit(self._pinned)
-        event.accept()
-
-
-@dataclass
-class _ComparisonState:
-    kind: str = ""  # "diameter", "area", "stenosis_diameter", "ar_jet_diameter", "ar_jet_area"…
-    segment1_start: tuple[float, float] | None = None
-    segment1_end: tuple[float, float] | None = None
-    segment1_mm: float | None = None
-    segment2_start: tuple[float, float] | None = None
-    segment2_end: tuple[float, float] | None = None
-    segment2_mm: float | None = None
-    contour1_points: list[tuple[float, float]] | None = None
-    contour1_area_cm2: float | None = None
-    contour2_points: list[tuple[float, float]] | None = None
-    contour2_area_cm2: float | None = None
-    frame_index: int | None = None
-
-    @property
-    def first_segment_done(self) -> bool:
-        return self.segment1_end is not None and self.segment1_mm is not None
-
-    @property
-    def first_contour_done(self) -> bool:
-        return self.contour1_points is not None and self.contour1_area_cm2 is not None
-
-    @property
-    def is_active(self) -> bool:
-        return self.kind != ""
-
-    def reset(self) -> None:
-        self.kind = ""
-        self.segment1_start = None
-        self.segment1_end = None
-        self.segment1_mm = None
-        self.segment2_start = None
-        self.segment2_end = None
-        self.segment2_mm = None
-        self.contour1_points = None
-        self.contour1_area_cm2 = None
-        self.contour2_points = None
-        self.contour2_area_cm2 = None
-        self.frame_index = None
-
-
-class _LoupeKeyRelay(QObject):
-    """Forwards Z to one viewer without installing the viewer on QApplication.
-
-    The viewer is held weakly: a strong back-reference is a QObject cycle, and
-    collecting that cycle segfaults on Linux. The relay is deleted in
-    ``hideEvent`` so a later ``gc.collect()`` does not free an installed
-    filter. Layout and paint events must not touch the viewer — ``isVisible()``
-    re-enters the layout that is delivering the event and stalls
-    ``QLayout.addWidget`` past the 60s pytest-timeout.
-    """
-
-    def __init__(self, viewer: QWidget) -> None:
-        super().__init__()
-        self._viewer = weakref.ref(viewer)
-
-    def eventFilter(self, watched, event) -> bool:
-        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
-            return False
-        viewer = self._viewer() if self._viewer is not None else None
-        if viewer is None or not isValid(viewer):
-            self._viewer = None
-            return False
-        try:
-            return bool(viewer._loupe_key_from_app(watched, event))
-        except RuntimeError:
-            self._viewer = None
-            return False
 
 
 class ViewerWidget(QWidget):
@@ -1056,7 +510,7 @@ class ViewerWidget(QWidget):
         self._contour_pen_simpson = pg.mkPen(
             dark_theme.get_theme_tokens()["overlay.caliper"], width=1, style=Qt.PenStyle.DashLine
         )
-        self._frame_overlay_lines: list[str] = []
+        self._frame_overlay_model = FrameOverlayModel()
         self._pending_viewer_state: ViewerState | None = None
         self._initialize_measurement_state()
         # A4: the naming popup and the caliper-label cycle live in their own
@@ -1074,8 +528,8 @@ class ViewerWidget(QWidget):
         #: resolves on the click: scrolling cancels a running tool, ТЗ 2026-10-23
         #: п. 2) and the ``(frame, clip)`` it was armed on — item 13: a click on the
         #: ED-contour frame stays a click instead of starting ES there.
-        self._armed_next: tuple | None = None
-        self._armed_next_origin: tuple[int | None, str | None] = (None, None)
+        #: State and transitions live in ``viewer.armed_next.ArmedNextChain``.
+        self._armed_next_chain = ArmedNextChain()
         self._syncing_state = False
         #: Viewport mode/factor and the loupe state live in one owner; the
         #: widget keeps only public delegate methods for callers/tests.
@@ -1614,9 +1068,7 @@ class ViewerWidget(QWidget):
             self._overlay_label.adjustSize()
             label_w = self._overlay_label.width()
             label_h = self._overlay_label.height()
-            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-            if calibration_banner or calibration_ok:
+            if self._frame_overlay_model.is_calibration_prompt() or self._frame_overlay_model.is_calibration_success():
                 x = geo.x() + max((geo.width() - label_w) // 2, 8)
                 y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
             else:
@@ -1803,7 +1255,7 @@ class ViewerWidget(QWidget):
         else:
             self._results_overlay_label.setCursor(Qt.CursorShape.OpenHandCursor)
 
-    def _graphics_content_geometry(self):
+    def _graphics_content_geometry(self) -> QRect:
         return self._graphics.geometry()
 
     def apply_user_preferences(self, preferences: UserPreferences) -> None:
@@ -1882,24 +1334,24 @@ class ViewerWidget(QWidget):
             self.transport.refresh_labels(current=current, total=total, is_playing=self._current_state.is_playing)
         else:
             self.transport.fix_play_button_width()
-        self._fix_phase_label_width()
+        self._phase_annotation.fix_caption_width()
         self.doppler.reload_text()
         self._ste_sensitivity.reload_text()
 
     def _build_cine_transport(self) -> None:
         """Build the shared cine timeline through its transport owner."""
-        self._phase_strip = CinePhaseStrip(translate=tr)
-        self._phase_strip.hide()
-        self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
-        self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
-        self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
-        self._phase_timeline: PhaseTimeline | None = None
-        self._phase_label = QLabel("")
+        self._phase_annotation = PhaseAnnotationController(
+            parent=self,
+            current_frame_provider=lambda: self.transport.timeline_slider.value(),
+        )
+        self._phase_annotation.frame_selected.connect(self._on_phase_frame_selected)
+        self._phase_annotation.marker_moved.connect(self._on_phase_marker_moved)
+        self._phase_annotation.marker_reset_requested.connect(self._on_phase_marker_reset)
         self.transport = ViewerTransport(
             parent=self,
             loop=self.findChild(LoopControls),
-            phase_strip=self._phase_strip,
-            phase_label=self._phase_label,
+            phase_strip=self._phase_annotation.strip,
+            phase_label=self._phase_annotation.label,
         )
         self.transport.play_pause_requested.connect(self.play_pause_requested.emit)
         self.transport.frame_selected.connect(self._relay_frame_selected)
@@ -1907,32 +1359,12 @@ class ViewerWidget(QWidget):
         self.transport.fps_override_requested.connect(self.fps_override_requested.emit)
         # Reserve the width of the longest phase caption so the label never
         # appears/disappears and pushes the «Frame: …» counter sideways.
-        self._fix_phase_label_width()
+        self._phase_annotation.fix_caption_width()
 
     def _relay_frame_selected(self, value: int) -> None:
         """Keep the historical guard: programmatic state sync is silent."""
         if not self._syncing_state:
             self.frame_selected.emit(value)
-
-    def _fix_phase_label_width(self) -> None:
-        """Pin the phase caption to the widest localized phase name (fixed phase text)."""
-        longest = max(
-            (
-                tr("cine.phase.label_systole"),
-                tr("cine.phase.label_diastole"),
-                tr("cine.phase.label_unknown"),
-            ),
-            key=len,
-        )
-        margins = self._phase_label.contentsMargins()
-        width = (
-            self._phase_label.fontMetrics().horizontalAdvance(longest)
-            + margins.left()
-            + margins.right()
-            + 2 * self._phase_label.margin()
-            + 2
-        )
-        self._phase_label.setFixedWidth(width)
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -2536,42 +1968,18 @@ class ViewerWidget(QWidget):
 
     def set_phase_timeline(self, timeline: PhaseTimeline | None) -> None:
         """Show a detected phase annotation on the playback bar."""
-        self._phase_timeline = timeline
-        self._phase_strip.set_timeline(timeline)
-        self._phase_strip.setVisible(timeline is not None and bool(timeline.markers()))
-        self._update_phase_label()
-
-    def _update_phase_label(self, *, frame: int | None = None) -> None:
-        if frame is None:
-            frame = self.transport.timeline_slider.value()
-        phase = self._phase_strip.phase_at(frame)
-        tokens = dark_theme.get_theme_tokens()
-        if phase == PHASE_SYSTOLE:
-            text, color = tr("cine.phase.label_systole"), tokens["state.err"]
-        elif phase == PHASE_DIASTOLE:
-            text, color = tr("cine.phase.label_diastole"), tokens["state.info"]
-        elif self._phase_timeline is not None and self._phase_timeline.source != "unavailable":
-            text, color = tr("cine.phase.label_unknown"), tokens["text.disabled"]
-        else:
-            text, color = "", tokens["text.disabled"]
-        if self._phase_label.text() != text:
-            self._phase_label.setText(text)
-        self._phase_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+        self._phase_annotation.set_timeline(timeline)
 
     def _on_phase_frame_selected(self, frame: int) -> None:
         self.transport.select_frame(frame)
 
     def _on_phase_marker_moved(self, cycle_index: int, kind: str, frame: int) -> None:
-        timeline = self._phase_timeline
-        if timeline is None or not (0 <= cycle_index < len(timeline.cycles)):
-            return
-        cycle = timeline.cycles[cycle_index]
-        ed_frame = frame if kind == "ed" else cycle.ed_frame
-        es_frame = frame if kind == "es" else cycle.es_frame
-        self.set_phase_timeline(timeline.with_manual_ed_es(cycle_index, ed_frame, es_frame))
+        timeline = self._phase_annotation.on_marker_moved(cycle_index, kind, frame)
+        if timeline is not None:
+            self.set_phase_timeline(timeline)
 
     def _on_phase_marker_reset(self, cycle_index: int, kind: str) -> None:  # noqa: ARG002
-        base = self._phase_strip.base_timeline()
+        base = self._phase_annotation.on_marker_reset()
         if base is not None:
             self.set_phase_timeline(base)
 
@@ -2598,13 +2006,13 @@ class ViewerWidget(QWidget):
                 frame_time_ms=frame_time_ms,
                 is_playing=is_playing,
             )
-            self._phase_strip.set_total_frames(total)
-            self._phase_strip.set_current_frame(target)
+            self._phase_annotation.set_total_frames(total)
+            self._phase_annotation.set_current_frame(target)
             loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(total)
                 loop.set_current_frame(target)
-            self._update_phase_label(frame=target)
+            self._phase_annotation.update_caption(frame=target)
         except RuntimeError:
             # Widget already destroyed during window teardown.
             return
@@ -2674,13 +2082,13 @@ class ViewerWidget(QWidget):
                 decode_in_progress=viewer_state.decode_in_progress,
                 counter_current=current,
             )
-            self._phase_strip.set_total_frames(viewer_state.total_frames)
-            self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            self._phase_annotation.set_total_frames(viewer_state.total_frames)
+            self._phase_annotation.set_current_frame(viewer_state.current_frame_index)
             loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(viewer_state.total_frames)
                 loop.set_current_frame(viewer_state.current_frame_index)
-            self._update_phase_label(frame=viewer_state.current_frame_index)
+            self._phase_annotation.update_caption(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self.contour_state.stored) != viewer_state.contours
             if contours_updated:
@@ -4377,8 +3785,11 @@ class ViewerWidget(QWidget):
         the operator scrolls to the systolic frame, and that first click is
         already the first point of LVESD — no button press in between (ТЗ п. 2).
         """
-        self._armed_next = ("caliper", str(label))
-        self._remember_armed_frame()
+        self._armed_next_chain.arm(
+            ("caliper", str(label)),
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
+        )
 
     def arm_next_contour(
         self,
@@ -4389,27 +3800,25 @@ class ViewerWidget(QWidget):
         model: bool = False,
     ) -> None:
         """Make the next click on the image start this contour (ES after ED)."""
-        self._armed_next = (
-            "contour",
-            str(chamber).upper(),
-            str(view).upper(),
-            str(phase).upper(),
-            bool(model),
+        self._armed_next_chain.arm(
+            (
+                "contour",
+                str(chamber).upper(),
+                str(view).upper(),
+                str(phase).upper(),
+                bool(model),
+            ),
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
         )
-        self._remember_armed_frame()
-
-    def _remember_armed_frame(self) -> None:
-        """Remember where the chain was armed (frame + clip), for the gate."""
-        self._armed_next_origin = (self._current_frame_index(), self.current_instance_uid())
 
     def clear_armed_next(self) -> None:
         """Forget the chained step (Esc, tool switch, another clip)."""
-        self._armed_next = None
-        self._armed_next_origin = (None, None)
+        self._armed_next_chain.clear()
 
     def armed_next(self) -> tuple | None:
         """What the next click would start, for tests and the status line."""
-        return self._armed_next
+        return self._armed_next_chain.pending()
 
     def armed_next_waits_for_another_frame(self) -> bool:
         """Whether the chain is armed but the operator is still on that frame.
@@ -4419,18 +3828,14 @@ class ViewerWidget(QWidget):
         no systole to scroll to) never blocks: there is no other frame to wait
         for, and the click keeps its old meaning.
         """
-        if self._armed_next is None:
-            return False
-        armed_frame, armed_uid = self._armed_next_origin
-        if armed_frame is None or (armed_uid is not None and self.current_instance_uid() != armed_uid):
-            return False
-        return self._current_frame_index() == armed_frame
+        return self._armed_next_chain.waits_for_another_frame(
+            current_frame=self._current_frame_index(),
+            current_uid=self.current_instance_uid(),
+        )
 
     def hint_armed_next_needs_another_frame(self) -> None:
         """Tell the operator why the click did nothing (item 13, no silent no-op)."""
-        if self._armed_next is None:
-            return
-        phase = "ES" if self._armed_next[0] == "contour" else ""
+        phase = self._armed_next_chain.hint_phase()
         self.set_hint(tr("viewer.armed_next_scroll", phase=phase) if phase else tr("viewer.armed_next_scroll_generic"))
 
     def start_armed_next(self, *, force: bool = False) -> bool:
@@ -4441,12 +3846,12 @@ class ViewerWidget(QWidget):
         click on the image is an ambiguous one (see
         :meth:`armed_next_waits_for_another_frame`).
         """
-        pending = self._armed_next
+        pending = self._armed_next_chain.pending()
         if pending is None:
             return False
         if not force and self.armed_next_waits_for_another_frame():
             return False
-        self.clear_armed_next()
+        self._armed_next_chain.clear()
         if pending[0] == "caliper":
             return self.start_linear_caliper_for(pending[1])
         _kind, chamber, view, phase, model = pending
@@ -4459,7 +3864,7 @@ class ViewerWidget(QWidget):
         # (e.g. the Doppler "AV VTI" hint sticking after selecting a contour).
         if self.zoom.loupe_active:
             self.set_zoom_loupe_active(False)
-        self._armed_next = None
+        self._armed_next_chain.clear()
         self.dismiss_label_picker()
         self.set_hint("")
         if self._caliper_drag_active:
@@ -5019,40 +4424,34 @@ class ViewerWidget(QWidget):
         self.transport.update_timeline_indicator(viewer_state)
 
     def append_frame_overlay(self, line: str) -> None:
-        self._frame_overlay_lines.append(line)
+        self._frame_overlay_model.append(line)
         self._refresh_frame_overlay()
 
     def clear_frame_overlay(self) -> None:
-        self._frame_overlay_lines.clear()
+        self._frame_overlay_model.clear()
         self._refresh_frame_overlay()
 
     def frame_overlay_lines(self) -> tuple[str, ...]:
         """The lines of the frame overlay, in the order they were added."""
-        return tuple(self._frame_overlay_lines)
+        return self._frame_overlay_model.lines()
 
     def _clear_frame_overlay(self) -> None:
         self.clear_frame_overlay()
 
     def _refresh_frame_overlay(self) -> None:
-        if self._frame_overlay_lines:
-            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-            if calibration_banner:
-                self._overlay_label.setStyleSheet(_CALIBRATION_OVERLAY_STYLE)
-                self._overlay_label.setMinimumWidth(360)
-            elif calibration_ok:
-                self._overlay_label.setStyleSheet(_CALIBRATION_SUCCESS_STYLE)
-                self._overlay_label.setMinimumWidth(360)
-            else:
-                self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
-                self._overlay_label.setMinimumWidth(0)
-            self._overlay_label.setText("\n".join(self._frame_overlay_lines))
-            self._overlay_label.adjustSize()
-            self._overlay_label.show()
-            self._overlay_label.raise_()
-            self._position_overlay_label()
-        else:
+        """Render the overlay model into the child label (one binding block)."""
+        style, min_width = self._frame_overlay_model.style()
+        text = self._frame_overlay_model.text()
+        if not text:
             self._overlay_label.hide()
+            return
+        self._overlay_label.setStyleSheet(style)
+        self._overlay_label.setMinimumWidth(min_width)
+        self._overlay_label.setText(text)
+        self._overlay_label.adjustSize()
+        self._overlay_label.show()
+        self._overlay_label.raise_()
+        self._position_overlay_label()
 
     def _clear_linear_caliper(self) -> None:
         if self._comparison_state.kind:

@@ -107,6 +107,15 @@ def default_measurement_persistence_enabled() -> bool:
     return default_adapter()
 
 
+def default_measurements_at_rest_encrypted() -> bool:
+    """Profile/test-aware default of the Z2-M at-rest encryption preference."""
+    from echo_personal_tool.infrastructure.user_preferences import (
+        default_measurements_at_rest_encrypted as default_adapter,
+    )
+
+    return default_adapter()
+
+
 def restart_application() -> bool:
     """Start a detached copy of the application; the caller quits the current one."""
     from echo_personal_tool.infrastructure.ui_scale import restart_application as restart_adapter
@@ -180,6 +189,7 @@ __all__ = [
     "UserPreferences",
     "WindowPreferences",
     "default_measurement_persistence_enabled",
+    "default_measurements_at_rest_encrypted",
     "default_user_preferences",
     "gold_annotation_enabled",
     "load_user_preferences",
