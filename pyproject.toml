@@ -308,6 +308,7 @@ files = [
     "src/echo_personal_tool/presentation/viewer/magnifier_controller.py",
     "src/echo_personal_tool/presentation/viewer/mmode_controller.py",
     "src/echo_personal_tool/presentation/viewer/overlay_controller.py",
+    "src/echo_personal_tool/presentation/viewer/phase_annotation.py",
     "src/echo_personal_tool/presentation/viewer/point_label_menu.py",
     "src/echo_personal_tool/presentation/viewer/target_boundary.py",
     "src/echo_personal_tool/presentation/viewer/transport.py",

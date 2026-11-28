@@ -1357,7 +1357,7 @@ class TestLinearMeasurementOps:
 class TestFrameOverlayOps:
     def test_clear_frame_overlay(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.contract.frame_overlay_lines = ["test"]
+        w.append_frame_overlay("test")
         w.clear_frame_overlay()
         assert w.frame_overlay_lines() == ()
 
@@ -1441,15 +1441,13 @@ class TestFrameOverlayRefresh:
     def test_refresh_overlay_with_content(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.frame_overlay_lines = ["Test overlay line"]
-        w.contract.refresh_frame_overlay()
+        w.append_frame_overlay("Test overlay line")
         assert w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_empty_hides(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w.contract.frame_overlay_lines = []
-        w.contract.refresh_frame_overlay()
+        w.clear_frame_overlay()
         assert not w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_calibration_banner(self, qtbot) -> None:
@@ -1458,8 +1456,7 @@ class TestFrameOverlayRefresh:
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_PROMPT_OVERLAY_KEY
 
-        w.contract.frame_overlay_lines = [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
-        w.contract.refresh_frame_overlay()
+        w.append_frame_overlay(tr(CALIBRATION_PROMPT_OVERLAY_KEY))
         assert w.contract.overlay_label.isVisible()
 
     def test_refresh_overlay_calibration_ok(self, qtbot) -> None:
@@ -1468,13 +1465,13 @@ class TestFrameOverlayRefresh:
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_SUCCESS_OVERLAY_KEY
 
-        w.contract.frame_overlay_lines = [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
-        w.contract.refresh_frame_overlay()
+        w.append_frame_overlay(tr(CALIBRATION_SUCCESS_OVERLAY_KEY))
         assert w.contract.overlay_label.isVisible()
 
     def test_clear_frame_overlay_clears_lines(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        w.contract.frame_overlay_lines = ["line1", "line2"]
+        w.append_frame_overlay("line1")
+        w.append_frame_overlay("line2")
         w.clear_frame_overlay()
         assert w.frame_overlay_lines() == ()
 

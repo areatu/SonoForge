@@ -74,8 +74,6 @@ from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import
     try_auto_doppler_velocity_calibration,
 )
 from echo_personal_tool.domain.services.cine_phase_timeline import (
-    PHASE_DIASTOLE,
-    PHASE_SYSTOLE,
     PhaseTimeline,
 )
 from echo_personal_tool.domain.services.contour_edge_snap import (
@@ -125,7 +123,6 @@ from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_t
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
-from echo_personal_tool.presentation.cine_phase_strip import CinePhaseStrip
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.loop_controls import LoopControls, attach_loop_controls
@@ -171,6 +168,7 @@ from echo_personal_tool.presentation.viewer.overlay_controller import (
     ResultsOverlayController,
     TagsOverlayController,
 )
+from echo_personal_tool.presentation.viewer.phase_annotation import PhaseAnnotationController
 from echo_personal_tool.presentation.viewer.point_label_menu import (
     offer_caliper,
     offer_point,
@@ -1336,24 +1334,24 @@ class ViewerWidget(QWidget):
             self.transport.refresh_labels(current=current, total=total, is_playing=self._current_state.is_playing)
         else:
             self.transport.fix_play_button_width()
-        self._fix_phase_label_width()
+        self._phase_annotation.fix_caption_width()
         self.doppler.reload_text()
         self._ste_sensitivity.reload_text()
 
     def _build_cine_transport(self) -> None:
         """Build the shared cine timeline through its transport owner."""
-        self._phase_strip = CinePhaseStrip(translate=tr)
-        self._phase_strip.hide()
-        self._phase_strip.frame_selected.connect(self._on_phase_frame_selected)
-        self._phase_strip.marker_moved.connect(self._on_phase_marker_moved)
-        self._phase_strip.marker_reset_requested.connect(self._on_phase_marker_reset)
-        self._phase_timeline: PhaseTimeline | None = None
-        self._phase_label = QLabel("")
+        self._phase_annotation = PhaseAnnotationController(
+            parent=self,
+            current_frame_provider=lambda: self.transport.timeline_slider.value(),
+        )
+        self._phase_annotation.frame_selected.connect(self._on_phase_frame_selected)
+        self._phase_annotation.marker_moved.connect(self._on_phase_marker_moved)
+        self._phase_annotation.marker_reset_requested.connect(self._on_phase_marker_reset)
         self.transport = ViewerTransport(
             parent=self,
             loop=self.findChild(LoopControls),
-            phase_strip=self._phase_strip,
-            phase_label=self._phase_label,
+            phase_strip=self._phase_annotation.strip,
+            phase_label=self._phase_annotation.label,
         )
         self.transport.play_pause_requested.connect(self.play_pause_requested.emit)
         self.transport.frame_selected.connect(self._relay_frame_selected)
@@ -1361,32 +1359,12 @@ class ViewerWidget(QWidget):
         self.transport.fps_override_requested.connect(self.fps_override_requested.emit)
         # Reserve the width of the longest phase caption so the label never
         # appears/disappears and pushes the «Frame: …» counter sideways.
-        self._fix_phase_label_width()
+        self._phase_annotation.fix_caption_width()
 
     def _relay_frame_selected(self, value: int) -> None:
         """Keep the historical guard: programmatic state sync is silent."""
         if not self._syncing_state:
             self.frame_selected.emit(value)
-
-    def _fix_phase_label_width(self) -> None:
-        """Pin the phase caption to the widest localized phase name (fixed phase text)."""
-        longest = max(
-            (
-                tr("cine.phase.label_systole"),
-                tr("cine.phase.label_diastole"),
-                tr("cine.phase.label_unknown"),
-            ),
-            key=len,
-        )
-        margins = self._phase_label.contentsMargins()
-        width = (
-            self._phase_label.fontMetrics().horizontalAdvance(longest)
-            + margins.left()
-            + margins.right()
-            + 2 * self._phase_label.margin()
-            + 2
-        )
-        self._phase_label.setFixedWidth(width)
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -1990,42 +1968,18 @@ class ViewerWidget(QWidget):
 
     def set_phase_timeline(self, timeline: PhaseTimeline | None) -> None:
         """Show a detected phase annotation on the playback bar."""
-        self._phase_timeline = timeline
-        self._phase_strip.set_timeline(timeline)
-        self._phase_strip.setVisible(timeline is not None and bool(timeline.markers()))
-        self._update_phase_label()
-
-    def _update_phase_label(self, *, frame: int | None = None) -> None:
-        if frame is None:
-            frame = self.transport.timeline_slider.value()
-        phase = self._phase_strip.phase_at(frame)
-        tokens = dark_theme.get_theme_tokens()
-        if phase == PHASE_SYSTOLE:
-            text, color = tr("cine.phase.label_systole"), tokens["state.err"]
-        elif phase == PHASE_DIASTOLE:
-            text, color = tr("cine.phase.label_diastole"), tokens["state.info"]
-        elif self._phase_timeline is not None and self._phase_timeline.source != "unavailable":
-            text, color = tr("cine.phase.label_unknown"), tokens["text.disabled"]
-        else:
-            text, color = "", tokens["text.disabled"]
-        if self._phase_label.text() != text:
-            self._phase_label.setText(text)
-        self._phase_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+        self._phase_annotation.set_timeline(timeline)
 
     def _on_phase_frame_selected(self, frame: int) -> None:
         self.transport.select_frame(frame)
 
     def _on_phase_marker_moved(self, cycle_index: int, kind: str, frame: int) -> None:
-        timeline = self._phase_timeline
-        if timeline is None or not (0 <= cycle_index < len(timeline.cycles)):
-            return
-        cycle = timeline.cycles[cycle_index]
-        ed_frame = frame if kind == "ed" else cycle.ed_frame
-        es_frame = frame if kind == "es" else cycle.es_frame
-        self.set_phase_timeline(timeline.with_manual_ed_es(cycle_index, ed_frame, es_frame))
+        timeline = self._phase_annotation.on_marker_moved(cycle_index, kind, frame)
+        if timeline is not None:
+            self.set_phase_timeline(timeline)
 
     def _on_phase_marker_reset(self, cycle_index: int, kind: str) -> None:  # noqa: ARG002
-        base = self._phase_strip.base_timeline()
+        base = self._phase_annotation.on_marker_reset()
         if base is not None:
             self.set_phase_timeline(base)
 
@@ -2052,13 +2006,13 @@ class ViewerWidget(QWidget):
                 frame_time_ms=frame_time_ms,
                 is_playing=is_playing,
             )
-            self._phase_strip.set_total_frames(total)
-            self._phase_strip.set_current_frame(target)
+            self._phase_annotation.set_total_frames(total)
+            self._phase_annotation.set_current_frame(target)
             loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(total)
                 loop.set_current_frame(target)
-            self._update_phase_label(frame=target)
+            self._phase_annotation.update_caption(frame=target)
         except RuntimeError:
             # Widget already destroyed during window teardown.
             return
@@ -2128,13 +2082,13 @@ class ViewerWidget(QWidget):
                 decode_in_progress=viewer_state.decode_in_progress,
                 counter_current=current,
             )
-            self._phase_strip.set_total_frames(viewer_state.total_frames)
-            self._phase_strip.set_current_frame(viewer_state.current_frame_index)
+            self._phase_annotation.set_total_frames(viewer_state.total_frames)
+            self._phase_annotation.set_current_frame(viewer_state.current_frame_index)
             loop = self.findChild(LoopControls)
             if loop is not None:
                 loop.set_total_frames(viewer_state.total_frames)
                 loop.set_current_frame(viewer_state.current_frame_index)
-            self._update_phase_label(frame=viewer_state.current_frame_index)
+            self._phase_annotation.update_caption(frame=viewer_state.current_frame_index)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self.contour_state.stored) != viewer_state.contours
             if contours_updated:
